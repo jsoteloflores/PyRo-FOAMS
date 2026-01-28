@@ -4,11 +4,17 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, asdict
-from typing import List, Optional, Tuple, Iterable, Dict
+from typing import List, Optional, Tuple, Iterable, Dict, Any, Union
 import csv
 import math
 import numpy as np
 import cv2
+
+# Type aliases for clarity
+LabelMap = np.ndarray  # np.int32, shape (H,W), 0=background, 1..N=objects
+BinaryMask = np.ndarray  # np.uint8, shape (H,W), values in {0, 255}
+ImageArray = np.ndarray  # np.uint8, shape (H,W) or (H,W,3)
+ScaleDict = Dict[str, Union[float, str]]  # e.g., {"unitsPerPx": 0.01, "unitName": "mm"}
 
 # ---------- Data Model ----------
 
@@ -53,11 +59,11 @@ class PoreProps:
 # ---------- Public API ----------
 
 def colorize_labels(
-    labels: np.ndarray,
+    labels: LabelMap,
     seed: int = 123,
-    bg_gray: Optional[np.ndarray] = None,
+    bg_gray: Optional[ImageArray] = None,
     alpha: float = 0.45
-) -> np.ndarray:
+) -> ImageArray:
     """
     Assign a distinct (pseudo-random) color to each label>0.
     If bg_gray is provided (H,W) uint8, overlay colors over the grayscale.
@@ -104,9 +110,9 @@ def colorize_labels(
 
 
 def measure_labels(
-    labels: np.ndarray,
+    labels: LabelMap,
     image_index: int = 0,
-    scale: Optional[Dict[str, float | str]] = None
+    scale: Optional[ScaleDict] = None
 ) -> List[PoreProps]:
     """
     Compute pore-wise metrics for a labeled image.
@@ -258,8 +264,8 @@ def measure_labels(
 
 
 def measure_dataset(
-    labels_list: List[Optional[np.ndarray]],
-    scales_list: Optional[List[Optional[Dict[str, float | str]]]] = None
+    labels_list: List[Optional[LabelMap]],
+    scales_list: Optional[List[Optional[ScaleDict]]] = None
 ) -> List[PoreProps]:
     """
     Measure a whole set of images (some labels may be None).
@@ -299,7 +305,7 @@ def save_props_csv(path: str, props: Iterable[PoreProps]) -> None:
             writer.writerow(r)
 
 
-def mask_from_labels(labels: np.ndarray) -> np.ndarray:
+def mask_from_labels(labels: LabelMap) -> BinaryMask:
     """
     Utility: binary mask (uint8 0/255) from labels (0=background).
     """

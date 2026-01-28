@@ -5,23 +5,34 @@
 from __future__ import annotations
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import List, Optional, Tuple, Dict, Callable, Any
+from typing import List, Optional, Tuple, Dict, Callable, Any, Union
+
 import numpy as np
 
 from .processing import runSeparationPipeline, DEFAULTS
 from .stereology import measure_labels, PoreProps
 
+# Type aliases for clarity
+ImageArray = np.ndarray  # np.uint8, shape (H,W) grayscale or (H,W,3) BGR
+BinaryMask = np.ndarray  # np.uint8, shape (H,W), values in {0, 255}
+LabelMap = np.ndarray  # np.int32, shape (H,W), 0=background, 1..N=objects
+ScaleDict = Dict[str, Union[float, str]]  # e.g., {"unitsPerPx": 0.01, "unitName": "mm"}
+ThreshParams = Dict[str, Any]  # parameter dict for thresholding
+SepParams = Dict[str, Any]  # parameter dict for separation
+MetaDict = Dict[str, Any]  # metadata dict returned from functions
+ProgressCallback = Callable[[int, int], None]  # (completed, total) -> None
+
 
 # ---------- Worker functions (must be top-level for pickle) ----------
 
 def _process_single_image(
-    img: np.ndarray,
-    thresh_params: Dict[str, Any],
-    sep_params: Dict[str, Any],
+    img: ImageArray,
+    thresh_params: ThreshParams,
+    sep_params: SepParams,
     image_index: int = 0,
-    scale: Optional[Dict[str, float | str]] = None,
+    scale: Optional[ScaleDict] = None,
     measure: bool = True
-) -> Tuple[int, np.ndarray, Optional[np.ndarray], Dict, Optional[List[PoreProps]]]:
+) -> Tuple[int, BinaryMask, Optional[LabelMap], MetaDict, Optional[List[PoreProps]]]:
     """
     Process a single image: threshold + separation + optional measurement.
     Returns (index, binary, labels, meta, props_or_None).
@@ -45,14 +56,14 @@ def _process_single_image_wrapper(args: Tuple) -> Tuple:
 # ---------- Public API ----------
 
 def process_batch_parallel(
-    images: List[np.ndarray],
-    thresh_params: Optional[Dict[str, Any]] = None,
-    sep_params: Optional[Dict[str, Any]] = None,
-    scales: Optional[List[Optional[Dict[str, float | str]]]] = None,
+    images: List[ImageArray],
+    thresh_params: Optional[ThreshParams] = None,
+    sep_params: Optional[SepParams] = None,
+    scales: Optional[List[Optional[ScaleDict]]] = None,
     measure: bool = True,
     max_workers: Optional[int] = None,
-    progress_callback: Optional[Callable[[int, int], None]] = None
-) -> Tuple[List[np.ndarray], List[Optional[np.ndarray]], List[Optional[List[PoreProps]]]]:
+    progress_callback: Optional[ProgressCallback] = None
+) -> Tuple[List[BinaryMask], List[Optional[LabelMap]], List[Optional[List[PoreProps]]]]:
     """
     Process multiple images in parallel using ProcessPoolExecutor.
     
@@ -148,13 +159,13 @@ def process_batch_parallel(
 
 
 def process_batch_sequential(
-    images: List[np.ndarray],
-    thresh_params: Optional[Dict[str, Any]] = None,
-    sep_params: Optional[Dict[str, Any]] = None,
-    scales: Optional[List[Optional[Dict[str, float | str]]]] = None,
+    images: List[ImageArray],
+    thresh_params: Optional[ThreshParams] = None,
+    sep_params: Optional[SepParams] = None,
+    scales: Optional[List[Optional[ScaleDict]]] = None,
     measure: bool = True,
-    progress_callback: Optional[Callable[[int, int], None]] = None
-) -> Tuple[List[np.ndarray], List[Optional[np.ndarray]], List[Optional[List[PoreProps]]]]:
+    progress_callback: Optional[ProgressCallback] = None
+) -> Tuple[List[BinaryMask], List[Optional[LabelMap]], List[Optional[List[PoreProps]]]]:
     """
     Process multiple images sequentially (no multiprocessing).
     Same interface as process_batch_parallel for easy swapping.
@@ -173,11 +184,11 @@ def process_batch_sequential(
 # ---------- Convenience wrappers ----------
 
 def threshold_batch(
-    images: List[np.ndarray],
+    images: List[ImageArray],
     method: str = "otsu",
     polarity: str = "auto",
-    **kwargs
-) -> List[np.ndarray]:
+    **kwargs: Any
+) -> List[BinaryMask]:
     """
     Apply thresholding to a batch of images (no separation).
     Returns list of binary masks.
@@ -191,8 +202,8 @@ def threshold_batch(
 
 
 def measure_batch(
-    labels_list: List[Optional[np.ndarray]],
-    scales: Optional[List[Optional[Dict[str, float | str]]]] = None
+    labels_list: List[Optional[LabelMap]],
+    scales: Optional[List[Optional[ScaleDict]]] = None
 ) -> List[PoreProps]:
     """
     Measure all pores across a batch of label maps.

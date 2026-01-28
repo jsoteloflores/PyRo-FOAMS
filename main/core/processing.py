@@ -5,7 +5,15 @@
 from __future__ import annotations
 import cv2
 import numpy as np
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, Any, Union
+
+# Type aliases for clarity
+ImageArray = np.ndarray  # np.uint8, shape (H,W) grayscale or (H,W,3) BGR
+BinaryMask = np.ndarray  # np.uint8, shape (H,W), values in {0, 255}
+LabelMap = np.ndarray  # np.int32, shape (H,W), 0=background, 1..N=objects
+ThreshParams = Dict[str, Any]  # parameter dict for thresholding
+SepParams = Dict[str, Any]  # parameter dict for separation
+MetaDict = Dict[str, Any]  # metadata dict returned from functions
 
 # --------------------- Defaults (edit freely) ---------------------
 DEFAULTS: Dict[str, Dict[str, float | int | bool | str]] = {
@@ -49,11 +57,12 @@ DEFAULTS: Dict[str, Dict[str, float | int | bool | str]] = {
 # --------------------- Internal helpers ---------------------------
 
 def _forceOdd(k: int) -> int:
+    """Ensure k is odd and >= 1."""
     k = int(max(1, k))
     return k if k % 2 == 1 else k + 1
 
 
-def _prepGray(src) -> np.ndarray:
+def _prepGray(src: ImageArray) -> np.ndarray:
     img = src
     if img.ndim == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -62,27 +71,27 @@ def _prepGray(src) -> np.ndarray:
     return img
 
 
-def _isDarkerForeground(img, binary):
+def _isDarkerForeground(img: np.ndarray, binary: BinaryMask) -> bool:
     fg = img[binary == 255]; bg = img[binary == 0]
     if fg.size == 0 or bg.size == 0: return False
     return float(np.mean(fg)) < float(np.mean(bg))
 
 
-def _contrastGap(img, binary):
+def _contrastGap(img: np.ndarray, binary: BinaryMask) -> float:
     fg = img[binary == 255]; bg = img[binary == 0]
     if fg.size == 0 or bg.size == 0: return 0.0
     return abs(float(np.mean(fg)) - float(np.mean(bg)))
 
 
-def _pickDarkerForeground(img, binA, binB):
+def _pickDarkerForeground(img: np.ndarray, binA: BinaryMask, binB: BinaryMask) -> BinaryMask:
     return binA if _isDarkerForeground(img, binA) else binB
 
 
-def _pickBrighterForeground(img, binA, binB):
+def _pickBrighterForeground(img: np.ndarray, binA: BinaryMask, binB: BinaryMask) -> BinaryMask:
     return binA if not _isDarkerForeground(img, binA) else binB
 
 
-def _choosePolarity(img, binA, binB, polarity: str):
+def _choosePolarity(img: np.ndarray, binA: BinaryMask, binB: BinaryMask, polarity: str) -> BinaryMask:
     if polarity == "poresDarker":  return _pickDarkerForeground(img, binA, binB)
     if polarity == "poresBrighter":return _pickBrighterForeground(img, binA, binB)
     A_dark, B_dark = _isDarkerForeground(img, binA), _isDarkerForeground(img, binB)
@@ -120,7 +129,7 @@ def thresholdImageAdvanced(
     pickTolerance: int = 10,
     applyOpenClose: bool = False,
     morphK: int = 3
-) -> Tuple[np.ndarray, Dict]:
+) -> Tuple[BinaryMask, MetaDict]:
     """
     Robust thresholding with preprocessing and polarity control.
     Returns (binary_uint8, meta_dict). Foreground (vesicles) = 255.
@@ -180,7 +189,7 @@ def thresholdImageAdvanced(
 
 # -------------------------- Cleanup -------------------------------
 
-def fillHoles(binary: np.ndarray) -> np.ndarray:
+def fillHoles(binary: BinaryMask) -> BinaryMask:
     """Fill internal holes in a binary mask (255=FG)."""
     mask = (binary > 0).astype(np.uint8)
     h, w = mask.shape
@@ -194,7 +203,7 @@ def fillHoles(binary: np.ndarray) -> np.ndarray:
     return (out * 255).astype(np.uint8)
 
 
-def removeSmallAreas(binary: np.ndarray, minArea: int, connectivity: int = 8) -> np.ndarray:
+def removeSmallAreas(binary: BinaryMask, minArea: int, connectivity: int = 8) -> BinaryMask:
     """Remove connected components smaller than minArea. Keeps FG=255.
     
     Vectorized: uses connectedComponentsWithStats to get areas in O(n) instead
@@ -216,7 +225,7 @@ def removeSmallAreas(binary: np.ndarray, minArea: int, connectivity: int = 8) ->
     return (out * 255).astype(np.uint8)
 
 
-def clearBorderTouching(binary: np.ndarray, connectivity: int = 8) -> np.ndarray:
+def clearBorderTouching(binary: BinaryMask, connectivity: int = 8) -> BinaryMask:
     """Remove components that touch the border.
     
     Vectorized: collect border labels via unique on border slices, then use
@@ -246,12 +255,12 @@ def clearBorderTouching(binary: np.ndarray, connectivity: int = 8) -> np.ndarray
 # -------------------------- Separation ----------------------------
 
 def watershedSeparate(
-    binary: np.ndarray,
+    binary: BinaryMask,
     distanceBlurK: int = 3,
     peakMinDistance: int = 9,
     peakRelThreshold: float = 0.2,
     connectivity: int = 8
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[LabelMap, np.ndarray]:
     """
     Watershed separation on binary FG. Returns (labels, distance8u_for_debug).
     labels: int32, 0=background, 1..N objects.
@@ -302,12 +311,12 @@ def watershedSeparate(
 
 
 def postSeparateCleanup(
-    labels: np.ndarray,
+    labels: LabelMap,
     minAreaPx: int = 0,
     connectivity: int = 8,
     clearBorder: bool = False,
-    shape: Optional[tuple[int, int]] = None
-) -> np.ndarray:
+    shape: Optional[Tuple[int, int]] = None
+) -> LabelMap:
     """Optionally filter labels by area and border touching.
     
     Vectorized: uses np.bincount for area histogram and LUT-based remapping
@@ -353,7 +362,7 @@ def postSeparateCleanup(
 
 # -------------------------- Visualization -------------------------
 
-def labelsToColor(labels: np.ndarray, bgGray: Optional[np.ndarray] = None, alpha: float = 0.45) -> np.ndarray:
+def labelsToColor(labels: LabelMap, bgGray: Optional[np.ndarray] = None, alpha: float = 0.45) -> np.ndarray:
     """
     Colorize label map. If bgGray provided (uint8), alpha-blend color on top.
     Returns BGR uint8 for display.
@@ -390,10 +399,10 @@ def labelsToColor(labels: np.ndarray, bgGray: Optional[np.ndarray] = None, alpha
 # -------------------------- Pipeline ------------------------------
 
 def runSeparationPipeline(
-    grayOrBgr: np.ndarray,
-    threshParams: Dict[str, float | int | bool | str],
-    sepParams: Dict[str, float | int | bool | str]
-) -> Tuple[np.ndarray, Optional[np.ndarray], Dict]:
+    grayOrBgr: ImageArray,
+    threshParams: ThreshParams,
+    sepParams: SepParams
+) -> Tuple[BinaryMask, Optional[LabelMap], MetaDict]:
     """
     Performs threshold -> (optional fill holes/cleanup) -> separation (if enabled).
     Returns (binary_uint8, labels_int32_or_None, meta).
