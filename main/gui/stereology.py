@@ -2,34 +2,31 @@
 # Standalone stereology window: view colorized labels, compute metrics, plot histograms, export CSV
 
 from __future__ import annotations
-import os
+
 import math
-from dataclasses import asdict
-from typing import List, Optional, Dict, Tuple
-
-import numpy as np
-import cv2
+import os
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import filedialog, messagebox, ttk
+from typing import Dict, List, Optional, Tuple
 
+import cv2
+import matplotlib
+import numpy as np
 from PIL import Image, ImageTk
 
-import matplotlib
 matplotlib.use("TkAgg")  # embed in Tk
-from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
 
 # Package imports
 from ..core.stereology import (
     PoreProps,
     colorize_labels,
-    measure_labels,
     measure_dataset,
+    measure_labels,
     save_props_csv,
-    mask_from_labels,
 )
 from .widgets import debounce
-
 
 # ------------ utils: PIL conversion ------------
 
@@ -359,7 +356,7 @@ class StereologyWindow(tk.Toplevel):
         amax = float(self.maxAreaVar.get() or 0.0)
 
         use_units = (self.unitsModeVar.get() == "units") and (self._unitName is not None)
-        def area_val(p: stereology.PoreProps) -> float:
+        def area_val(p: PoreProps) -> float:
             return p.area_units2 if use_units and (p.area_units2 is not None) else float(p.area_px)
 
         if amin > 0.0:

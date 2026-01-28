@@ -3,14 +3,15 @@
 # All functions are top-level and picklable for multiprocessing
 
 from __future__ import annotations
+
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import List, Optional, Tuple, Dict, Callable, Any, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from .processing import runSeparationPipeline, DEFAULTS
-from .stereology import measure_labels, PoreProps
+from .processing import DEFAULTS, runSeparationPipeline
+from .stereology import PoreProps, measure_labels
 
 # Type aliases for clarity
 ImageArray = np.ndarray  # np.uint8, shape (H,W) grayscale or (H,W,3) BGR
@@ -36,15 +37,15 @@ def _process_single_image(
     """
     Process a single image: threshold + separation + optional measurement.
     Returns (index, binary, labels, meta, props_or_None).
-    
+
     This function is designed to be called in a worker process.
     """
     binary, labels, meta = runSeparationPipeline(img, thresh_params, sep_params)
-    
+
     props = None
     if measure and labels is not None:
         props = measure_labels(labels, image_index=image_index, scale=scale)
-    
+
     return (image_index, binary, labels, meta, props)
 
 
@@ -66,7 +67,7 @@ def process_batch_parallel(
 ) -> Tuple[List[BinaryMask], List[Optional[LabelMap]], List[Optional[List[PoreProps]]]]:
     """
     Process multiple images in parallel using ProcessPoolExecutor.
-    
+
     Parameters:
     -----------
     images : List[np.ndarray]
@@ -83,7 +84,7 @@ def process_batch_parallel(
         Max parallel workers. Defaults to min(cpu_count, len(images)).
     progress_callback : Callable[[int, int], None], optional
         Called with (completed_count, total_count) after each image finishes.
-    
+
     Returns:
     --------
     binaries : List[np.ndarray]
@@ -96,7 +97,7 @@ def process_batch_parallel(
     n = len(images)
     if n == 0:
         return [], [], []
-    
+
     # Defaults
     if thresh_params is None:
         thresh_params = {"method": "otsu", "polarity": "auto"}
@@ -104,25 +105,25 @@ def process_batch_parallel(
         sep_params = dict(DEFAULTS["separation"])
     if scales is None:
         scales = [None] * n
-    
+
     # Determine worker count
     if max_workers is None:
         max_workers = min(os.cpu_count() or 4, n)
     max_workers = max(1, min(max_workers, n))
-    
+
     # Build args for each image
     args_list = [
         (images[i], thresh_params, sep_params, i, scales[i] if i < len(scales) else None, measure)
         for i in range(n)
     ]
-    
+
     # Results placeholders (maintain order)
     binaries: List[Optional[np.ndarray]] = [None] * n
     labels_list: List[Optional[np.ndarray]] = [None] * n
     props_list: List[Optional[List[PoreProps]]] = [None] * n
-    
+
     completed = 0
-    
+
     # For small batches or single image, skip multiprocessing overhead
     if n <= 2 or max_workers <= 1:
         for args in args_list:
@@ -140,7 +141,7 @@ def process_batch_parallel(
                 executor.submit(_process_single_image_wrapper, args): i
                 for i, args in enumerate(args_list)
             }
-            
+
             for future in as_completed(futures):
                 try:
                     idx, binary, labels, meta, props = future.result()
@@ -150,11 +151,11 @@ def process_batch_parallel(
                 except Exception as e:
                     # Log but continue with other images
                     print(f"Error processing image {futures[future]}: {e}")
-                
+
                 completed += 1
                 if progress_callback:
                     progress_callback(completed, n)
-    
+
     return binaries, labels_list, props_list  # type: ignore
 
 

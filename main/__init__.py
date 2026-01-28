@@ -9,7 +9,7 @@ Subpackages:
 
 Quick start:
     python -m main          # Launch GUI
-    
+
     # Or use core algorithms directly:
     from main.core import thresholdImageAdvanced, measure_labels
 """
@@ -18,34 +18,34 @@ Quick start:
 from .core import (
     # Processing
     DEFAULTS,
-    thresholdImageAdvanced,
-    fillHoles,
-    removeSmallAreas,
-    clearBorderTouching,
-    watershedSeparate,
-    postSeparateCleanup,
-    labelsToColor,
-    runSeparationPipeline,
     # Stereology
     PoreProps,
+    applyCropBatch,
+    clampRectToImage,
+    clearBorderTouching,
     colorize_labels,
-    measure_labels,
-    measure_dataset,
-    save_props_csv,
-    mask_from_labels,
+    cropWithMargins,
+    cropWithRect,
+    fillHoles,
+    labelsToColor,
     # Preprocessing
     loadImage,
-    clampRectToImage,
-    rectToMargins,
     marginsToRect,
-    cropWithRect,
-    cropWithMargins,
-    applyCropBatch,
+    mask_from_labels,
+    measure_batch,
+    measure_dataset,
+    measure_labels,
+    postSeparateCleanup,
     # Batch
     process_batch_parallel,
     process_batch_sequential,
+    rectToMargins,
+    removeSmallAreas,
+    runSeparationPipeline,
+    save_props_csv,
     threshold_batch,
-    measure_batch,
+    thresholdImageAdvanced,
+    watershedSeparate,
 )
 
 __all__ = [

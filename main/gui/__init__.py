@@ -11,7 +11,7 @@ Submodules:
     widgets       - Shared GUI utilities (debounce, BusyDialog, etc.)
 """
 
-from .widgets import debounce, ensure_mask_uint8, ensure_labels_int32, BusyDialog
+from .widgets import BusyDialog, debounce, ensure_labels_int32, ensure_mask_uint8
 
 __all__ = [
     "debounce",

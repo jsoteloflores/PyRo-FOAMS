@@ -10,8 +10,9 @@ Usage:
     python -m main stereology   # Launch stereology GUI directly
 """
 from __future__ import annotations
-import sys
+
 import os
+import sys
 
 # Support both "python -m main" (relative imports work) and direct script execution
 _RUNNING_AS_PACKAGE = __package__ is not None
@@ -35,7 +36,7 @@ def _import_preprocessing():
 
 def main():
     args = sys.argv[1:]
-    
+
     if args and args[0] in ("-h", "--help", "help"):
         print(__doc__)
         print("Commands:")
@@ -44,9 +45,9 @@ def main():
         print("  stereology    Launch stereology GUI")
         print("  postprocess   Launch mask editor GUI")
         return 0
-    
+
     cmd = args[0].lower() if args else ""
-    
+
     if cmd == "processing":
         # Processing requires images to be passed in; launch preprocessing instead
         print("Note: Processing GUI requires images. Launching preprocessing first.")
@@ -64,7 +65,7 @@ def main():
         # Default: launch preprocessing GUI
         preprocessing = _import_preprocessing()
         preprocessing.main()
-    
+
     return 0
 
 

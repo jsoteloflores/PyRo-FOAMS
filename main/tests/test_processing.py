@@ -1,24 +1,24 @@
 # main/tests/test_processing.py
 # Unit tests for core/processing.py: thresholding, cleanup, separation
 
-import unittest
-import numpy as np
-import cv2
 import os
 import sys
+import unittest
+
+import cv2
+import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.processing import (
-    thresholdImageAdvanced,
-    removeSmallAreas,
     clearBorderTouching,
     fillHoles,
-    watershedSeparate,
-    postSeparateCleanup,
-    runSeparationPipeline,
     labelsToColor,
-    DEFAULTS,
+    postSeparateCleanup,
+    removeSmallAreas,
+    runSeparationPipeline,
+    thresholdImageAdvanced,
+    watershedSeparate,
 )
 
 

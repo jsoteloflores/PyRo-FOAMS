@@ -1,51 +1,46 @@
 # main/tests/test_edge_cases.py
 # Edge-case and boundary condition tests for all core modules
 
-import unittest
-import numpy as np
-import cv2
 import os
 import sys
 import tempfile
+import unittest
+
+import cv2
+import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from core.processing import (
-    thresholdImageAdvanced,
-    removeSmallAreas,
-    clearBorderTouching,
-    fillHoles,
-    watershedSeparate,
-    postSeparateCleanup,
-    runSeparationPipeline,
-    labelsToColor,
-    DEFAULTS,
+from core.batch import (
+    measure_batch,
+    process_batch_parallel,
+    threshold_batch,
 )
 from core.preprocessing import (
-    clampRectToImage,
-    rectToMargins,
-    marginsToRect,
-    cropWithRect,
-    cropWithMargins,
     applyCropBatch,
+    clampRectToImage,
+    cropWithRect,
+    marginsToRect,
+    rectToMargins,
+)
+from core.processing import (
+    clearBorderTouching,
+    fillHoles,
+    labelsToColor,
+    postSeparateCleanup,
+    removeSmallAreas,
+    runSeparationPipeline,
+    thresholdImageAdvanced,
+    watershedSeparate,
 )
 from core.stereology import (
-    PoreProps,
-    measure_labels,
-    measure_dataset,
     colorize_labels,
-    save_props_csv,
     mask_from_labels,
+    measure_dataset,
+    measure_labels,
+    save_props_csv,
 )
-from core.batch import (
-    _process_single_image,
-    process_batch_parallel,
-    process_batch_sequential,
-    threshold_batch,
-    measure_batch,
-)
-from gui.widgets import ensure_mask_uint8, ensure_labels_int32
-
+from gui.widgets import ensure_labels_int32, ensure_mask_uint8
 
 # ========================= PREPROCESSING EDGE CASES =========================
 
@@ -170,11 +165,11 @@ class TestProcessingEdgeCases(unittest.TestCase):
     def test_percentile_0_and_100(self):
         """Percentile thresholding at 0% and 100%."""
         img = np.arange(100, dtype=np.uint8).reshape(10, 10)
-        
+
         # 0th percentile = minimum value
         binary0, _ = thresholdImageAdvanced(img, method="percentile", percentile=0.0)
         self.assertEqual(binary0.dtype, np.uint8)
-        
+
         # 100th percentile = maximum value
         binary100, _ = thresholdImageAdvanced(img, method="percentile", percentile=100.0)
         self.assertEqual(binary100.dtype, np.uint8)
@@ -330,10 +325,10 @@ class TestStereologyEdgeCases(unittest.TestCase):
         labels = np.zeros((50, 50), dtype=np.int32)
         labels[10:20, 10:20] = 1
         bg = np.full((50, 50), 128, dtype=np.uint8)
-        
+
         color0 = colorize_labels(labels, bg_gray=bg, alpha=0.0)
         color1 = colorize_labels(labels, bg_gray=bg, alpha=1.0)
-        
+
         self.assertEqual(color0.shape, (50, 50, 3))
         self.assertEqual(color1.shape, (50, 50, 3))
 
@@ -458,9 +453,9 @@ class TestDtypeShapeConsistency(unittest.TestCase):
         cv2.circle(img, (50, 50), 20, 200, -1)
         tparams = {"method": "otsu", "polarity": "auto"}
         sparams = {"method": "watershed", "fillHoles": True, "minAreaPx": 10}
-        
+
         binary, labels, meta = runSeparationPipeline(img, tparams, sparams)
-        
+
         self.assertEqual(binary.dtype, np.uint8)
         self.assertTrue(set(np.unique(binary)).issubset({0, 255}))
         self.assertIsNotNone(labels)
@@ -472,9 +467,9 @@ class TestDtypeShapeConsistency(unittest.TestCase):
         labels = np.zeros((50, 50), dtype=np.int32)
         labels[10:20, 10:20] = 1
         labels[30:40, 30:40] = 2
-        
+
         color = colorize_labels(labels)
-        
+
         self.assertEqual(color.ndim, 3)
         self.assertEqual(color.shape[2], 3)
         self.assertEqual(color.dtype, np.uint8)
@@ -485,9 +480,9 @@ class TestDtypeShapeConsistency(unittest.TestCase):
         for i in range(5):
             img = np.full((30, 30), i * 50, dtype=np.uint8)
             images.append(img)
-        
+
         binaries, _, _ = process_batch_parallel(images, max_workers=2)
-        
+
         self.assertEqual(len(binaries), 5)
         # Each binary should correspond to its input image
 
