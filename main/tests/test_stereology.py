@@ -1,22 +1,23 @@
 # main/tests/test_stereology.py
 # Unit tests for core/stereology.py: measurements, colorization, CSV export
 
-import unittest
-import numpy as np
-import cv2
 import os
 import sys
 import tempfile
+import unittest
+
+import cv2
+import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.stereology import (
     PoreProps,
-    measure_labels,
-    measure_dataset,
     colorize_labels,
-    save_props_csv,
     mask_from_labels,
+    measure_dataset,
+    measure_labels,
+    save_props_csv,
 )
 
 

@@ -3,9 +3,11 @@
 # Safe for headless testing, multiprocessing, and parallelism
 
 from __future__ import annotations
+
+from typing import List, Optional, Tuple
+
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional, Dict, Union
 
 # Type aliases for clarity
 Rect = Tuple[int, int, int, int]  # (x0, y0, x1, y1) inclusive-exclusive style

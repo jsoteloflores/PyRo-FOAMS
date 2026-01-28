@@ -1,19 +1,20 @@
 # main/tests/test_batch.py
 # Unit tests for main/core/batch.py - parallel batch processing
 
-import unittest
-import numpy as np
 import os
 import sys
+import unittest
+
+import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.batch import (
     _process_single_image,
+    measure_batch,
     process_batch_parallel,
     process_batch_sequential,
     threshold_batch,
-    measure_batch,
 )
 from core.processing import DEFAULTS
 from core.stereology import PoreProps
@@ -199,7 +200,7 @@ class TestThresholdBatch(unittest.TestCase):
 
 class TestMeasureBatch(unittest.TestCase):
     """Tests for measure_batch convenience function.
-    
+
     Note: measure_batch returns a FLAT list of all PoreProps across all images,
     not a list-of-lists. Use measure_dataset directly if you need per-image grouping.
     """

@@ -1,22 +1,23 @@
 # main/tests/test_preprocessing.py
 # Unit tests for main/core/preprocessing.py - image I/O and crop utilities
 
-import unittest
-import numpy as np
 import os
 import sys
 import tempfile
+import unittest
+
+import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.preprocessing import (
-    loadImage,
-    clampRectToImage,
-    rectToMargins,
-    marginsToRect,
-    cropWithRect,
-    cropWithMargins,
     applyCropBatch,
+    clampRectToImage,
+    cropWithMargins,
+    cropWithRect,
+    loadImage,
+    marginsToRect,
+    rectToMargins,
 )
 
 
@@ -221,10 +222,10 @@ class TestLoadImage(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.test_gray_path = os.path.join(self.temp_dir, "test_gray.png")
         self.test_color_path = os.path.join(self.temp_dir, "test_color.png")
-        
+
         gray_img = np.random.randint(0, 255, (50, 60), dtype=np.uint8)
         color_img = np.random.randint(0, 255, (50, 60, 3), dtype=np.uint8)
-        
+
         cv2.imwrite(self.test_gray_path, gray_img)
         cv2.imwrite(self.test_color_path, color_img)
 

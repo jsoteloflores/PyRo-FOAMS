@@ -62,7 +62,12 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-ignore = ["E501"]  # line too long - handled by formatter
+ignore = [
+    "E501",  # line too long - handled by formatter
+    "E701",  # multiple statements on one line (colon) - compact style used intentionally
+    "E702",  # multiple statements on one line (semicolon) - compact style used intentionally
+    "E731",  # lambda assignment - used for compact GUI callbacks
+]
 
 [tool.pytest.ini_options]
 testpaths = ["main/unitTest"]

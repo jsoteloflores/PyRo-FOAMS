@@ -3,9 +3,11 @@
 # Safe for headless testing, multiprocessing, and parallelism
 
 from __future__ import annotations
+
+from typing import Any, Dict, Optional, Tuple
+
 import cv2
 import numpy as np
-from typing import Dict, Tuple, Optional, List, Any, Union
 
 # Type aliases for clarity
 ImageArray = np.ndarray  # np.uint8, shape (H,W) grayscale or (H,W,3) BGR
@@ -205,7 +207,7 @@ def fillHoles(binary: BinaryMask) -> BinaryMask:
 
 def removeSmallAreas(binary: BinaryMask, minArea: int, connectivity: int = 8) -> BinaryMask:
     """Remove connected components smaller than minArea. Keeps FG=255.
-    
+
     Vectorized: uses connectedComponentsWithStats to get areas in O(n) instead
     of per-label loops, then applies a LUT-based remap.
     """
@@ -227,7 +229,7 @@ def removeSmallAreas(binary: BinaryMask, minArea: int, connectivity: int = 8) ->
 
 def clearBorderTouching(binary: BinaryMask, connectivity: int = 8) -> BinaryMask:
     """Remove components that touch the border.
-    
+
     Vectorized: collect border labels via unique on border slices, then use
     np.isin for O(n) removal instead of per-label loops.
     """
@@ -318,7 +320,7 @@ def postSeparateCleanup(
     shape: Optional[Tuple[int, int]] = None
 ) -> LabelMap:
     """Optionally filter labels by area and border touching.
-    
+
     Vectorized: uses np.bincount for area histogram and LUT-based remapping
     instead of per-label loops over the full frame.
     """

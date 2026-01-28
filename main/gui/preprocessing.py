@@ -12,14 +12,13 @@ from __future__ import annotations
 #     * Enter real-world length + units, apply to current or all
 #     * Manual scale entry (units/px or px/unit)
 #     * Per-image scale is displayed and stored
-
 import os
-import math
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+from typing import Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
-from typing import List, Optional, Tuple, Dict
 from PIL import Image, ImageTk
 
 # Pillow resampling shim
@@ -29,13 +28,9 @@ else:
     RESAMPLE_LANCZOS = getattr(Image, "LANCZOS", Image.BICUBIC)
 
 # Package imports
-from ..core.preprocessing import (
-    loadImage,
-    cropWithRect, cropWithMargins, applyCropBatch,
-    clampRectToImage, rectToMargins, marginsToRect
-)
-from .widgets import debounce, ensure_mask_uint8
+from ..core.preprocessing import applyCropBatch, clampRectToImage, cropWithRect
 from . import postprocessing, processing  # sibling GUI modules
+from .widgets import debounce, ensure_mask_uint8
 
 
 def _tk_parent(owner) -> tk.Misc:
@@ -255,7 +250,7 @@ class PreprocessApp:
 
     def onOpenImages(self):
         """Open up to MAX_IMAGES images, create previews, render grid."""
-        from tkinter import filedialog, messagebox
+        from tkinter import messagebox
         paths = filedialog.askopenfilenames(
             title=f"Select up to {MAX_IMAGES} images",
             filetypes=[("Images", "*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp")]
@@ -1096,7 +1091,7 @@ def main():
         style.configure("TLabel", padding=2)
     except Exception:
         pass
-    app = PreprocessApp(root)
+    PreprocessApp(root)  # app kept alive by mainloop
     root.geometry("1400x900")
     root.minsize(900, 600)
     root.mainloop()

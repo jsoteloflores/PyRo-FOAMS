@@ -1,14 +1,15 @@
 # main/tests/test_widgets.py
 # Unit tests for gui/widgets.py: dtype helpers, debounce
 
-import unittest
-import numpy as np
 import os
 import sys
+import unittest
+
+import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from gui.widgets import ensure_mask_uint8, ensure_labels_int32
+from gui.widgets import ensure_labels_int32, ensure_mask_uint8
 
 
 class TestEnsureMaskUint8(unittest.TestCase):

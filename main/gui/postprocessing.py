@@ -1,11 +1,13 @@
 # postprocessing_gui.py
 from __future__ import annotations
+
 import os
+import tkinter as tk
+from tkinter import ttk
+from typing import Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
-import tkinter as tk
-from tkinter import ttk, messagebox
-from typing import List, Optional, Dict, Tuple
 from PIL import Image, ImageTk
 
 # Package imports
@@ -66,7 +68,6 @@ def _fit_scale_and_origin(img_wh: Tuple[int, int], canvas_wh: Tuple[int, int]) -
 
 def _disk_kernel(radius: int) -> np.ndarray:
     r = max(1, int(radius))
-    d = 2 * r + 1
     yy, xx = np.ogrid[-r:r+1, -r:r+1]
     return (xx*xx + yy*yy) <= (r*r)
 
@@ -295,7 +296,6 @@ class PostprocessWindow(tk.Toplevel):
 
     # ---------- Image load/render ----------
     def _load_current(self):
-        img = self.images[self.index]
         name = os.path.basename(self.paths[self.index]) if (self.paths and self.index < len(self.paths)) else f"Image {self.index+1}"
         self.statusVar.set(f"{name}  ({self.index+1}/{len(self.images)})   —  Brush radius: {self.radiusVar.get()} px")
         # ensure initial state present

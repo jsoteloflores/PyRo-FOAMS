@@ -1,13 +1,14 @@
 # processing_gui.py
 # Step 2 GUI: Thresholding + Separation with live preview
 from __future__ import annotations
+
 import os
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+from typing import Dict
+
 import cv2
 import numpy as np
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-from typing import List, Dict, Optional
-
 from PIL import Image, ImageTk
 
 # Pillow shim
@@ -17,16 +18,15 @@ else:
     RESAMPLE_LANCZOS = getattr(Image, "LANCZOS", Image.BICUBIC)
 
 # Package imports
+from ..core.batch import process_batch_parallel
 from ..core.processing import (
     DEFAULTS,
-    thresholdImageAdvanced,
-    runSeparationPipeline,
     labelsToColor,
+    runSeparationPipeline,
 )
-from ..core.stereology import PoreProps, colorize_labels, measure_labels
-from ..core.batch import process_batch_parallel
-from .widgets import debounce
+from ..core.stereology import colorize_labels
 from . import stereology as stereology_gui  # sibling GUI module
+from .widgets import debounce
 
 
 class BusyDialog(tk.Toplevel):
@@ -266,7 +266,7 @@ class ProcessingWindow(tk.Toplevel):
         # After binding other vars...
         self.methodVar.trace_add("write", lambda *_: self._refreshCursor())
         self.pickModeVar.trace_add("write", lambda *_: self._refreshCursor())
-        
+
     def _refreshCursor(self):
         # Crosshair when method is 'pick' or explicit pick mode is enabled
         use_cross = (self.methodVar.get() == "pick") or bool(self.pickModeVar.get())
@@ -388,7 +388,6 @@ class ProcessingWindow(tk.Toplevel):
         return params
 
     def _currentSepParams(self) -> Dict[str, float | int | bool | str]:
-        s = self.settings["separation"]
         params = {
             "method": self.sepMethodVar.get(),
             "fillHoles": bool(self.fillHolesVar.get()),
@@ -636,7 +635,7 @@ class ProcessingWindow(tk.Toplevel):
         else:
             messagebox.showinfo("Export", "Measurements saved.")
 
-    
+
     def openStereology(self):
         if not any(L is not None for L in getattr(self, "labels", [])):
             messagebox.showwarning("Stereology", "No labels available. Apply to current or all first.")
@@ -721,7 +720,7 @@ class ProcessingWindow(tk.Toplevel):
             max_workers = 1
 
         dlg = BusyDialog(self, title=f"Applying to all ({max_workers} workers)…", mode="determinate", maximum=n)
-        
+
         def progress_cb(completed: int, total: int):
             try:
                 dlg.set_progress(completed)
@@ -806,5 +805,5 @@ class ProcessingWindow(tk.Toplevel):
             np.save(os.path.join(outDir, f"{name}_labels.npy"), L.astype(np.int32))
             saved += 1
         messagebox.showinfo("Save", f"Saved {saved} labeled file(s) to {outDir}.")
-    
-    
+
+

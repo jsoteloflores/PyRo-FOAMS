@@ -3,12 +3,14 @@
 # Pure callables with no GUI dependencies - safe for headless testing and parallelism
 
 from __future__ import annotations
-from dataclasses import dataclass, asdict
-from typing import List, Optional, Tuple, Iterable, Dict, Any, Union
+
 import csv
 import math
-import numpy as np
+from dataclasses import asdict, dataclass
+from typing import Dict, Iterable, List, Optional, Union
+
 import cv2
+import numpy as np
 
 # Type aliases for clarity
 LabelMap = np.ndarray  # np.int32, shape (H,W), 0=background, 1..N=objects
