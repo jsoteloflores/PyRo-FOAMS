@@ -1,5 +1,5 @@
-# main/unitTest/test_widgets.py
-# Unit tests for widgets.py: dtype helpers, debounce
+# main/tests/test_widgets.py
+# Unit tests for gui/widgets.py: dtype helpers, debounce
 
 import unittest
 import numpy as np
@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from widgets import ensure_mask_uint8, ensure_labels_int32
+from gui.widgets import ensure_mask_uint8, ensure_labels_int32
 
 
 class TestEnsureMaskUint8(unittest.TestCase):
@@ -125,7 +125,7 @@ class TestDebounce(unittest.TestCase):
 
     def test_debounce_import(self):
         # Just verify we can import the debounce function
-        from widgets import debounce
+        from gui.widgets import debounce
         self.assertTrue(callable(debounce))
 
 

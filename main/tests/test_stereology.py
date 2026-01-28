@@ -1,5 +1,5 @@
-# main/unitTest/test_stereology.py
-# Unit tests for stereology.py: measurements, colorization, CSV export
+# main/tests/test_stereology.py
+# Unit tests for core/stereology.py: measurements, colorization, CSV export
 
 import unittest
 import numpy as np
@@ -10,7 +10,7 @@ import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from stereology import (
+from core.stereology import (
     PoreProps,
     measure_labels,
     measure_dataset,

@@ -16,17 +16,17 @@ if hasattr(Image, "Resampling"):
 else:
     RESAMPLE_LANCZOS = getattr(Image, "LANCZOS", Image.BICUBIC)
 
-import stereology
-import stereology_gui
-
-from processing import (
+# Package imports
+from ..core.processing import (
     DEFAULTS,
     thresholdImageAdvanced,
     runSeparationPipeline,
     labelsToColor,
 )
-from core.batch import process_batch_parallel
-from widgets import debounce
+from ..core.stereology import PoreProps, colorize_labels, measure_labels
+from ..core.batch import process_batch_parallel
+from .widgets import debounce
+from . import stereology as stereology_gui  # sibling GUI module
 
 
 class BusyDialog(tk.Toplevel):
@@ -607,8 +607,9 @@ class ProcessingWindow(tk.Toplevel):
 
         # run measurements across images
         try:
-            props = stereology.measure_dataset(self.labels, getattr(self, "scales", None))
-            stereology.save_props_csv(out_csv, props)
+            from ..core.stereology import measure_dataset, save_props_csv
+            props = measure_dataset(self.labels, getattr(self, "scales", None))
+            save_props_csv(out_csv, props)
         except Exception as e:
             messagebox.showerror("Export", f"Failed to compute/export measurements:\n{e}")
             return
@@ -625,7 +626,7 @@ class ProcessingWindow(tk.Toplevel):
                     bg = None
                     if self.overlayOnOriginalVar.get():
                         bg = self._prepGrayLocal(self.images[i])
-                    color = stereology.colorize_labels(L, seed=123 + i, bg_gray=bg, alpha=float(self.overlayAlphaVar.get()))
+                    color = colorize_labels(L, seed=123 + i, bg_gray=bg, alpha=float(self.overlayAlphaVar.get()))
                     name = os.path.splitext(os.path.basename(self.paths[i]))[0]
                     cv2.imwrite(os.path.join(out_dir, f"{name}_labels_color.png"), color)
                     saved += 1

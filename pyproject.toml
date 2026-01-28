@@ -44,10 +44,10 @@ headless = [
 ]
 
 [project.scripts]
-pyro-foams = "main.preprocessinggui:main"
+pyro-foams = "main.gui.preprocessing:main"
 
 [project.gui-scripts]
-pyro-foams-gui = "main.preprocessinggui:main"
+pyro-foams-gui = "main.gui.preprocessing:main"
 
 [project.urls]
 Repository = "https://github.com/jsoteloflores/PyRo-FOAMS"

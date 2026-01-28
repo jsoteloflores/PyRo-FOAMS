@@ -7,7 +7,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List, Optional, Dict, Tuple
 from PIL import Image, ImageTk
-from widgets import debounce, ensure_mask_uint8
+
+# Package imports
+from .widgets import debounce, ensure_mask_uint8
 
 # Pillow resampling shim
 if hasattr(Image, "Resampling"):

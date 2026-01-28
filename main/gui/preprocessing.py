@@ -13,10 +13,6 @@ from __future__ import annotations
 #     * Manual scale entry (units/px or px/unit)
 #     * Per-image scale is displayed and stored
 
-from tkinter import filedialog, messagebox
-
-import postprocessing_gui  # new editor
-
 import os
 import math
 import cv2
@@ -24,21 +20,22 @@ import numpy as np
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from typing import List, Optional, Tuple, Dict
-import preprocessing
 from PIL import Image, ImageTk
-import processing_gui
+
 # Pillow resampling shim
 if hasattr(Image, "Resampling"):  # Pillow >= 9.1 (incl. 10+)
     RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
 else:
     RESAMPLE_LANCZOS = getattr(Image, "LANCZOS", Image.BICUBIC)
 
-from preprocessing import (
+# Package imports
+from ..core.preprocessing import (
     loadImage,
     cropWithRect, cropWithMargins, applyCropBatch,
     clampRectToImage, rectToMargins, marginsToRect
 )
-from widgets import debounce, ensure_mask_uint8
+from .widgets import debounce, ensure_mask_uint8
+from . import postprocessing, processing  # sibling GUI modules
 
 
 def _tk_parent(owner) -> tk.Misc:
@@ -240,7 +237,7 @@ class PreprocessApp:
             self._redrawAllThumbs()
             self.statusVar.set("Received masks from Processing.")
 
-        win = processing_gui.ProcessingWindow(
+        win = processing.ProcessingWindow(
             parent=self.master,
             images=self.images,
             paths=self.paths,
@@ -317,7 +314,7 @@ class PreprocessApp:
             self._redrawAllThumbs()
             self.statusVar.set("Masks updated.")
 
-        postprocessing_gui.PostprocessWindow(
+        postprocessing.PostprocessWindow(
             parent=self.master,
             images=self.images,
             masks=self.masks,

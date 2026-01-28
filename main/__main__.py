@@ -16,7 +16,7 @@ import sys
 def main():
     args = sys.argv[1:]
     
-    if not args or args[0] in ("-h", "--help", "help"):
+    if args and args[0] in ("-h", "--help", "help"):
         print(__doc__)
         print("Commands:")
         print("  (default)     Launch preprocessing GUI")
@@ -25,25 +25,25 @@ def main():
         print("  postprocess   Launch mask editor GUI")
         return 0
     
-    cmd = args[0].lower()
+    cmd = args[0].lower() if args else ""
     
     if cmd == "processing":
         # Processing requires images to be passed in; launch preprocessing instead
         print("Note: Processing GUI requires images. Launching preprocessing first.")
-        from . import preprocessinggui
-        preprocessinggui.main()
+        from .gui import preprocessing
+        preprocessing.main()
     elif cmd == "stereology":
         print("Note: Stereology GUI requires labels. Launching preprocessing first.")
-        from . import preprocessinggui
-        preprocessinggui.main()
+        from .gui import preprocessing
+        preprocessing.main()
     elif cmd == "postprocess":
         print("Note: Postprocessing GUI requires images/masks. Launching preprocessing first.")
-        from . import preprocessinggui
-        preprocessinggui.main()
+        from .gui import preprocessing
+        preprocessing.main()
     else:
         # Default: launch preprocessing GUI
-        from . import preprocessinggui
-        preprocessinggui.main()
+        from .gui import preprocessing
+        preprocessing.main()
     
     return 0
 

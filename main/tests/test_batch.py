@@ -1,4 +1,4 @@
-# test_batch.py
+# main/tests/test_batch.py
 # Unit tests for main/core/batch.py - parallel batch processing
 
 import unittest

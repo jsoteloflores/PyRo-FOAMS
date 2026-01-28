@@ -1,5 +1,5 @@
-# main/unitTest/test_processing.py
-# Unit tests for processing.py: thresholding, cleanup, separation
+# main/tests/test_processing.py
+# Unit tests for core/processing.py: thresholding, cleanup, separation
 
 import unittest
 import numpy as np
@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from processing import (
+from core.processing import (
     thresholdImageAdvanced,
     removeSmallAreas,
     clearBorderTouching,

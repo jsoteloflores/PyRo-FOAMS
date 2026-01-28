@@ -1,4 +1,4 @@
-# test_preprocessing.py
+# main/tests/test_preprocessing.py
 # Unit tests for main/core/preprocessing.py - image I/O and crop utilities
 
 import unittest
