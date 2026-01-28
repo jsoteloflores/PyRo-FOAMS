@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List, Optional, Dict, Tuple
 from PIL import Image, ImageTk
+from widgets import debounce, ensure_mask_uint8
 
 # Pillow resampling shim
 if hasattr(Image, "Resampling"):
@@ -238,7 +239,7 @@ class PostprocessWindow(tk.Toplevel):
         # Canvas
         self.canvas = tk.Canvas(body, bg="#1a1a1a", highlightthickness=1, highlightbackground="#3a3a3a")
         self.canvas.pack(side="left", fill="both", expand=True)
-        self.canvas.bind("<Configure>", self._on_resize)
+        self.canvas.bind("<Configure>", debounce(self.canvas, 100)(self._on_resize))
         self.canvas.bind("<Motion>", self._on_motion_preview)
         self.canvas.bind("<Leave>", lambda e: self._clear_preview_circle())
         # drawing
@@ -590,7 +591,9 @@ class PostprocessWindow(tk.Toplevel):
     def _notify_parent(self):
         if callable(self.onMasksUpdated):
             try:
-                self.onMasksUpdated(self.masks)
+                # Convert bool masks to uint8 {0,255} for OpenCV compatibility
+                uint8_masks = [ensure_mask_uint8(m, m.shape[:2]) for m in self.masks]
+                self.onMasksUpdated(uint8_masks)
             except Exception as e:
                 print("onMasksUpdated error:", e)
 

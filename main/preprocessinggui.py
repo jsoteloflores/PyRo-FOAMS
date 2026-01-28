@@ -38,6 +38,7 @@ from preprocessing import (
     cropWithRect, cropWithMargins, applyCropBatch,
     clampRectToImage, rectToMargins, marginsToRect
 )
+from widgets import debounce, ensure_mask_uint8
 
 
 def _tk_parent(owner) -> tk.Misc:
@@ -201,13 +202,13 @@ class PreprocessApp:
             r = i // GRID_COLS
             c = i % GRID_COLS
             canvas.grid(row=r, column=c, sticky="nsew")
-            canvas.bind("<Configure>", lambda e, idx=i: self._redrawThumb(idx))
+            canvas.bind("<Configure>", debounce(canvas, 100)(lambda e, idx=i: self._redrawThumb(idx)))
             canvas.bind("<Button-1>", lambda e, idx=i: self._onThumbClick(idx))
             canvas.bind("<Double-Button-1>", lambda e, idx=i: self._openEnlarged(idx))
             self.cells.append(canvas)
 
-        # Resize handler (update thumbs)
-        self.master.bind("<Configure>", lambda e: self._redrawAllThumbs())
+        # Resize handler (update thumbs) - debounced to avoid redraw storms
+        self.master.bind("<Configure>", debounce(self.master, 150)(lambda e: self._redrawAllThumbs()))
 
     def onBatchCropClick(self):
         """Open enlarged viewer on the selected image and start crop mode."""
@@ -231,7 +232,11 @@ class PreprocessApp:
             return
 
         def _receive_from_processing(binaries):
-            self.masks = binaries
+            # Normalize to uint8 {0,255} for OpenCV compatibility
+            self.masks = [
+                ensure_mask_uint8(b, self.images[i].shape[:2]) if b is not None else None
+                for i, b in enumerate(binaries)
+            ]
             self._redrawAllThumbs()
             self.statusVar.set("Received masks from Processing.")
 
@@ -304,8 +309,11 @@ class PreprocessApp:
             return
 
         def _receive_masks(new_masks: List[Optional[np.ndarray]]):
-            # Save and refresh thumbnails
-            self.masks = new_masks
+            # Normalize to uint8 {0,255} for OpenCV compatibility
+            self.masks = [
+                ensure_mask_uint8(m, self.images[i].shape[:2]) if m is not None else None
+                for i, m in enumerate(new_masks)
+            ]
             self._redrawAllThumbs()
             self.statusVar.set("Masks updated.")
 
@@ -558,8 +566,8 @@ class EnlargedViewer(tk.Toplevel):
         self.canvas = tk.Canvas(self, bg="#111", highlightthickness=0)
         self.canvas.pack(side="top", fill="both", expand=True)
 
-        # Bindings
-        self.canvas.bind("<Configure>", lambda e: self._render())
+        # Bindings - debounce resize to avoid render storms
+        self.canvas.bind("<Configure>", debounce(self.canvas, 100)(lambda e: self._render()))
         self.canvas.bind("<MouseWheel>", self._onWheel)  # Windows/macOS
         self.canvas.bind("<Button-4>", self._onWheel)    # some X11
         self.canvas.bind("<Button-5>", self._onWheel)

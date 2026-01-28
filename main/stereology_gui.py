@@ -20,6 +20,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 import stereology  # your measurement/color module
+from widgets import debounce
 
 
 # ------------ utils: PIL conversion ------------
@@ -188,7 +189,7 @@ class StereologyWindow(tk.Toplevel):
         left = ttk.Frame(main); left.pack(side="left", fill="both", expand=True)
         self.canvas = tk.Canvas(left, bg="#151515", highlightthickness=1, highlightbackground="#333")
         self.canvas.pack(side="top", fill="both", expand=True)
-        self.canvas.bind("<Configure>", lambda e: self._update_view())
+        self.canvas.bind("<Configure>", debounce(self.canvas, 150)(lambda e: self._update_view()))
 
         # right notebook (plot + table)
         right = ttk.Notebook(main); right.pack(side="left", fill="both", expand=True, padx=(8,0))
