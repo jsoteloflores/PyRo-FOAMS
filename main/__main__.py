@@ -11,6 +11,26 @@ Usage:
 """
 from __future__ import annotations
 import sys
+import os
+
+# Support both "python -m main" (relative imports work) and direct script execution
+_RUNNING_AS_PACKAGE = __package__ is not None
+
+if not _RUNNING_AS_PACKAGE:
+    # Add parent directory to path so we can import main.gui.*
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _parent = os.path.dirname(_here)
+    if _parent not in sys.path:
+        sys.path.insert(0, _parent)
+
+
+def _import_preprocessing():
+    """Import preprocessing module, handling both package and script modes."""
+    if _RUNNING_AS_PACKAGE:
+        from .gui import preprocessing
+    else:
+        from main.gui import preprocessing
+    return preprocessing
 
 
 def main():
@@ -30,19 +50,19 @@ def main():
     if cmd == "processing":
         # Processing requires images to be passed in; launch preprocessing instead
         print("Note: Processing GUI requires images. Launching preprocessing first.")
-        from .gui import preprocessing
+        preprocessing = _import_preprocessing()
         preprocessing.main()
     elif cmd == "stereology":
         print("Note: Stereology GUI requires labels. Launching preprocessing first.")
-        from .gui import preprocessing
+        preprocessing = _import_preprocessing()
         preprocessing.main()
     elif cmd == "postprocess":
         print("Note: Postprocessing GUI requires images/masks. Launching preprocessing first.")
-        from .gui import preprocessing
+        preprocessing = _import_preprocessing()
         preprocessing.main()
     else:
         # Default: launch preprocessing GUI
-        from .gui import preprocessing
+        preprocessing = _import_preprocessing()
         preprocessing.main()
     
     return 0

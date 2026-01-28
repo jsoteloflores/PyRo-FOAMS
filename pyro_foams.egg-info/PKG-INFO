@@ -1,0 +1,30 @@
+Metadata-Version: 2.4
+Name: pyro-foams
+Version: 0.1.0
+Summary: Python-based image analysis toolkit for pore analysis
+Author: PyRo-FOAMS Contributors
+License: MIT
+Project-URL: Repository, https://github.com/jsoteloflores/PyRo-FOAMS
+Keywords: image-analysis,pore-analysis,foam,stereology,opencv,watershed
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.20
+Requires-Dist: opencv-python>=4.5
+Requires-Dist: pillow>=9.0
+Requires-Dist: matplotlib>=3.5
+Provides-Extra: dev
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Provides-Extra: headless
+Requires-Dist: opencv-python-headless>=4.5; extra == "headless"
