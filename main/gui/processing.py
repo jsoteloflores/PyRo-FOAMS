@@ -16,50 +16,17 @@ if hasattr(Image, "Resampling"):
 else:
     RESAMPLE_LANCZOS = getattr(Image, "LANCZOS", Image.BICUBIC)
 
-import stereology
-import stereology_gui
-
-from processing import (
+# Package imports
+from ..core.processing import (
     DEFAULTS,
     thresholdImageAdvanced,
     runSeparationPipeline,
     labelsToColor,
 )
-
-class BusyDialog(tk.Toplevel):
-    def __init__(self, parent, title="Working…", mode="indeterminate", maximum=100):
-        super().__init__(parent)
-        self.title(title)
-        self.resizable(False, False)
-        self.transient(parent)
-        self.grab_set()
-        self.protocol("WM_DELETE_WINDOW", lambda: None)
-        frm = ttk.Frame(self, padding=12)
-        frm.pack(fill="both", expand=True)
-        ttk.Label(frm, text=title).pack(anchor="w", pady=(0,8))
-        self.pb = ttk.Progressbar(frm, orient="horizontal", length=360,
-                                  mode=mode, maximum=maximum)
-        self.pb.pack(fill="x")
-        if mode == "indeterminate":
-            self.pb.start(10)
-        self.update_idletasks()
-    def set_progress(self, v):
-        try:
-            self.pb["value"] = v
-            self.update_idletasks()
-        except Exception:
-            pass
-    def close(self):
-        try:
-            if str(self.pb["mode"]) == "indeterminate":
-                self.pb.stop()
-        except Exception:
-            pass
-        try:
-            self.grab_release()
-        except Exception:
-            pass
-        self.destroy()
+from ..core.stereology import PoreProps, colorize_labels, measure_labels
+from ..core.batch import process_batch_parallel
+from .widgets import debounce
+from . import stereology as stereology_gui  # sibling GUI module
 
 
 class BusyDialog(tk.Toplevel):
@@ -293,9 +260,9 @@ class ProcessingWindow(tk.Toplevel):
 
         self.leftCanvas.bind("<Button-1>", self._onLeftClickPick)
 
-        # IMPORTANT: these used to call _recomputePreview(). Change to the gated handler:
-        self.leftCanvas.bind("<Configure>", lambda e: self._showCurrent())
-        self.rightCanvas.bind("<Configure>", lambda e: self._onParamChanged())
+        # IMPORTANT: debounced to avoid recompute storms on resize
+        self.leftCanvas.bind("<Configure>", debounce(self.leftCanvas, 150)(lambda e: self._showCurrent()))
+        self.rightCanvas.bind("<Configure>", debounce(self.rightCanvas, 150)(lambda e: self._onParamChanged()))
         # After binding other vars...
         self.methodVar.trace_add("write", lambda *_: self._refreshCursor())
         self.pickModeVar.trace_add("write", lambda *_: self._refreshCursor())
@@ -640,8 +607,9 @@ class ProcessingWindow(tk.Toplevel):
 
         # run measurements across images
         try:
-            props = stereology.measure_dataset(self.labels, getattr(self, "scales", None))
-            stereology.save_props_csv(out_csv, props)
+            from ..core.stereology import measure_dataset, save_props_csv
+            props = measure_dataset(self.labels, getattr(self, "scales", None))
+            save_props_csv(out_csv, props)
         except Exception as e:
             messagebox.showerror("Export", f"Failed to compute/export measurements:\n{e}")
             return
@@ -658,7 +626,7 @@ class ProcessingWindow(tk.Toplevel):
                     bg = None
                     if self.overlayOnOriginalVar.get():
                         bg = self._prepGrayLocal(self.images[i])
-                    color = stereology.colorize_labels(L, seed=123 + i, bg_gray=bg, alpha=float(self.overlayAlphaVar.get()))
+                    color = colorize_labels(L, seed=123 + i, bg_gray=bg, alpha=float(self.overlayAlphaVar.get()))
                     name = os.path.splitext(os.path.basename(self.paths[i]))[0]
                     cv2.imwrite(os.path.join(out_dir, f"{name}_labels_color.png"), color)
                     saved += 1
@@ -732,6 +700,7 @@ class ProcessingWindow(tk.Toplevel):
 
 
     def applyToAll(self):
+        """Apply current settings to all images using parallel processing."""
         if not self.images:
             return
 
@@ -744,26 +713,49 @@ class ProcessingWindow(tk.Toplevel):
         tparams = self._currentThreshParams()
         sparams = self._currentSepParams()
 
-        dlg = BusyDialog(self, title="Applying to all (full-res)…", mode="determinate", maximum=n)
-        saved = 0
+        # Determine worker count (use half of CPU cores for responsiveness)
+        import os as _os
+        max_workers = max(1, (_os.cpu_count() or 4) // 2)
+        # For small batches, sequential is faster (no process spawn overhead)
+        if n <= 3:
+            max_workers = 1
+
+        dlg = BusyDialog(self, title=f"Applying to all ({max_workers} workers)…", mode="determinate", maximum=n)
+        
+        def progress_cb(completed: int, total: int):
+            try:
+                dlg.set_progress(completed)
+                self.update_idletasks()
+            except Exception:
+                pass
+
         try:
             try: self.attributes("-disabled", True)
             except Exception: pass
             try: self.config(cursor="watch")
             except Exception: pass
 
-            for i, img in enumerate(self.images):
-                try:
-                    binary, labels, _ = runSeparationPipeline(img, tparams, sparams)
-                    self.binaries[i] = binary
-                    self.labels[i]   = labels
-                    saved += 1
-                except Exception as e:
-                    print(f"Apply error on {i}: {e}")
-                finally:
-                    dlg.set_progress(i + 1)
-                    try: self.update_idletasks()
-                    except Exception: pass
+            # Use parallel batch processing
+            binaries, labels_list, _ = process_batch_parallel(
+                images=self.images,
+                thresh_params=tparams,
+                sep_params=sparams,
+                scales=getattr(self, "scales", None),
+                measure=False,  # measurement done separately in stereology
+                max_workers=max_workers,
+                progress_callback=progress_cb
+            )
+
+            # Copy results
+            for i in range(n):
+                self.binaries[i] = binaries[i]
+                self.labels[i] = labels_list[i]
+
+            saved = sum(1 for b in self.binaries if b is not None)
+
+        except Exception as e:
+            messagebox.showerror("Apply", f"Batch processing failed:\n{e}")
+            saved = 0
         finally:
             dlg.close()
             try: self.config(cursor="")
@@ -778,7 +770,7 @@ class ProcessingWindow(tk.Toplevel):
             except Exception as e:
                 print("resultsCallback error:", e)
 
-        messagebox.showinfo("Apply", f"Applied to {saved}/{n} images.")
+        messagebox.showinfo("Apply", f"Applied to {saved}/{n} images (parallel, {max_workers} workers).")
 
 
     def saveMasks(self):

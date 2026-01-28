@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyro-foams"
+version = "0.1.0"
+description = "Python-based image analysis toolkit for pore analysis"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "PyRo-FOAMS Contributors"}
+]
+keywords = ["image-analysis", "pore-analysis", "foam", "stereology", "opencv", "watershed"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+dependencies = [
+    "numpy>=1.20",
+    "opencv-python>=4.5",
+    "pillow>=9.0",
+    "matplotlib>=3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pytest",
+    "pytest-cov",
+]
+headless = [
+    "opencv-python-headless>=4.5",
+]
+
+[project.scripts]
+pyro-foams = "main.gui.preprocessing:main"
+
+[project.gui-scripts]
+pyro-foams-gui = "main.gui.preprocessing:main"
+
+[project.urls]
+Repository = "https://github.com/jsoteloflores/PyRo-FOAMS"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["main*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]  # line too long - handled by formatter
+
+[tool.pytest.ini_options]
+testpaths = ["main/unitTest"]
+python_files = ["test_*.py"]

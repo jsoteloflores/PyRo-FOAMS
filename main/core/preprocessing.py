@@ -1,20 +1,20 @@
-# preprocessing.py
-# Logic helpers for the Preprocessing step:
-# - safe image load (grayscale or color passthrough)
-# - crop utilities (absolute and relative margins) with batch apply
+# main/core/preprocessing.py
+# Preprocessing utilities - pure callables with no GUI dependencies
+# Safe for headless testing, multiprocessing, and parallelism
 
 from __future__ import annotations
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional, Dict
-import processing_gui
+from typing import List, Tuple, Optional, Dict, Union
 
-# Types
+# Type aliases for clarity
 Rect = Tuple[int, int, int, int]  # (x0, y0, x1, y1) inclusive-exclusive style
 Margins = Tuple[int, int, int, int]  # (left, top, right, bottom)
+ImageArray = np.ndarray  # np.uint8, shape (H,W) grayscale or (H,W,3) BGR
+ShapeHW = Tuple[int, int]  # (height, width)
 
 
-def loadImage(path: str, asGray: bool = True) -> np.ndarray:
+def loadImage(path: str, asGray: bool = True) -> ImageArray:
     """Load an image with OpenCV. Returns np.uint8.
     If asGray=True, loads grayscale; else returns BGR color."""
     flag = cv2.IMREAD_GRAYSCALE if asGray else cv2.IMREAD_COLOR
@@ -26,7 +26,7 @@ def loadImage(path: str, asGray: bool = True) -> np.ndarray:
     return img
 
 
-def clampRectToImage(rect: Rect, shape: Tuple[int, int]) -> Optional[Rect]:
+def clampRectToImage(rect: Rect, shape: ShapeHW) -> Optional[Rect]:
     """Clamp (x0,y0,x1,y1) to image bounds. Returns None if rect is degenerate."""
     h, w = shape[:2]
     x0, y0, x1, y1 = rect
@@ -39,7 +39,7 @@ def clampRectToImage(rect: Rect, shape: Tuple[int, int]) -> Optional[Rect]:
     return (x0, y0, x1, y1)
 
 
-def rectToMargins(rect: Rect, shape: Tuple[int, int]) -> Margins:
+def rectToMargins(rect: Rect, shape: ShapeHW) -> Margins:
     """Convert an absolute rect to margins (left, top, right, bottom) for the given image shape."""
     h, w = shape[:2]
     x0, y0, x1, y1 = rect
@@ -54,7 +54,7 @@ def rectToMargins(rect: Rect, shape: Tuple[int, int]) -> Margins:
     return (left, top, right, bottom)
 
 
-def marginsToRect(margins: Margins, shape: Tuple[int, int]) -> Optional[Rect]:
+def marginsToRect(margins: Margins, shape: ShapeHW) -> Optional[Rect]:
     """Convert margins back to a rect for the given image shape."""
     h, w = shape[:2]
     left, top, right, bottom = margins
@@ -67,13 +67,13 @@ def marginsToRect(margins: Margins, shape: Tuple[int, int]) -> Optional[Rect]:
     return (x0, y0, x1, y1)
 
 
-def cropWithRect(img: np.ndarray, rect: Rect) -> np.ndarray:
+def cropWithRect(img: ImageArray, rect: Rect) -> ImageArray:
     """Crop using absolute rect (x0,y0,x1,y1)."""
     x0, y0, x1, y1 = rect
     return img[y0:y1, x0:x1].copy()
 
 
-def cropWithMargins(img: np.ndarray, margins: Margins) -> Optional[np.ndarray]:
+def cropWithMargins(img: ImageArray, margins: Margins) -> Optional[ImageArray]:
     """Crop using margins. Returns None if margins invalid for this size."""
     rect = marginsToRect(margins, img.shape)
     if rect is None:
@@ -82,11 +82,11 @@ def cropWithMargins(img: np.ndarray, margins: Margins) -> Optional[np.ndarray]:
 
 
 def applyCropBatch(
-    images: List[np.ndarray],
+    images: List[ImageArray],
     rect: Optional[Rect] = None,
     margins: Optional[Margins] = None,
     useMargins: bool = True
-) -> List[Optional[np.ndarray]]:
+) -> List[Optional[ImageArray]]:
     """Apply crop across a batch. If useMargins=True, rect is converted to margins from the
     first image, then applied to all (robust to varying sizes). If useMargins=False, rect is
     clamped per image."""

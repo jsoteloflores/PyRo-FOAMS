@@ -1,0 +1,5 @@
+[console_scripts]
+pyro-foams = main.gui.preprocessing:main
+
+[gui_scripts]
+pyro-foams-gui = main.gui.preprocessing:main

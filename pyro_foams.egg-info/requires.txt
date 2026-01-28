@@ -1,0 +1,12 @@
+numpy>=1.20
+opencv-python>=4.5
+pillow>=9.0
+matplotlib>=3.5
+
+[dev]
+ruff
+pytest
+pytest-cov
+
+[headless]
+opencv-python-headless>=4.5

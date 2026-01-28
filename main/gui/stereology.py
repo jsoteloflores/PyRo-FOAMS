@@ -19,7 +19,16 @@ matplotlib.use("TkAgg")  # embed in Tk
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-import stereology  # your measurement/color module
+# Package imports
+from ..core.stereology import (
+    PoreProps,
+    colorize_labels,
+    measure_labels,
+    measure_dataset,
+    save_props_csv,
+    mask_from_labels,
+)
+from .widgets import debounce
 
 
 # ------------ utils: PIL conversion ------------
@@ -99,7 +108,7 @@ class StereologyWindow(tk.Toplevel):
         self.maxAreaVar     = tk.DoubleVar(value=0.0)  # 0 => no upper cap
 
         # measured data cache for current settings
-        self._last_props: List[stereology.PoreProps] = []
+        self._last_props: List[PoreProps] = []
 
         # build UI and initial paint
         self._build_ui()
@@ -188,7 +197,7 @@ class StereologyWindow(tk.Toplevel):
         left = ttk.Frame(main); left.pack(side="left", fill="both", expand=True)
         self.canvas = tk.Canvas(left, bg="#151515", highlightthickness=1, highlightbackground="#333")
         self.canvas.pack(side="top", fill="both", expand=True)
-        self.canvas.bind("<Configure>", lambda e: self._update_view())
+        self.canvas.bind("<Configure>", debounce(self.canvas, 150)(lambda e: self._update_view()))
 
         # right notebook (plot + table)
         right = ttk.Notebook(main); right.pack(side="left", fill="both", expand=True, padx=(8,0))
@@ -283,7 +292,7 @@ class StereologyWindow(tk.Toplevel):
             return self._color_cache[i]
 
         bg = _prep_gray(self.images[i]) if self.overlayVar.get() else None
-        color = stereology.colorize_labels(
+        color = colorize_labels(
             L, seed=int(self.seedVar.get()), bg_gray=bg, alpha=float(self.alphaVar.get())
         )
         self._color_cache[i] = color
@@ -305,7 +314,7 @@ class StereologyWindow(tk.Toplevel):
         # if overlay toggle or alpha changes, rebuild cache for current index only
         i = self.index
         bg = _prep_gray(self.images[i]) if self.overlayVar.get() else None
-        self._color_cache[i] = stereology.colorize_labels(
+        self._color_cache[i] = colorize_labels(
             self.labels[i], seed=int(self.seedVar.get()), bg_gray=bg, alpha=float(self.alphaVar.get())
         )
         img = self._color_cache[i]
@@ -330,16 +339,16 @@ class StereologyWindow(tk.Toplevel):
 
     # ------------- measurement + plotting -------------
 
-    def _collect_props(self) -> List[stereology.PoreProps]:
+    def _collect_props(self) -> List[PoreProps]:
         # gather per aggregation mode
         if self.aggregateVar.get() == "current":
             L = self.labels[self.index]
             if L is None:
                 return []
             scale = self.scales[self.index] if self.scales and self.index < len(self.scales) else None
-            props = stereology.measure_labels(L, image_index=self.index, scale=scale)
+            props = measure_labels(L, image_index=self.index, scale=scale)
         else:
-            props = stereology.measure_dataset(self.labels, self.scales)
+            props = measure_dataset(self.labels, self.scales)
 
         # filters
         if self.excludeBorderVar.get():
@@ -360,7 +369,7 @@ class StereologyWindow(tk.Toplevel):
 
         return props
 
-    def _values_for_metric(self, props: List[stereology.PoreProps]) -> Tuple[np.ndarray, str, str]:
+    def _values_for_metric(self, props: List[PoreProps]) -> Tuple[np.ndarray, str, str]:
         """
         Return array of metric values, xlabel, ylabel.
         """
@@ -539,7 +548,7 @@ class StereologyWindow(tk.Toplevel):
         if not out:
             return
         try:
-            stereology.save_props_csv(out, self._last_props)
+            save_props_csv(out, self._last_props)
             messagebox.showinfo("Export", f"Saved measurements to:\n{out}")
         except Exception as e:
             messagebox.showerror("Export", f"Failed to save CSV:\n{e}")

@@ -1,9 +1,19 @@
-# processing.py
-# Step 2: Dynamic Processing — thresholding + separation (watershed)
+# main/core/processing.py
+# Core image processing algorithms - pure callables with no GUI dependencies
+# Safe for headless testing, multiprocessing, and parallelism
+
 from __future__ import annotations
 import cv2
 import numpy as np
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, Any, Union
+
+# Type aliases for clarity
+ImageArray = np.ndarray  # np.uint8, shape (H,W) grayscale or (H,W,3) BGR
+BinaryMask = np.ndarray  # np.uint8, shape (H,W), values in {0, 255}
+LabelMap = np.ndarray  # np.int32, shape (H,W), 0=background, 1..N=objects
+ThreshParams = Dict[str, Any]  # parameter dict for thresholding
+SepParams = Dict[str, Any]  # parameter dict for separation
+MetaDict = Dict[str, Any]  # metadata dict returned from functions
 
 # --------------------- Defaults (edit freely) ---------------------
 DEFAULTS: Dict[str, Dict[str, float | int | bool | str]] = {
@@ -44,19 +54,64 @@ DEFAULTS: Dict[str, Dict[str, float | int | bool | str]] = {
 }
 # ------------------------------------------------------------------
 
-# --------------------- Thresholding (as before) -------------------
+# --------------------- Internal helpers ---------------------------
 
 def _forceOdd(k: int) -> int:
+    """Ensure k is odd and >= 1."""
     k = int(max(1, k))
     return k if k % 2 == 1 else k + 1
 
-def _prepGray(src) -> np.ndarray:
+
+def _prepGray(src: ImageArray) -> np.ndarray:
     img = src
     if img.ndim == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     if img.dtype != np.uint8:
         img = cv2.normalize(img.astype(np.float32), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     return img
+
+
+def _isDarkerForeground(img: np.ndarray, binary: BinaryMask) -> bool:
+    fg = img[binary == 255]; bg = img[binary == 0]
+    if fg.size == 0 or bg.size == 0: return False
+    return float(np.mean(fg)) < float(np.mean(bg))
+
+
+def _contrastGap(img: np.ndarray, binary: BinaryMask) -> float:
+    fg = img[binary == 255]; bg = img[binary == 0]
+    if fg.size == 0 or bg.size == 0: return 0.0
+    return abs(float(np.mean(fg)) - float(np.mean(bg)))
+
+
+def _pickDarkerForeground(img: np.ndarray, binA: BinaryMask, binB: BinaryMask) -> BinaryMask:
+    return binA if _isDarkerForeground(img, binA) else binB
+
+
+def _pickBrighterForeground(img: np.ndarray, binA: BinaryMask, binB: BinaryMask) -> BinaryMask:
+    return binA if not _isDarkerForeground(img, binA) else binB
+
+
+def _choosePolarity(img: np.ndarray, binA: BinaryMask, binB: BinaryMask, polarity: str) -> BinaryMask:
+    if polarity == "poresDarker":  return _pickDarkerForeground(img, binA, binB)
+    if polarity == "poresBrighter":return _pickBrighterForeground(img, binA, binB)
+    A_dark, B_dark = _isDarkerForeground(img, binA), _isDarkerForeground(img, binB)
+    if A_dark and not B_dark: return binA
+    if B_dark and not A_dark: return binB
+    return binA if _contrastGap(img, binA) >= _contrastGap(img, binB) else binB
+
+
+def _localMaxima(dist: np.ndarray, minDist: int, minVal: float) -> np.ndarray:
+    """Binary map of local maxima using dilation-and-compare with min distance suppression."""
+    if minDist < 1:
+        minDist = 1
+    k = int(minDist)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    dil = cv2.dilate(dist, kernel)
+    peaks = (dist == dil) & (dist >= minVal)
+    return peaks.astype(np.uint8)
+
+
+# --------------------- Thresholding -------------------------------
 
 def thresholdImageAdvanced(
     gray,
@@ -74,7 +129,7 @@ def thresholdImageAdvanced(
     pickTolerance: int = 10,
     applyOpenClose: bool = False,
     morphK: int = 3
-) -> Tuple[np.ndarray, Dict]:
+) -> Tuple[BinaryMask, MetaDict]:
     """
     Robust thresholding with preprocessing and polarity control.
     Returns (binary_uint8, meta_dict). Foreground (vesicles) = 255.
@@ -131,34 +186,10 @@ def thresholdImageAdvanced(
 
     return binary.astype(np.uint8), meta
 
-# --- Polarity helpers ---
-def _isDarkerForeground(img, binary):
-    fg = img[binary == 255]; bg = img[binary == 0]
-    if fg.size == 0 or bg.size == 0: return False
-    return float(np.mean(fg)) < float(np.mean(bg))
 
-def _contrastGap(img, binary):
-    fg = img[binary == 255]; bg = img[binary == 0]
-    if fg.size == 0 or bg.size == 0: return 0.0
-    return abs(float(np.mean(fg)) - float(np.mean(bg)))
+# -------------------------- Cleanup -------------------------------
 
-def _pickDarkerForeground(img, binA, binB):
-    return binA if _isDarkerForeground(img, binA) else binB
-
-def _pickBrighterForeground(img, binA, binB):
-    return binA if not _isDarkerForeground(img, binA) else binB
-
-def _choosePolarity(img, binA, binB, polarity: str):
-    if polarity == "poresDarker":  return _pickDarkerForeground(img, binA, binB)
-    if polarity == "poresBrighter":return _pickBrighterForeground(img, binA, binB)
-    A_dark, B_dark = _isDarkerForeground(img, binA), _isDarkerForeground(img, binB)
-    if A_dark and not B_dark: return binA
-    if B_dark and not A_dark: return binB
-    return binA if _contrastGap(img, binA) >= _contrastGap(img, binB) else binB
-
-# -------------------------- Separation ----------------------------
-
-def fillHoles(binary: np.ndarray) -> np.ndarray:
+def fillHoles(binary: BinaryMask) -> BinaryMask:
     """Fill internal holes in a binary mask (255=FG)."""
     mask = (binary > 0).astype(np.uint8)
     h, w = mask.shape
@@ -171,53 +202,65 @@ def fillHoles(binary: np.ndarray) -> np.ndarray:
     out[holes] = 1
     return (out * 255).astype(np.uint8)
 
-def removeSmallAreas(binary: np.ndarray, minArea: int, connectivity: int = 8) -> np.ndarray:
-    """Remove connected components smaller than minArea. Keeps FG=255."""
+
+def removeSmallAreas(binary: BinaryMask, minArea: int, connectivity: int = 8) -> BinaryMask:
+    """Remove connected components smaller than minArea. Keeps FG=255.
+    
+    Vectorized: uses connectedComponentsWithStats to get areas in O(n) instead
+    of per-label loops, then applies a LUT-based remap.
+    """
     if minArea <= 1:
         return binary
     mask = (binary > 0).astype(np.uint8)
-    num, labels = cv2.connectedComponents(mask, connectivity=connectivity)
-    keep = np.zeros_like(mask)
-    for lab in range(1, num):
-        area = int((labels == lab).sum())
-        if area >= minArea:
-            keep[labels == lab] = 1
-    return (keep * 255).astype(np.uint8)
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=connectivity)
+    if num <= 1:
+        return binary
+    # stats[:,cv2.CC_STAT_AREA] gives area for each label (index 0 = background)
+    areas = stats[:, cv2.CC_STAT_AREA]
+    # Build a LUT: keep[lab] = 1 if area >= minArea, else 0
+    keep_lut = (areas >= minArea).astype(np.uint8)
+    keep_lut[0] = 0  # background always 0
+    # Apply LUT to labels
+    out = keep_lut[labels]
+    return (out * 255).astype(np.uint8)
 
-def clearBorderTouching(binary: np.ndarray, connectivity: int = 8) -> np.ndarray:
-    """Remove components that touch the border."""
+
+def clearBorderTouching(binary: BinaryMask, connectivity: int = 8) -> BinaryMask:
+    """Remove components that touch the border.
+    
+    Vectorized: collect border labels via unique on border slices, then use
+    np.isin for O(n) removal instead of per-label loops.
+    """
     mask = (binary > 0).astype(np.uint8)
     num, labels = cv2.connectedComponents(mask, connectivity=connectivity)
+    if num <= 1:
+        return binary
     h, w = mask.shape
-    border = np.zeros_like(mask, dtype=bool)
-    border[0, :] = True; border[-1, :] = True; border[:, 0] = True; border[:, -1] = True
-    keep = np.zeros_like(mask)
-    for lab in range(1, num):
-        ys, xs = np.where(labels == lab)
-        if ys.size == 0: 
-            continue
-        if border[ys, xs].any():
-            continue
-        keep[labels == lab] = 1
-    return (keep * 255).astype(np.uint8)
+    # Collect labels touching any border edge (single vectorized gather)
+    border_labels = np.unique(np.concatenate([
+        labels[0, :].ravel(),
+        labels[-1, :].ravel(),
+        labels[:, 0].ravel(),
+        labels[:, -1].ravel()
+    ]))
+    # Build a keep LUT: default keep=1, set border labels to 0
+    keep_lut = np.ones(num, dtype=np.uint8)
+    keep_lut[0] = 0  # background always excluded
+    keep_lut[border_labels] = 0
+    # Apply LUT
+    out = keep_lut[labels]
+    return (out * 255).astype(np.uint8)
 
-def _localMaxima(dist: np.ndarray, minDist: int, minVal: float) -> np.ndarray:
-    """Binary map of local maxima using dilation-and-compare with min distance suppression."""
-    if minDist < 1:
-        minDist = 1
-    k = int(minDist)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
-    dil = cv2.dilate(dist, kernel)
-    peaks = (dist == dil) & (dist >= minVal)
-    return peaks.astype(np.uint8)
+
+# -------------------------- Separation ----------------------------
 
 def watershedSeparate(
-    binary: np.ndarray,
+    binary: BinaryMask,
     distanceBlurK: int = 3,
     peakMinDistance: int = 9,
     peakRelThreshold: float = 0.2,
     connectivity: int = 8
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[LabelMap, np.ndarray]:
     """
     Watershed separation on binary FG. Returns (labels, distance8u_for_debug).
     labels: int32, 0=background, 1..N objects.
@@ -228,13 +271,15 @@ def watershedSeparate(
     if distanceBlurK and distanceBlurK >= 3:
         dist = cv2.GaussianBlur(dist, (_forceOdd(distanceBlurK), _forceOdd(distanceBlurK)), 0)
 
-    # Normalize for thresholds and for making a 3-channel image to feed watershed
-    if dist.max() > 0:
-        distNorm = dist / dist.max()
+    # Handle NaN/Inf and normalize for thresholds
+    dist = np.nan_to_num(dist, nan=0.0, posinf=0.0, neginf=0.0)
+    dist_max = float(dist.max())
+    if dist_max > 1e-9:
+        distNorm = dist / dist_max
     else:
-        distNorm = dist
+        distNorm = np.zeros_like(dist, dtype=np.float32)
 
-    minVal = float(np.clip(peakRelThreshold, 0.0, 1.0)) * float(dist.max() if dist.max() > 0 else 1.0)
+    minVal = float(np.clip(peakRelThreshold, 0.0, 1.0)) * max(dist_max, 1e-9)
     peaks = _localMaxima(dist, minDist=max(1, int(peakMinDistance)), minVal=minVal)
 
     # Markers from peaks
@@ -264,37 +309,60 @@ def watershedSeparate(
     labels[fg == 0] = 0
     return labels.astype(np.int32), invDist8u
 
+
 def postSeparateCleanup(
-    labels: np.ndarray,
+    labels: LabelMap,
     minAreaPx: int = 0,
     connectivity: int = 8,
     clearBorder: bool = False,
-    shape: Optional[tuple[int, int]] = None
-) -> np.ndarray:
-    """Optionally filter labels by area and border touching."""
+    shape: Optional[Tuple[int, int]] = None
+) -> LabelMap:
+    """Optionally filter labels by area and border touching.
+    
+    Vectorized: uses np.bincount for area histogram and LUT-based remapping
+    instead of per-label loops over the full frame.
+    """
     if labels.size == 0:
         return labels
     h, w = labels.shape
+    labs = labels.astype(np.int32, copy=False)
+    num = int(labs.max()) + 1  # label range is 0..max
+
+    # Build a keep LUT (default: keep all labels)
+    keep_lut = np.ones(num, dtype=bool)
+    keep_lut[0] = False  # background never kept
+
     if clearBorder:
-        # Remove labels touching border
-        labSet = set(np.unique(np.concatenate([labels[0, :], labels[-1, :], labels[:, 0], labels[:, -1]])))
-        labels[np.isin(labels, list(labSet))] = 0
+        # Collect labels touching any border edge
+        border_labels = np.unique(np.concatenate([
+            labs[0, :].ravel(),
+            labs[-1, :].ravel(),
+            labs[:, 0].ravel(),
+            labs[:, -1].ravel()
+        ]))
+        keep_lut[border_labels] = False
 
     if minAreaPx > 1:
-        # Relabel keeping only areas >= minArea
-        out = np.zeros_like(labels, dtype=np.int32)
-        nextLab = 1
-        for lab in np.unique(labels):
-            if lab == 0:
-                continue
-            area = int((labels == lab).sum())
-            if area >= minAreaPx:
-                out[labels == lab] = nextLab
-                nextLab += 1
-        return out
-    return labels
+        # Compute area per label using bincount (O(n) in pixel count)
+        areas = np.bincount(labs.ravel(), minlength=num)
+        keep_lut &= (areas >= minAreaPx)
+        keep_lut[0] = False  # ensure background stays excluded
 
-def labelsToColor(labels: np.ndarray, bgGray: Optional[np.ndarray] = None, alpha: float = 0.45) -> np.ndarray:
+    # Build relabel LUT: old label -> new sequential label (or 0 if removed)
+    relabel_lut = np.zeros(num, dtype=np.int32)
+    new_label = 1
+    for old in range(1, num):
+        if keep_lut[old]:
+            relabel_lut[old] = new_label
+            new_label += 1
+
+    # Apply LUT to produce output
+    return relabel_lut[labs]
+
+
+# -------------------------- Visualization -------------------------
+
+def labelsToColor(labels: LabelMap, bgGray: Optional[np.ndarray] = None, alpha: float = 0.45) -> np.ndarray:
     """
     Colorize label map. If bgGray provided (uint8), alpha-blend color on top.
     Returns BGR uint8 for display.
@@ -327,11 +395,14 @@ def labelsToColor(labels: np.ndarray, bgGray: Optional[np.ndarray] = None, alpha
         return out
     return color
 
+
+# -------------------------- Pipeline ------------------------------
+
 def runSeparationPipeline(
-    grayOrBgr: np.ndarray,
-    threshParams: Dict[str, float | int | bool | str],
-    sepParams: Dict[str, float | int | bool | str]
-) -> Tuple[np.ndarray, Optional[np.ndarray], Dict]:
+    grayOrBgr: ImageArray,
+    threshParams: ThreshParams,
+    sepParams: SepParams
+) -> Tuple[BinaryMask, Optional[LabelMap], MetaDict]:
     """
     Performs threshold -> (optional fill holes/cleanup) -> separation (if enabled).
     Returns (binary_uint8, labels_int32_or_None, meta).
