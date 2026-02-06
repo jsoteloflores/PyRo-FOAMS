@@ -16,7 +16,7 @@ import sys
 
 # Support both "python -m main" (relative imports work) and direct script execution
 _RUNNING_AS_PACKAGE = __package__ is not None
-
+#hi
 if not _RUNNING_AS_PACKAGE:
     # Add parent directory to path so we can import main.gui.*
     _here = os.path.dirname(os.path.abspath(__file__))

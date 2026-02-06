@@ -495,10 +495,15 @@ class EnlargedViewer(tk.Toplevel):
 
         self._photo = None
         self._pil = None
+        self._npImg = None  # cached numpy array for fast viewport cropping
         self._scale = 1.0
         self._offset = np.array([0.0, 0.0], dtype=float)  # pan offset
         self._panActive = False
         self._lastDrag = None
+        
+        # Pan motion coalescing (reduce render calls during drag)
+        self._pendingPanPt: Optional[Tuple[int, int]] = None
+        self._panMotionScheduled = False
 
         # Crop overlay state
         self._cropMode = False
@@ -591,6 +596,7 @@ class EnlargedViewer(tk.Toplevel):
 
     def _loadCurrent(self):
         img = self.images[self.index]
+        self._npImg = img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
         self._pil = self._npToPil(img)
         self._resetView()
         self._updateTitle()
@@ -607,23 +613,76 @@ class EnlargedViewer(tk.Toplevel):
         self._render()
 
     def _render(self):
-        if self._pil is None:
+        if self._npImg is None:
             return
         cw, ch = max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height())
-        iw, ih = self._pil.size
+        img_h, img_w = self._npImg.shape[:2]
 
         # Fit to view initially (respect current scale)
-        baseScale = min(cw / float(iw), ch / float(ih))
+        baseScale = min(cw / float(img_w), ch / float(img_h))
         baseScale = min(baseScale, 1.0)
-        s = baseScale * self._scale
+        combined_scale = baseScale * self._scale
 
-        w = max(1, int(round(iw * s)))
-        h = max(1, int(round(ih * s)))
-        disp = self._pil.resize((w, h), resample=RESAMPLE_LANCZOS)
+        disp_w = max(1, int(round(img_w * combined_scale)))
+        disp_h = max(1, int(round(img_h * combined_scale)))
+        ox = int((cw - disp_w) / 2 + self._offset[0])
+        oy = int((ch - disp_h) / 2 + self._offset[1])
+
+        # Store for coordinate transforms
+        self._combined_scale = combined_scale
+        self._ox, self._oy = ox, oy
+
+        # Use viewport cropping for performance at high zoom
+        if combined_scale <= 1.0:
+            # Zoomed out: resize whole image (fast enough)
+            resized = cv2.resize(self._npImg, (disp_w, disp_h), interpolation=cv2.INTER_AREA)
+            pil = self._npToPil(resized)
+            img_ox, img_oy = ox, oy
+        else:
+            # Zoomed in: crop visible region first, then resize (much faster for 4K)
+            img_x0 = int(max(0, (0 - ox) / combined_scale))
+            img_y0 = int(max(0, (0 - oy) / combined_scale))
+            img_x1 = int(min(img_w, (cw - ox) / combined_scale + 1))
+            img_y1 = int(min(img_h, (ch - oy) / combined_scale + 1))
+
+            # Add margin
+            margin = 2
+            img_x0 = max(0, img_x0 - margin)
+            img_y0 = max(0, img_y0 - margin)
+            img_x1 = min(img_w, img_x1 + margin)
+            img_y1 = min(img_h, img_y1 + margin)
+
+            crop = self._npImg[img_y0:img_y1, img_x0:img_x1]
+            if crop.size == 0:
+                self.canvas.delete("all")
+                return
+
+            crop_dw = max(1, int(round((img_x1 - img_x0) * combined_scale)))
+            crop_dh = max(1, int(round((img_y1 - img_y0) * combined_scale)))
+            crop_resized = cv2.resize(crop, (crop_dw, crop_dh), interpolation=cv2.INTER_NEAREST)
+
+            # Create output buffer and place crop at correct position
+            output = np.zeros((ch, cw, 3), dtype=np.uint8)
+            canvas_x0 = int(ox + img_x0 * combined_scale)
+            canvas_y0 = int(oy + img_y0 * combined_scale)
+
+            src_x0 = max(0, -canvas_x0)
+            src_y0 = max(0, -canvas_y0)
+            dst_x0 = max(0, canvas_x0)
+            dst_y0 = max(0, canvas_y0)
+            copy_w = min(crop_dw - src_x0, cw - dst_x0)
+            copy_h = min(crop_dh - src_y0, ch - dst_y0)
+
+            if copy_w > 0 and copy_h > 0:
+                output[dst_y0:dst_y0+copy_h, dst_x0:dst_x0+copy_w] = \
+                    crop_resized[src_y0:src_y0+copy_h, src_x0:src_x0+copy_w]
+
+            pil = self._npToPil(output)
+            img_ox, img_oy = 0, 0  # buffer fills canvas
+
         self.canvas.delete("all")
-        self._photo = ImageTk.PhotoImage(disp)
-        ox, oy = int((cw - w) / 2 + self._offset[0]), int((ch - h) / 2 + self._offset[1])
-        self.canvas.create_image(ox, oy, anchor="nw", image=self._photo, tags="img")
+        self._photo = ImageTk.PhotoImage(pil)
+        self.canvas.create_image(img_ox, img_oy, anchor="nw", image=self._photo, tags="img")
 
         # Draw overlays
         self._drawCropOverlay()
@@ -649,11 +708,47 @@ class EnlargedViewer(tk.Toplevel):
         self._scale = max(0.1, min(self._scale, 20.0))
         self._render()
 
+    def _zoomAtPoint(self, cx: int, cy: int, factor: float):
+        """Zoom centered at canvas point (cx, cy)."""
+        if self._npImg is None:
+            return
+        img_h, img_w = self._npImg.shape[:2]
+        cw, ch = max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height())
+
+        # Current scale and origin
+        baseScale = min(cw / float(img_w), ch / float(img_h), 1.0)
+        s_old = baseScale * self._scale
+        disp_w_old = int(round(img_w * s_old))
+        disp_h_old = int(round(img_h * s_old))
+        ox_old = int((cw - disp_w_old) / 2 + self._offset[0])
+        oy_old = int((ch - disp_h_old) / 2 + self._offset[1])
+
+        # Position in image coords under cursor
+        ix = (cx - ox_old) / max(s_old, 1e-6)
+        iy = (cy - oy_old) / max(s_old, 1e-6)
+
+        # Apply zoom
+        self._scale *= factor
+        self._scale = max(0.1, min(self._scale, 20.0))
+
+        # New scale
+        s_new = baseScale * self._scale
+        disp_w_new = int(round(img_w * s_new))
+        disp_h_new = int(round(img_h * s_new))
+
+        # Adjust offset so that (ix, iy) still maps to (cx, cy)
+        base_ox = (cw - disp_w_new) / 2
+        base_oy = (ch - disp_h_new) / 2
+        self._offset[0] = cx - ix * s_new - base_ox
+        self._offset[1] = cy - iy * s_new - base_oy
+
+        self._render()
+
     def _onWheel(self, event):
         # Normalize delta
         delta = 1 if getattr(event, "delta", 0) > 0 or getattr(event, "num", 0) == 4 else -1
         factor = 1.1 if delta > 0 else 0.9
-        self._zoomAtCenter(factor)
+        self._zoomAtPoint(event.x, event.y, factor)
 
     def _updatePanMode(self):
         self._panActive = bool(self.panVar.get())
@@ -662,14 +757,27 @@ class EnlargedViewer(tk.Toplevel):
         self._panActive = True
         self._lastDrag = (event.x, event.y)
 
+    def _schedulePanMotion(self):
+        if self._panMotionScheduled:
+            return
+        self._panMotionScheduled = True
+        self.after_idle(self._processPanMotion)
+
+    def _processPanMotion(self):
+        self._panMotionScheduled = False
+        if not self._panActive or self._pendingPanPt is None or self._lastDrag is None:
+            return
+        dx = self._pendingPanPt[0] - self._lastDrag[0]
+        dy = self._pendingPanPt[1] - self._lastDrag[1]
+        self._offset += np.array([dx, dy], dtype=float)
+        self._lastDrag = self._pendingPanPt
+        self._render()
+
     def _onPanDrag(self, event):
         if not self._panActive or self._lastDrag is None:
             return
-        dx = event.x - self._lastDrag[0]
-        dy = event.y - self._lastDrag[1]
-        self._offset += np.array([dx, dy], dtype=float)
-        self._lastDrag = (event.x, event.y)
-        self._render()
+        self._pendingPanPt = (event.x, event.y)
+        self._schedulePanMotion()
 
     def _onPanEnd(self, event):
         self._lastDrag = None
@@ -687,11 +795,8 @@ class EnlargedViewer(tk.Toplevel):
 
     def _onComboDrag(self, event):
         if self._panActive and self._lastDrag is not None:
-            dx = event.x - self._lastDrag[0]
-            dy = event.y - self._lastDrag[1]
-            self._offset += np.array([dx, dy], dtype=float)
-            self._lastDrag = (event.x, event.y)
-            self._render()
+            self._pendingPanPt = (event.x, event.y)
+            self._schedulePanMotion()
 
     def _onButtonComboUp(self, event):
         self._lastDrag = None
