@@ -5,6 +5,7 @@ main/core/__init__.py
 main/core/batch.py
 main/core/preprocessing.py
 main/core/processing.py
+main/core/sampling.py
 main/core/stereology.py
 main/gui/__init__.py
 main/gui/postprocessing.py
@@ -14,8 +15,10 @@ main/gui/stereology.py
 main/gui/widgets.py
 main/tests/__init__.py
 main/tests/test_batch.py
+main/tests/test_edge_cases.py
 main/tests/test_preprocessing.py
 main/tests/test_processing.py
+main/tests/test_sampling.py
 main/tests/test_stereology.py
 main/tests/test_widgets.py
 pyro_foams.egg-info/PKG-INFO

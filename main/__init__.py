@@ -16,33 +16,48 @@ Quick start:
 
 # Re-export commonly used items from core for convenience
 from .core import (
+    # Calibrated sampling
+    CANONICAL_LENGTH_UNIT,
     # Processing
     DEFAULTS,
+    AnalysisDomainError,
+    ImageSamplingRecord,
+    MeasurementMappingError,
     # Stereology
     PoreProps,
+    SampledPore,
+    SamplingDataset,
+    SamplingGroupSummary,
+    SamplingValidationError,
+    UnsupportedUnitError,
+    # Preprocessing
     applyCropBatch,
+    build_sampling_dataset,
     clampRectToImage,
     clearBorderTouching,
     colorize_labels,
+    create_image_sampling_record,
     cropWithMargins,
     cropWithRect,
     fillHoles,
     labelsToColor,
-    # Preprocessing
+    length_to_mm,
     loadImage,
     marginsToRect,
     mask_from_labels,
+    # Batch
     measure_batch,
     measure_dataset,
     measure_labels,
+    normalize_length_unit,
     postSeparateCleanup,
-    # Batch
     process_batch_parallel,
     process_batch_sequential,
     rectToMargins,
     removeSmallAreas,
     runSeparationPipeline,
     save_props_csv,
+    summarize_sampling_groups,
     threshold_batch,
     thresholdImageAdvanced,
     watershedSeparate,
@@ -66,6 +81,21 @@ __all__ = [
     "measure_dataset",
     "save_props_csv",
     "mask_from_labels",
+    # Calibrated sampling
+    "CANONICAL_LENGTH_UNIT",
+    "SamplingValidationError",
+    "UnsupportedUnitError",
+    "AnalysisDomainError",
+    "MeasurementMappingError",
+    "ImageSamplingRecord",
+    "SampledPore",
+    "SamplingDataset",
+    "SamplingGroupSummary",
+    "normalize_length_unit",
+    "length_to_mm",
+    "create_image_sampling_record",
+    "build_sampling_dataset",
+    "summarize_sampling_groups",
     # Preprocessing
     "loadImage",
     "clampRectToImage",
