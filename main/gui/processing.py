@@ -679,7 +679,7 @@ class ProcessingWindow(tk.Toplevel):
 
     def _currentThreshParams(self) -> Dict[str, float | int | bool | str]:
         m = self.methodVar.get()
-        
+
         # Build params from GUI variables (these persist within the session)
         params = {
             "method": m,
@@ -693,7 +693,7 @@ class ProcessingWindow(tk.Toplevel):
             "applyOpenClose": bool(self.applyOpenCloseVar.get()),
             "morphK": int(self.morphKVar.get()),
         }
-        
+
         # Add method-specific parameters
         if m == "adaptive":
             params["adaptiveBlock"] = int(self.adaptiveBlockVar.get())
@@ -704,7 +704,7 @@ class ProcessingWindow(tk.Toplevel):
             params["pickTolerance"] = int(self.pickTolVar.get())
             params["pickValue"] = int(self.pickValueVar.get())
         # otsu has no extra params beyond common preprocessing
-        
+
         return params
 
     def _currentSepParams(self) -> Dict[str, float | int | bool | str]:

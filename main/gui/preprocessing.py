@@ -500,7 +500,7 @@ class EnlargedViewer(tk.Toplevel):
         self._offset = np.array([0.0, 0.0], dtype=float)  # pan offset
         self._panActive = False
         self._lastDrag = None
-        
+
         # Pan motion coalescing (reduce render calls during drag)
         self._pendingPanPt: Optional[Tuple[int, int]] = None
         self._panMotionScheduled = False

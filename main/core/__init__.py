@@ -8,6 +8,18 @@ from .batch import (
     process_batch_sequential,
     threshold_batch,
 )
+from .distributions import (
+    DETECTION_ELIGIBILITY_POLICY,
+    DiameterBin,
+    DiameterBinSpec,
+    DistributionDiagnostics,
+    DistributionResult,
+    DistributionValidationError,
+    Group2DDistribution,
+    calculate_2d_number_densities,
+    create_diameter_bin_spec,
+    geometric_diameter_bin_spec,
+)
 from .preprocessing import (
     applyCropBatch,
     clampRectToImage,
@@ -86,6 +98,17 @@ __all__ = [
     "create_image_sampling_record",
     "build_sampling_dataset",
     "summarize_sampling_groups",
+    # 2D distributions
+    "DETECTION_ELIGIBILITY_POLICY",
+    "DistributionValidationError",
+    "DiameterBin",
+    "DiameterBinSpec",
+    "DistributionDiagnostics",
+    "Group2DDistribution",
+    "DistributionResult",
+    "create_diameter_bin_spec",
+    "geometric_diameter_bin_spec",
+    "calculate_2d_number_densities",
     # preprocessing
     "loadImage",
     "clampRectToImage",
