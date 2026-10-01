@@ -287,23 +287,32 @@ def create_image_sampling_record(
     if analyzed_pixel_count <= 0:
         raise AnalysisDomainError("analysis_domain_mask must contain eligible sampled pixels")
 
-    included_labels = []
-    omitted_labels = []
-    for label in np.unique(label_map):
-        label_int = int(label)
-        if label_int == 0:
-            continue
-        object_pixels = label_map == label
-        inside_count = int(np.count_nonzero(object_pixels & domain))
-        object_count = int(np.count_nonzero(object_pixels))
-        if inside_count == 0:
-            omitted_labels.append(label_int)
-        elif inside_count == object_count:
-            included_labels.append(label_int)
-        else:
+    if analyzed_pixel_count == label_map.size:
+        positive_labels = np.unique(label_map)
+        positive_labels = positive_labels[positive_labels > 0]
+        included_labels = positive_labels.astype(int).tolist()
+        omitted_labels = []
+    else:
+        label_values, compact_labels, object_counts = np.unique(
+            label_map, return_inverse=True, return_counts=True
+        )
+        positive = label_values > 0
+        positive_labels = label_values[positive]
+        positive_counts = object_counts[positive]
+        compact_inside_counts = np.bincount(
+            compact_labels.ravel()[domain.ravel()], minlength=label_values.size
+        )
+        inside_counts = compact_inside_counts[positive]
+        partial = (inside_counts > 0) & (inside_counts < positive_counts)
+        if np.any(partial):
+            cut_label = int(positive_labels[np.flatnonzero(partial)[0]])
             raise AnalysisDomainError(
-                f"analysis_domain_mask cuts through label {label_int} in image {image_id!r}"
+                f"analysis_domain_mask cuts through label {cut_label} in image {image_id!r}"
             )
+        included_labels = positive_labels[
+            inside_counts == positive_counts
+        ].astype(int).tolist()
+        omitted_labels = positive_labels[inside_counts == 0].astype(int).tolist()
 
     analyzed_area_mm2 = analyzed_pixel_count * calibration_mm**2
     if not math.isfinite(analyzed_area_mm2) or analyzed_area_mm2 <= 0:

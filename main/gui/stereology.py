@@ -22,7 +22,6 @@ from matplotlib.figure import Figure
 from ..core.stereology import (
     PoreProps,
     colorize_labels,
-    measure_dataset,
     measure_labels,
     save_props_csv,
 )
@@ -67,7 +66,10 @@ class StereologyWindow(tk.Toplevel):
         labels: List[Optional[np.ndarray]],
         paths: Optional[List[str]] = None,
         scales: Optional[List[Optional[Dict[str, float | str]]]] = None,
-        start_index: int = 0
+        start_index: int = 0,
+        image_revisions: Optional[List[int]] = None,
+        label_revisions: Optional[List[int]] = None,
+        calibration_revisions: Optional[List[int]] = None,
     ):
         super().__init__(parent)
         self.title("PyFOAMS – Stereology")
@@ -79,11 +81,16 @@ class StereologyWindow(tk.Toplevel):
         self.labels = labels
         self.paths = paths or [f"Image {i+1}" for i in range(len(images))]
         self.scales = scales or [None] * len(images)
+        self.image_revisions = image_revisions if image_revisions is not None else [0] * len(images)
+        self.label_revisions = label_revisions if label_revisions is not None else [0] * len(images)
+        self.calibration_revisions = calibration_revisions if calibration_revisions is not None else [0] * len(images)
 
         self.index = max(0, min(start_index, len(images) - 1))
 
         # cached color overlays (to avoid recolorizing every time)
-        self._color_cache: Dict[int, np.ndarray] = {}
+        self._color_cache: Dict[Tuple[object, ...], np.ndarray] = {}
+        self._measurement_cache: Dict[Tuple[str, int, int], Tuple[PoreProps, ...]] = {}
+        self._table_signature: Optional[Tuple[Tuple[object, ...], ...]] = None
 
         # ------------- UI state -------------
         self.aggregateVar   = tk.StringVar(value="current")  # "current" | "all"
@@ -141,7 +148,6 @@ class StereologyWindow(tk.Toplevel):
                                      "major_axis", "minor_axis",
                                  ])
         metric_cb.pack(side="left")
-        metric_cb.bind("<<ComboboxSelected>>", lambda e: self._compute_and_plot())
         metric_cb.bind("<<ComboboxSelected>>", lambda e: self._compute_and_plot())
 
         ttk.Button(top, text="Help (?)", command=self._open_metrics_help)\
@@ -285,14 +291,23 @@ class StereologyWindow(tk.Toplevel):
         L = self.labels[i] if (0 <= i < len(self.labels)) else None
         if L is None:
             return None
-        if i in self._color_cache:
-            return self._color_cache[i]
+        key = (
+            self._image_id(i),
+            self.image_revisions[i],
+            self.label_revisions[i],
+            int(self.seedVar.get()),
+            bool(self.overlayVar.get()),
+            float(self.alphaVar.get()),
+        )
+        if key in self._color_cache:
+            return self._color_cache[key]
 
         bg = _prep_gray(self.images[i]) if self.overlayVar.get() else None
         color = colorize_labels(
             L, seed=int(self.seedVar.get()), bg_gray=bg, alpha=float(self.alphaVar.get())
         )
-        self._color_cache[i] = color
+        self._color_cache.clear()
+        self._color_cache[key] = color
         return color
 
     def _update_view(self):
@@ -307,14 +322,6 @@ class StereologyWindow(tk.Toplevel):
                 fill="#cccccc"
             )
             return
-
-        # if overlay toggle or alpha changes, rebuild cache for current index only
-        i = self.index
-        bg = _prep_gray(self.images[i]) if self.overlayVar.get() else None
-        self._color_cache[i] = colorize_labels(
-            self.labels[i], seed=int(self.seedVar.get()), bg_gray=bg, alpha=float(self.alphaVar.get())
-        )
-        img = self._color_cache[i]
 
         pil = _np_to_pil(img)
         cw, ch = max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height())
@@ -336,16 +343,39 @@ class StereologyWindow(tk.Toplevel):
 
     # ------------- measurement + plotting -------------
 
+    def _image_id(self, index: int) -> str:
+        paths = getattr(self, "paths", ())
+        path = paths[index] if index < len(paths) else f"Image {index + 1}"
+        return f"{index}:{path}"
+
+    def _measure_image(self, index: int) -> List[PoreProps]:
+        labels = self.labels[index]
+        if labels is None:
+            return []
+        key = (
+            self._image_id(index),
+            self.label_revisions[index],
+            self.calibration_revisions[index],
+        )
+        cached = self._measurement_cache.get(key)
+        if cached is None:
+            image_id = key[0]
+            for stale_key in tuple(self._measurement_cache):
+                if stale_key[0] == image_id:
+                    del self._measurement_cache[stale_key]
+            scale = self.scales[index] if index < len(self.scales) else None
+            cached = tuple(measure_labels(labels, image_index=index, scale=scale))
+            self._measurement_cache[key] = cached
+        return list(cached)
+
     def _collect_props(self) -> List[PoreProps]:
         # gather per aggregation mode
         if self.aggregateVar.get() == "current":
-            L = self.labels[self.index]
-            if L is None:
-                return []
-            scale = self.scales[self.index] if self.scales and self.index < len(self.scales) else None
-            props = measure_labels(L, image_index=self.index, scale=scale)
+            props = self._measure_image(self.index)
         else:
-            props = measure_dataset(self.labels, self.scales)
+            props = []
+            for index in range(len(self.labels)):
+                props.extend(self._measure_image(index))
 
         # filters
         if self.excludeBorderVar.get():
@@ -423,11 +453,8 @@ class StereologyWindow(tk.Toplevel):
         props = self._collect_props()
         self._last_props = props  # cache for table/export
 
-        # table refresh (keep it simple)
-        for it in self.tree.get_children():
-            self.tree.delete(it)
-        for p in props:
-            self.tree.insert("", "end", values=(
+        rows = tuple(
+            (
                 p.image_index, p.label, p.area_px, f"{p.eq_diam_px:.3f}" if p.eq_diam_px is not None else "",
                 f"{p.circularity:.3f}" if p.circularity is not None else "",
                 f"{p.feret_max_px:.3f}" if p.feret_max_px is not None else "",
@@ -437,7 +464,15 @@ class StereologyWindow(tk.Toplevel):
                 f"{p.aspect_ratio:.3f}" if p.aspect_ratio is not None else "",
                 f"{p.orientation_deg:.1f}" if p.orientation_deg is not None else "",
                 "yes" if p.touches_border else "no"
-            ))
+            )
+            for p in props
+        )
+        if rows != self._table_signature:
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            for row in rows:
+                self.tree.insert("", "end", values=row)
+            self._table_signature = rows
 
         # histogram
         vals, xlabel, ylabel = self._values_for_metric(props)

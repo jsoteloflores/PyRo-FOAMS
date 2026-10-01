@@ -25,6 +25,8 @@ import numpy as np
 from .sampling import ImageSamplingRecord, SamplingDataset
 
 DETECTION_ELIGIBILITY_POLICY = "whole-bin detection-window coverage"
+LENGTH_UNIT = "mm"
+INTERVAL_CONVENTION = "[lower, upper), final bin includes upper edge"
 PoreIdentity = Tuple[int, int]
 ImageIdentity = Tuple[str, str]
 GroupIdentity = Tuple[str, str]
@@ -61,8 +63,8 @@ class DiameterBinSpec:
 
     edges_mm: Tuple[float, ...]
     bins: Tuple[DiameterBin, ...]
-    length_unit: str = "mm"
-    interval_convention: str = "[lower, upper), final bin includes upper edge"
+    length_unit: str = LENGTH_UNIT
+    interval_convention: str = INTERVAL_CONVENTION
 
 
 def create_diameter_bin_spec(edges_mm: Sequence[float]) -> DiameterBinSpec:
@@ -71,6 +73,8 @@ def create_diameter_bin_spec(edges_mm: Sequence[float]) -> DiameterBinSpec:
         raw_edges = tuple(edges_mm)
     except TypeError as exc:
         raise DistributionValidationError("Bin edges must be a one-dimensional sequence") from exc
+    if any(np.ndim(edge) != 0 for edge in raw_edges):
+        raise DistributionValidationError("Bin edges must be a one-dimensional sequence")
     if any(isinstance(edge, (bool, np.bool_)) for edge in raw_edges):
         raise DistributionValidationError("Bin edges must be numeric, not Boolean")
     try:
@@ -88,10 +92,18 @@ def create_diameter_bin_spec(edges_mm: Sequence[float]) -> DiameterBinSpec:
             lower_mm=lower,
             upper_mm=upper,
             width_mm=upper - lower,
-            geometric_midpoint_mm=math.sqrt(lower * upper),
+            geometric_midpoint_mm=math.sqrt(lower) * math.sqrt(upper),
         )
         for lower, upper in zip(edges, edges[1:])
     )
+    if any(
+        not math.isfinite(value) or value <= 0
+        for bin_ in bins
+        for value in (bin_.width_mm, bin_.geometric_midpoint_mm)
+    ):
+        raise DistributionValidationError(
+            "Derived bin widths and midpoints must be positive and finite"
+        )
     return DiameterBinSpec(edges_mm=edges, bins=bins)
 
 
@@ -179,6 +191,7 @@ class DistributionResult:
     groups: Mapping[GroupIdentity, Group2DDistribution]
     diagnostics: DistributionDiagnostics
     exclude_border: bool
+    source_images: Tuple[ImageSamplingRecord, ...]
     detection_eligibility_policy: str = DETECTION_ELIGIBILITY_POLICY
     density_unit: str = "mm^-2"
 
@@ -187,7 +200,32 @@ def _validate_analysis_inputs(dataset: SamplingDataset, bin_spec: DiameterBinSpe
     if not isinstance(bin_spec, DiameterBinSpec):
         raise DistributionValidationError("bin_spec must be a DiameterBinSpec")
     validated_spec = create_diameter_bin_spec(bin_spec.edges_mm)
-    if validated_spec.bins != bin_spec.bins:
+    if bin_spec.length_unit != LENGTH_UNIT:
+        raise DistributionValidationError("bin_spec length_unit must be 'mm'")
+    if bin_spec.interval_convention != INTERVAL_CONVENTION:
+        raise DistributionValidationError("bin_spec interval_convention is unsupported")
+    if len(bin_spec.bins) != len(validated_spec.bins):
+        raise DistributionValidationError("bin_spec bin count is inconsistent with its edges")
+    for supplied, expected in zip(bin_spec.bins, validated_spec.bins):
+        supplied_values = (
+            supplied.lower_mm,
+            supplied.upper_mm,
+            supplied.width_mm,
+            supplied.geometric_midpoint_mm,
+        )
+        expected_values = (
+            expected.lower_mm,
+            expected.upper_mm,
+            expected.width_mm,
+            expected.geometric_midpoint_mm,
+        )
+        if any(
+            not math.isfinite(value)
+            or not math.isclose(value, expected_value, rel_tol=1e-12, abs_tol=0.0)
+            for value, expected_value in zip(supplied_values, expected_values)
+        ):
+            raise DistributionValidationError("bin_spec derived bin values are inconsistent")
+    if validated_spec.edges_mm != bin_spec.edges_mm:
         raise DistributionValidationError("bin_spec derived bin values are inconsistent")
 
     seen_indices = set()
@@ -280,18 +318,30 @@ def calculate_2d_number_densities(
     group_image_counts: Dict[GroupIdentity, list[int]] = {}
     group_areas: Dict[GroupIdentity, list[float]] = {}
     group_contributors: Dict[GroupIdentity, list[Tuple[ImageIdentity, ...]]] = {}
-    eligibility: Dict[int, Tuple[bool, ...]] = {}
+    images = tuple(dataset.images)
+    image_rows = {image.image_index: row for row, image in enumerate(images)}
+    lower_edges = np.asarray([bin_.lower_mm for bin_ in bin_spec.bins])
+    upper_edges = np.asarray([bin_.upper_mm for bin_ in bin_spec.bins])
+    minimums = np.asarray([image.min_detectable_diameter_mm for image in images])
+    maximums = np.asarray([
+        math.inf if image.max_reliable_diameter_mm is None else image.max_reliable_diameter_mm
+        for image in images
+    ])
+    eligibility_matrix = (
+        (minimums[:, None] <= lower_edges[None, :])
+        & (maximums[:, None] >= upper_edges[None, :])
+    )
 
-    for key, images in group_images.items():
+    for key, images_in_group in group_images.items():
         image_counts = []
         areas = []
         contributors = []
         for bin_index, bin_ in enumerate(bin_spec.bins):
-            eligible = [image for image in images if _image_covers_bin(image, bin_)]
-            for image in images:
-                current = list(eligibility.get(image.image_index, (False,) * len(bin_spec.bins)))
-                current[bin_index] = image in eligible
-                eligibility[image.image_index] = tuple(current)
+            eligible = [
+                image
+                for image in images_in_group
+                if eligibility_matrix[image_rows[image.image_index], bin_index]
+            ]
             area = math.fsum(image.analyzed_area_mm2 for image in eligible)
             if not math.isfinite(area):
                 raise DistributionValidationError(f"Accumulated area is nonfinite for group {key!r}")
@@ -306,7 +356,14 @@ def calculate_2d_number_densities(
     below_grid = []
     above_grid = []
     unsupported = []
-    for pore in dataset.pores:
+    pore_diameters = np.asarray(
+        [pore.equivalent_diameter_mm for pore in dataset.pores], dtype=np.float64
+    )
+    bin_indices = np.searchsorted(
+        np.asarray(bin_spec.edges_mm), pore_diameters, side="right"
+    ) - 1
+    bin_indices[pore_diameters == bin_spec.edges_mm[-1]] = len(bin_spec.bins) - 1
+    for pore, bin_index in zip(dataset.pores, bin_indices.tolist()):
         identity = (pore.measurement.image_index, pore.measurement.label)
         diameter = pore.equivalent_diameter_mm
         if exclude_border and pore.measurement.touches_border:
@@ -316,8 +373,8 @@ def calculate_2d_number_densities(
         elif diameter > bin_spec.edges_mm[-1]:
             above_grid.append(identity)
         else:
-            bin_index = _bin_index(diameter, bin_spec.edges_mm)
-            if not eligibility[pore.image.image_index][bin_index]:
+            image_row = image_rows[pore.image.image_index]
+            if not eligibility_matrix[image_row, bin_index]:
                 unsupported.append(identity)
             else:
                 key = (pore.sample_id, pore.magnification_group_id)
@@ -357,4 +414,5 @@ def calculate_2d_number_densities(
         groups=MappingProxyType(groups),
         diagnostics=diagnostics,
         exclude_border=exclude_border,
+        source_images=images,
     )

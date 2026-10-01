@@ -187,6 +187,8 @@ class PostprocessWindow(tk.Toplevel):
 
         # View state
         self._photo = None
+        self._imageItem = None
+        self._previewItem = None
         self._base_disp_bgr = None
         self._disp_bgr = None
         self._scale = 1.0
@@ -337,22 +339,40 @@ class PostprocessWindow(tk.Toplevel):
         self._disp_bgr = disp
         self._update_canvas()
 
-    def _update_canvas(self, preview_circle: Optional[Tuple[int,int,int]]=None):
+    def _update_canvas(self):
         if self._disp_bgr is None: return
-        self.canvas.delete("all")
         pil = _to_pil_disp(self._disp_bgr)
         photo = ImageTk.PhotoImage(pil)
         self._photo = photo
-        self.canvas.create_image(self._ox, self._oy, anchor="nw", image=photo, tags="img")
-        if preview_circle is not None:
-            x, y, r = preview_circle
-            mode = self.modeVar.get()
-            color = "#00ff66" if mode in ("paint", "fill_add") else "#ff4d4d"
-            self.canvas.create_oval(x-r, y-r, x+r, y+r, outline=color, width=2, tags="preview")
+        if self._imageItem is None:
+            self._imageItem = self.canvas.create_image(
+                self._ox, self._oy, anchor="nw", image=photo, tags="img"
+            )
+        else:
+            self.canvas.coords(self._imageItem, self._ox, self._oy)
+            self.canvas.itemconfigure(self._imageItem, image=photo)
+        if self._previewItem is not None:
+            self.canvas.tag_raise(self._previewItem)
+
+    def _set_preview_circle(self, x: int, y: int, radius: int):
+        mode = self.modeVar.get()
+        color = "#00ff66" if mode in ("paint", "fill_add") else "#ff4d4d"
+        coords = (x - radius, y - radius, x + radius, y + radius)
+        if self._previewItem is None:
+            self._previewItem = self.canvas.create_oval(
+                *coords, outline=color, width=2, tags="preview"
+            )
+        else:
+            self.canvas.coords(self._previewItem, *coords)
+            self.canvas.itemconfigure(self._previewItem, outline=color, state="normal")
+            self.canvas.tag_raise(self._previewItem)
 
     def _clear_preview_circle(self):
-        try: self.canvas.delete("preview")
-        except Exception: pass
+        if self._previewItem is not None:
+            try:
+                self.canvas.itemconfigure(self._previewItem, state="hidden")
+            except Exception:
+                pass
 
     # ---------- Coordinate transforms ----------
     def _canvas_to_image_pt(self, x: int, y: int) -> Optional[Tuple[int,int]]:
@@ -434,7 +454,7 @@ class PostprocessWindow(tk.Toplevel):
     # ---------- Stroke event flow w/ coalescing ----------
     def _on_motion_preview(self, event):
         r_px = int(round(self.radiusVar.get() * self._scale))
-        self._update_canvas(preview_circle=(event.x, event.y, max(1, r_px)))
+        self._set_preview_circle(event.x, event.y, max(1, r_px))
 
     def _on_stroke_start(self, event):
         ipt = self._canvas_to_image_pt(event.x, event.y)
@@ -483,10 +503,17 @@ class PostprocessWindow(tk.Toplevel):
         self._last_img_pt = ipt
         self._compose_overlay_full()
         r_px = int(round(self.radiusVar.get() * self._scale))
-        self._update_canvas(preview_circle=(cx, cy, max(1, r_px)))
+        self._set_preview_circle(cx, cy, max(1, r_px))
 
     def _on_stroke_end(self, event):
         if not self._stroke_active: return
+        endpoint = self._canvas_to_image_pt(event.x, event.y)
+        if endpoint is not None and self._last_img_pt is not None:
+            self._stroke_line(
+                self._last_img_pt,
+                endpoint,
+                self.modeVar.get() == "paint",
+            )
         self._stroke_active = False
         self._last_img_pt = None
         self._pending_canvas_pt = None

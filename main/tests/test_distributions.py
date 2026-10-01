@@ -9,6 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.distributions import (
+    DiameterBin,
     DistributionValidationError,
     calculate_2d_number_densities,
     create_diameter_bin_spec,
@@ -100,6 +101,29 @@ class TestDiameterBinSpec(unittest.TestCase):
             geometric_diameter_bin_spec(True, 2)
         with self.assertRaises(DistributionValidationError):
             geometric_diameter_bin_spec(1e308, 2, 1.0)
+        for edges in ([[0.1], [0.2]], np.array([[0.1, 0.2]])):
+            with self.subTest(edges=edges), self.assertRaisesRegex(
+                DistributionValidationError, "one-dimensional"
+            ):
+                create_diameter_bin_spec(edges)
+
+    def test_geometric_midpoint_is_stable_at_float_extremes(self):
+        tiny = create_diameter_bin_spec([1e-200, 2e-200])
+        huge = create_diameter_bin_spec([1e200, 2e200])
+        self.assertGreater(tiny.bins[0].geometric_midpoint_mm, 0.0)
+        self.assertTrue(math.isfinite(huge.bins[0].geometric_midpoint_mm))
+
+    def test_contradictory_bin_metadata_is_rejected(self):
+        spec = create_diameter_bin_spec([0.1, 0.2])
+        fixture = make_image(0, "one", 1.0, [])
+        dataset = make_dataset(fixture)
+        for invalid in (
+            replace(spec, length_unit="um"),
+            replace(spec, interval_convention="closed"),
+            replace(spec, bins=(DiameterBin(0.1, 0.2, 99.0, math.sqrt(0.02)),)),
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(DistributionValidationError):
+                calculate_2d_number_densities(dataset, invalid)
 
 
 class TestNumberDensities(unittest.TestCase):
@@ -136,6 +160,41 @@ class TestNumberDensities(unittest.TestCase):
         group = result.groups[("sample", "group")]
         self.assertAlmostEqual(group.eligible_areas_mm2[0], 6.0)
         self.assertAlmostEqual(group.number_densities_per_mm2[0], 5 / 6)
+
+    def test_result_retains_immutable_source_image_provenance(self):
+        fixture = make_image(0, "source", 1.0, [0.15])
+        dataset = make_dataset(fixture)
+        result = calculate_2d_number_densities(dataset, self.bins)
+        self.assertEqual(result.source_images, dataset.images)
+        self.assertIsInstance(result.source_images, tuple)
+
+    def test_detached_provenance_reconstructs_eligibility_and_area(self):
+        first = make_image(0, "wide", 1.0, [], minimum=0.1, maximum=0.4)
+        second = make_image(1, "large-only", 2.0, [], minimum=0.2, maximum=0.4)
+        result = calculate_2d_number_densities(make_dataset(first, second), self.bins)
+        group = result.groups[("sample", "group")]
+
+        reconstructed_contributors = []
+        reconstructed_areas = []
+        for bin_ in result.bin_spec.bins:
+            eligible = tuple(
+                image
+                for image in result.source_images
+                if image.sample_id == group.sample_id
+                and image.magnification_group_id == group.magnification_group_id
+                and image.min_detectable_diameter_mm <= bin_.lower_mm
+                and (
+                    image.max_reliable_diameter_mm is None
+                    or image.max_reliable_diameter_mm >= bin_.upper_mm
+                )
+            )
+            reconstructed_contributors.append(
+                tuple((image.sample_id, image.image_id) for image in eligible)
+            )
+            reconstructed_areas.append(math.fsum(image.analyzed_area_mm2 for image in eligible))
+
+        self.assertEqual(tuple(reconstructed_contributors), group.contributing_images)
+        self.assertEqual(tuple(reconstructed_areas), group.eligible_areas_mm2)
 
     def test_heterogeneous_detection_windows(self):
         first = make_image(0, "a", 1.0, [0.15, 0.15, 0.3], maximum=0.4)

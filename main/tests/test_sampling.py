@@ -99,6 +99,13 @@ class TestImageSamplingRecord(unittest.TestCase):
         with self.assertRaisesRegex(AnalysisDomainError, "cuts through label 1"):
             make_record(labels, analysis_domain_mask=crossing_domain)
 
+    def test_sparse_label_ids_are_preserved(self):
+        labels = np.zeros((6, 6), dtype=np.int32)
+        labels[1, 1] = 7
+        labels[4, 4] = 1_000_003
+        record = make_record(labels)
+        self.assertEqual(record.included_labels, (7, 1_000_003))
+
 
 class TestSamplingDataset(unittest.TestCase):
     def test_converts_diameter_and_retains_source_measurement(self):

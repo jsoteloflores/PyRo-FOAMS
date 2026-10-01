@@ -145,10 +145,15 @@ class PreprocessApp:
 
         # Per-image scales: dict or None, e.g. {"unitsPerPx": 0.005, "unitName": "mm"}
         self.scales: List[Optional[Dict[str, float | str]]] = []
+        self.imageRevisions: List[int] = []
+        self.calibrationRevisions: List[int] = []
+        self.maskRevisions: List[int] = []
+        self.labelRevisions: List[int] = []
 
         self._thumbPhotos: Dict[int, ImageTk.PhotoImage] = {}
         self._thumbSizes: Dict[int, Tuple[int, int]] = {}  # cached sizes per cell
         self.masks: list[Optional[np.ndarray]] = []   # aligns 1:1 with self.images
+        self.labels: list[Optional[np.ndarray]] = []
         self.displayModeVar = tk.StringVar(value="original")  # "original" | "mask" | "overlay"
 
 
@@ -225,10 +230,11 @@ class PreprocessApp:
 
         def _receive_from_processing(binaries):
             # Normalize to uint8 {0,255} for OpenCV compatibility
-            self.masks = [
+            normalized = [
                 ensure_mask_uint8(b, self.images[i].shape[:2]) if b is not None else None
                 for i, b in enumerate(binaries)
             ]
+            self.masks[:] = normalized
             self._redrawAllThumbs()
             self.statusVar.set("Received masks from Processing.")
 
@@ -236,8 +242,12 @@ class PreprocessApp:
             parent=self.master,
             images=self.images,
             paths=self.paths,
-            scales=self.scales if hasattr(self, "scales") else [None] * len(self.images)
-            # <-- no resultsCallback here
+            scales=self.scales if hasattr(self, "scales") else [None] * len(self.images),
+            imageRevisions=self.imageRevisions,
+            calibrationRevisions=self.calibrationRevisions,
+            binaries=self.masks,
+            labels=self.labels,
+            labelRevisions=self.labelRevisions,
         )
         # Set it after construction (works no matter which version is imported)
         setattr(win, "resultsCallback", _receive_from_processing)
@@ -289,7 +299,12 @@ class PreprocessApp:
         self.paths = ok_paths
         self.currentIndex = 0
         self.scales = [None] * len(self.images) if not hasattr(self, "scales") or len(getattr(self, "scales", [])) != len(self.images) else self.scales
+        self.imageRevisions = [0] * len(self.images)
+        self.calibrationRevisions = [0] * len(self.images)
+        self.maskRevisions = [0] * len(self.images)
+        self.labelRevisions = [0] * len(self.images)
         self.masks = [None] * len(self.images)   # start with no masks
+        self.labels = [None] * len(self.images)
 
         # Render grid
         self._renderGrid()
@@ -301,11 +316,7 @@ class PreprocessApp:
             return
 
         def _receive_masks(new_masks: List[Optional[np.ndarray]]):
-            # Normalize to uint8 {0,255} for OpenCV compatibility
-            self.masks = [
-                ensure_mask_uint8(m, self.images[i].shape[:2]) if m is not None else None
-                for i, m in enumerate(new_masks)
-            ]
+            self._acceptEditedMasks(new_masks)
             self._redrawAllThumbs()
             self.statusVar.set("Masks updated.")
 
@@ -317,6 +328,31 @@ class PreprocessApp:
             startIndex=self.selectedIndex or 0,
             onMasksUpdated=_receive_masks
         )
+
+    def _acceptEditedMasks(self, newMasks: List[Optional[np.ndarray]]) -> List[int]:
+        """Store changed masks and invalidate only their derived labels."""
+        changed = []
+        for index, mask in enumerate(newMasks):
+            new_mask = (
+                ensure_mask_uint8(mask, self.images[index].shape[:2])
+                if mask is not None else None
+            )
+            old_mask = self.masks[index]
+            unchanged = (
+                old_mask is None and new_mask is None
+            ) or (
+                old_mask is not None
+                and new_mask is not None
+                and np.array_equal(old_mask, new_mask)
+            )
+            if unchanged:
+                continue
+            self.masks[index] = new_mask
+            self.maskRevisions[index] += 1
+            self.labels[index] = None
+            self.labelRevisions[index] += 1
+            changed.append(index)
+        return changed
 
     # --------------------------- Grid rendering ---------------------------
 
@@ -420,11 +456,31 @@ class PreprocessApp:
 
     def _onImagesUpdated(self, newImages: List[np.ndarray]):
         """Callback when batch operations (like crop) modify images."""
-        self.images = newImages
+        if len(self.imageRevisions) != len(newImages):
+            self.imageRevisions[:] = [0] * len(newImages)
+            self.maskRevisions[:] = [0] * len(newImages)
+            self.labelRevisions[:] = [0] * len(newImages)
+            self.masks[:] = [None] * len(newImages)
+            self.labels[:] = [None] * len(newImages)
+        else:
+            for index, (old, new) in enumerate(zip(self.images, newImages)):
+                if old is not new:
+                    self.imageRevisions[index] += 1
+                    self.masks[index] = None
+                    self.maskRevisions[index] += 1
+                    self.labels[index] = None
+                    self.labelRevisions[index] += 1
+        self.images[:] = newImages
         self._redrawAllThumbs()
 
     def _onScalesUpdated(self, newScales: List[Optional[Dict[str, float | str]]]):
-        self.scales = newScales
+        if len(self.calibrationRevisions) != len(newScales):
+            self.calibrationRevisions[:] = [0] * len(newScales)
+        else:
+            for index, (old, new) in enumerate(zip(self.scales, newScales)):
+                if old != new:
+                    self.calibrationRevisions[index] += 1
+        self.scales[:] = newScales
         # Optional: reflect scale somewhere in main window if desired
 
     # --------------------------- Utilities ---------------------------

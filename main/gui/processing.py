@@ -26,6 +26,13 @@ from ..core.processing import (
 )
 from ..core.stereology import colorize_labels
 from . import stereology as stereology_gui  # sibling GUI module
+from .preview_controller import (
+    CommittedProcessingConfig,
+    LatestPreviewWorker,
+    PreviewOwnership,
+    PreviewRequest,
+    make_processing_key,
+)
 from .widgets import debounce
 
 
@@ -74,7 +81,12 @@ class ProcessingWindow(tk.Toplevel):
                  images,
                  paths=None,
                  scales=None,
-                 resultsCallback=None):
+                 resultsCallback=None,
+                 imageRevisions=None,
+                 calibrationRevisions=None,
+                 binaries=None,
+                 labels=None,
+                 labelRevisions=None):
         super().__init__(parent)
         self.title("PyFOAMS – Processing (Threshold + Separation)")
         self.transient(parent)
@@ -85,13 +97,16 @@ class ProcessingWindow(tk.Toplevel):
         self.paths = paths or [f"Image {i+1}" for i in range(len(images))]
         self.scales = scales or [None] * len(images)
         self.resultsCallback = resultsCallback
+        self.imageRevisions = imageRevisions if imageRevisions is not None else [0] * len(images)
+        self.calibrationRevisions = calibrationRevisions if calibrationRevisions is not None else [0] * len(images)
 
         # Must exist before any _showCurrent() calls/bindings
         self.currentIndex = 0
 
         # Outputs
-        self.binaries = [None] * len(self.images)
-        self.labels   = [None] * len(self.images)
+        self.binaries = binaries if binaries is not None else [None] * len(self.images)
+        self.labels = labels if labels is not None else [None] * len(self.images)
+        self.labelRevisions = labelRevisions if labelRevisions is not None else [0] * len(self.images)
 
         # Copy defaults/settings
         self.settings = {
@@ -164,6 +179,16 @@ class ProcessingWindow(tk.Toplevel):
         # Cached PIL images for fast zoom/pan (avoids recomputing)
         self._cachedLeftPil = None
         self._cachedRightPil = None
+        self._cachedLeftNp = None
+        self._cachedRightNp = None
+
+        self._updatingVars = False
+        self._draftDirty = False
+        self._invalidEntry = None
+        self._dispatchAfterId = None
+        self._resultPollAfterId = None
+        self._ownership = PreviewOwnership()
+        self._worker = LatestPreviewWorker(self._computePreviewRequest)
 
         # Build UI, bind, and show
         self._buildUi()
@@ -172,9 +197,11 @@ class ProcessingWindow(tk.Toplevel):
         self.autoPreviewVar.set(False)
 
         self._bindEvents()
-        self.after_idle(self._showCurrent)  # <-- add this
-
-
+        self._committedConfig = CommittedProcessingConfig.create(
+            self._currentThreshParams(), self._currentSepParams()
+        )
+        self.protocol("WM_DELETE_WINDOW", self._onClose)
+        self.after_idle(self._showCurrent)
         self.geometry("1280x800")
         self.minsize(980, 640)
 
@@ -302,7 +329,9 @@ class ProcessingWindow(tk.Toplevel):
         ttk.Radiobutton(sep, text="8", variable=self.connectivityVar, value=8).grid(row=3, column=2, sticky="w")
         ttk.Checkbutton(sep, text="Clear border", variable=self.clearBorderVar).grid(row=3, column=3, sticky="w")
 
-        ttk.Label(sep, text="Overlay alpha").grid(row=3, column=4, sticky="e"); ttk.Entry(sep, textvariable=self.overlayAlphaVar, width=7).grid(row=3, column=5, sticky="w")
+        ttk.Label(sep, text="Overlay alpha").grid(row=3, column=4, sticky="e")
+        self.overlayAlphaEntry = ttk.Entry(sep, textvariable=self.overlayAlphaVar, width=7)
+        self.overlayAlphaEntry.grid(row=3, column=5, sticky="w")
 
         # View panel
         view = ttk.LabelFrame(self, text="View"); view.pack(side="top", fill="x", padx=6, pady=4)
@@ -326,7 +355,10 @@ class ProcessingWindow(tk.Toplevel):
 
         # Bottom actions
         bottom = ttk.Frame(self); bottom.pack(side="bottom", fill="x", padx=6, pady=6)
-        ttk.Button(bottom, text="Apply to Current", command=self.applyToCurrent).pack(side="left")
+        self.applyCurrentButton = ttk.Button(
+            bottom, text="Apply to Current", command=self.applyToCurrent, state="disabled"
+        )
+        self.applyCurrentButton.pack(side="left")
         ttk.Button(bottom, text="Apply to All", command=self.applyToAll).pack(side="left", padx=6)
         ttk.Button(bottom, text="Save Masks…", command=self.saveMasks).pack(side="left", padx=6)
         ttk.Button(bottom, text="Save Labels…", command=self.saveLabels).pack(side="left", padx=6)
@@ -336,29 +368,36 @@ class ProcessingWindow(tk.Toplevel):
 
 
     def _bindEvents(self):
-        def bind_var(var):
-            var.trace_add("write", self._onParamChanged)
+        def bind_computation(var):
+            var.trace_add("write", self._onComputationChanged)
 
         for var in (
-            self.methodVar, self.useDefaultsVar, self.polarityVar,
-            self.sepMethodVar, self.fillHolesVar, self.minAreaVar, self.distanceBlurVar,
-            self.peakMinDistVar, self.peakRelThrVar, self.connectivityVar,
-            self.clearBorderVar, self.overlayAlphaVar, self.viewModeVar, self.overlayOnOriginalVar,
-            # New method-specific variables
-            self.adaptiveBlockVar, self.adaptiveCVar, self.percentileVar,
-            self.useCLAHEVar, self.claheClipVar, self.claheTileVar,
-            self.medianKVar, self.gaussianKVar, self.applyOpenCloseVar, self.morphKVar
+            self.methodVar, self.polarityVar, self.sepMethodVar,
+            self.fillHolesVar, self.connectivityVar, self.clearBorderVar,
+            self.useCLAHEVar, self.applyOpenCloseVar,
         ):
-            bind_var(var)
+            bind_computation(var)
 
-        self.pickValueVar.trace_add("write", self._onParamChanged)
-        self.pickTolVar.trace_add("write", self._onParamChanged)
+        self.useDefaultsVar.trace_add("write", self._onUseDefaultsChanged)
+        self.autoPreviewVar.trace_add("write", self._onAutoPreviewChanged)
+        self.viewModeVar.trace_add("write", self._onViewChanged)
+        self.overlayOnOriginalVar.trace_add("write", self._onViewChanged)
+        self.overlayAlphaVar.trace_add("write", self._onViewChanged)
+        self._bindNumericCommitEvents(self)
+
+        for var in (
+            self.claheClipVar, self.claheTileVar, self.medianKVar,
+            self.gaussianKVar, self.morphKVar, self.adaptiveBlockVar,
+            self.adaptiveCVar, self.percentileVar, self.pickValueVar,
+            self.pickTolVar, self.minAreaVar, self.distanceBlurVar,
+            self.peakMinDistVar, self.peakRelThrVar,
+        ):
+            var.trace_add("write", self._onDraftEdited)
 
         self.leftCanvas.bind("<Button-1>", self._onLeftClickPick)
 
-        # IMPORTANT: debounced to avoid recompute storms on resize
-        self.leftCanvas.bind("<Configure>", debounce(self.leftCanvas, 150)(lambda e: self._showCurrent()))
-        self.rightCanvas.bind("<Configure>", debounce(self.rightCanvas, 150)(lambda e: self._onParamChanged()))
+        self.leftCanvas.bind("<Configure>", debounce(self.leftCanvas, 150)(lambda e: self._renderCachedView()))
+        self.rightCanvas.bind("<Configure>", debounce(self.rightCanvas, 150)(lambda e: self._renderCachedView()))
 
         # Zoom/pan bindings for both canvases
         for canvas in (self.leftCanvas, self.rightCanvas):
@@ -380,6 +419,34 @@ class ProcessingWindow(tk.Toplevel):
         self.methodVar.trace_add("write", lambda *_: self._refreshCursor())
         self.methodVar.trace_add("write", lambda *_: self._updateMethodParamsPanel())
         self.pickModeVar.trace_add("write", lambda *_: self._refreshCursor())
+
+    def _bindNumericCommitEvents(self, widget):
+        for child in widget.winfo_children():
+            if isinstance(child, ttk.Spinbox):
+                child.bind("<FocusOut>", self._onComputationChanged, add="+")
+                child.bind("<Return>", self._onComputationChanged, add="+")
+                child.configure(command=lambda control=child: self._commitSpinbox(control))
+            elif isinstance(child, ttk.Entry):
+                if child is not self.overlayAlphaEntry:
+                    child.bind("<FocusOut>", self._onComputationChanged, add="+")
+                    child.bind("<Return>", self._onComputationChanged, add="+")
+            elif isinstance(child, ttk.Scale):
+                child.bind("<ButtonRelease-1>", self._onComputationChanged, add="+")
+                child.bind("<KeyRelease>", self._onScaleKeyRelease, add="+")
+            self._bindNumericCommitEvents(child)
+
+    def _onScaleKeyRelease(self, event):
+        if event.keysym in {"Left", "Right", "Up", "Down", "Home", "End", "Prior", "Next"}:
+            self._onComputationChanged(event)
+
+    def _commitSpinbox(self, widget):
+        widget.after_idle(lambda: self._onComputationChanged(widget))
+
+    def _onDraftEdited(self, *_args):
+        if self._updatingVars:
+            return
+        self._draftDirty = True
+        self._updateApplyState()
 
     def _refreshCursor(self):
         # Crosshair when method is 'pick' or explicit pick mode is enabled
@@ -565,21 +632,10 @@ class ProcessingWindow(tk.Toplevel):
         canvas.create_image(ox, oy, anchor="nw", image=photo)
 
 
-    def _onParamChanged(self, *args):
-        # Only recompute automatically if Auto preview is ON
-        if self.autoPreviewVar.get():
-            self._recomputePreview()
-        else:
-            # Light hint in manual mode
-            self.statusVar.set("Params changed (manual mode). Click Recompute.")
-
     def recomputeNow(self):
-        """Recompute preview with a modal progress bar (blocks UI)."""
-        dlg = BusyDialog(self, title="Recomputing preview…", mode="indeterminate")
-        try:
-            self._recomputePreview()
-        finally:
-            dlg.close()
+        """Commit the draft controls and request a fresh preview."""
+        if self._commitProcessingParams(request_if_auto=False):
+            self._schedulePreview()
 
 
 
@@ -594,6 +650,23 @@ class ProcessingWindow(tk.Toplevel):
         if self.currentIndex < len(self.images) - 1:
             self.currentIndex += 1
             self._showCurrent()
+
+    def _onClose(self):
+        self._ownership.invalidate()
+        if self._dispatchAfterId is not None:
+            try:
+                self.after_cancel(self._dispatchAfterId)
+            except tk.TclError:
+                pass
+            self._dispatchAfterId = None
+        if self._resultPollAfterId is not None:
+            try:
+                self.after_cancel(self._resultPollAfterId)
+            except tk.TclError:
+                pass
+            self._resultPollAfterId = None
+        self._worker.close()
+        self.destroy()
 
     # ----------------- Display -----------------
 
@@ -667,13 +740,20 @@ class ProcessingWindow(tk.Toplevel):
         # Cache the PIL image for initial display
         self._cachedLeftPil = self._npToPil(img)
         self._displayOn(self.leftCanvas, self._cachedLeftPil, "_leftScale", "_leftPhoto")
+        self._setDesiredKey()
+        if not self._ownership.can_apply:
+            self._cachedRightNp = None
+            self.rightCanvas.delete("all")
+        self._updateApplyState()
 
+        name = os.path.basename(self.paths[self.currentIndex])
         if self.autoPreviewVar.get():
-            self._recomputePreview()
+            self._schedulePreview()
+            self.statusVar.set(f"{name}  ({self.currentIndex+1}/{len(self.images)}) - queued")
         else:
-            self.statusVar.set("Manual mode: press Recompute to update preview.")
-
-        self.statusVar.set(f"{os.path.basename(self.paths[self.currentIndex])}  ({self.currentIndex+1}/{len(self.images)})")
+            self.statusVar.set(
+                f"{name}  ({self.currentIndex+1}/{len(self.images)}) - press Recompute"
+            )
 
     # ----------------- Parameters -----------------
 
@@ -717,57 +797,193 @@ class ProcessingWindow(tk.Toplevel):
             "peakRelThreshold": float(self.peakRelThrVar.get()),
             "connectivity": int(self.connectivityVar.get()),
             "clearBorder": bool(self.clearBorderVar.get()),
-            "overlayAlpha": float(self.overlayAlphaVar.get()),
         }
         return params
 
-    def _onParamChanged(self, *args):
-        # Only recompute automatically if Auto preview is ON
-        if self.autoPreviewVar.get():
-            self._recomputePreview()
-        else:
-            # Give a gentle hint in manual mode
-            self.statusVar.set("Params changed (manual mode). Click Recompute.")
+    def _imageKey(self):
+        index = self.currentIndex
+        path = self.paths[index] if index < len(self.paths) else f"Image {index + 1}"
+        revision = self.imageRevisions[index] if index < len(self.imageRevisions) else 0
+        return f"{index}:{path}", revision
+
+    def _setDesiredKey(self):
+        image_id, revision = self._imageKey()
+        key = make_processing_key(
+            image_id,
+            revision,
+            self._committedConfig.threshold_dict(),
+            self._committedConfig.separation_dict(),
+        )
+        self._ownership.set_desired(key)
+        return key
+
+    def _commitProcessingParams(self, request_if_auto=True, error_widget=None):
+        try:
+            threshold = self._currentThreshParams()
+            separation = self._currentSepParams()
+        except (tk.TclError, TypeError, ValueError) as exc:
+            self._draftDirty = True
+            if hasattr(error_widget, "state"):
+                error_widget.state(["invalid"])
+                self._invalidEntry = error_widget
+            self.statusVar.set(f"Invalid parameter: {exc}")
+            self._updateApplyState()
+            return False
+
+        if self._invalidEntry is not None:
+            self._invalidEntry.state(["!invalid"])
+            self._invalidEntry = None
+        self._committedConfig = CommittedProcessingConfig.create(threshold, separation)
+        self._draftDirty = False
+        previous_key = self._ownership.desired_key
+        current_key = self._setDesiredKey()
+        effective_changed = current_key != previous_key
+        if effective_changed:
+            self._cachedRightNp = None
+            self.rightCanvas.delete("all")
+            self._updateApplyState()
+        if effective_changed and request_if_auto and self.autoPreviewVar.get():
+            self._schedulePreview()
+        elif effective_changed:
+            self.statusVar.set("Parameters committed. Press Recompute.")
+        return True
+
+    def _onComputationChanged(self, *args):
+        if self._updatingVars:
+            return
+        if self.useDefaultsVar.get():
+            self._updatingVars = True
+            try:
+                self.useDefaultsVar.set(False)
+            finally:
+                self._updatingVars = False
+        event = args[0] if args and hasattr(args[0], "widget") else None
+        self._commitProcessingParams(error_widget=getattr(event, "widget", event))
+
+    def _onUseDefaultsChanged(self, *_args):
+        if self._updatingVars or not self.useDefaultsVar.get():
+            return
+        self._restoreDefaultVars()
+        self._commitProcessingParams()
+
+    def _onAutoPreviewChanged(self, *_args):
+        if not self.autoPreviewVar.get():
+            obsolete_work = self._dispatchAfterId is not None or self._ownership.pending
+            if self._dispatchAfterId is not None:
+                try:
+                    self.after_cancel(self._dispatchAfterId)
+                except tk.TclError:
+                    pass
+                self._dispatchAfterId = None
+            self._worker.discard_pending()
+            if obsolete_work:
+                self._ownership.invalidate()
+            self._updateApplyState()
+            self.statusVar.set("Auto preview off. Press Recompute.")
+        elif not self._ownership.can_apply:
+            self._schedulePreview()
+
+    def _restoreDefaultVars(self):
+        method = self.methodVar.get()
+        common = DEFAULTS["common"]
+        self._updatingVars = True
+        try:
+            self.polarityVar.set(common["polarity"])
+            self.useCLAHEVar.set(common["useCLAHE"])
+            self.claheClipVar.set(common["claheClip"])
+            self.claheTileVar.set(common["claheTile"])
+            self.medianKVar.set(common["medianK"])
+            self.gaussianKVar.set(common["gaussianK"])
+            self.applyOpenCloseVar.set(common["applyOpenClose"])
+            self.morphKVar.set(common["morphK"])
+            if method == "adaptive":
+                self.adaptiveBlockVar.set(DEFAULTS["adaptive"]["adaptiveBlock"])
+                self.adaptiveCVar.set(DEFAULTS["adaptive"]["adaptiveC"])
+            elif method == "percentile":
+                self.percentileVar.set(DEFAULTS["percentile"]["percentile"])
+            elif method == "pick":
+                self.pickTolVar.set(DEFAULTS["pick"]["pickTolerance"])
+        finally:
+            self._updatingVars = False
+
+    def _onViewChanged(self, *_args):
+        self._renderAcceptedPreview()
 
     # ----------------- Preview -----------------
 
-    def _recomputePreview(self):
-        if not self.images:
+    @staticmethod
+    def _computePreviewRequest(request):
+        binary, labels, _ = runSeparationPipeline(
+            request.image, dict(request.threshold), dict(request.separation)
+        )
+        return binary, labels
+
+    def _schedulePreview(self):
+        if not self.images or self._dispatchAfterId is not None:
+            return
+        self._dispatchAfterId = self.after_idle(self._dispatchPreview)
+
+    def _dispatchPreview(self):
+        self._dispatchAfterId = None
+        key = self._setDesiredKey()
+        generation = self._ownership.request_started()
+        request = PreviewRequest.create(
+            key,
+            generation,
+            self.images[self.currentIndex],
+            self._committedConfig.threshold_dict(),
+            self._committedConfig.separation_dict(),
+        )
+        self._worker.submit(request)
+        self.statusVar.set("Computing preview...")
+        self._updateApplyState()
+        if self._resultPollAfterId is None:
+            self._resultPollAfterId = self.after(20, self._pollPreviewResults)
+
+    def _pollPreviewResults(self):
+        self._resultPollAfterId = None
+        while True:
+            try:
+                completion = self._worker.results.get_nowait()
+            except Exception:
+                break
+            is_current = (
+                completion.key == self._ownership.desired_key
+                and completion.generation == self._ownership.generation
+            )
+            accepted = self._ownership.accept(completion)
+            if is_current and completion.error is not None:
+                self.statusVar.set(f"Preview failed: {completion.error}")
+            elif accepted:
+                self._renderAcceptedPreview()
+                self.statusVar.set("Preview ready.")
+        self._updateApplyState()
+        if self._worker.has_work or not self._worker.results.empty():
+            self._resultPollAfterId = self.after(20, self._pollPreviewResults)
+
+    def _renderAcceptedPreview(self):
+        result = self._ownership.result
+        if result is None or result.binary is None:
             return
         img = self.images[self.currentIndex]
-        method = self.methodVar.get()
-        tparams = self._currentThreshParams()
-        sparams = self._currentSepParams()
-
         try:
-            if method == "pick" and "pickValue" not in tparams:
-                # wait until user picks something
-                gray = self._prepGrayLocal(img)
-                preview = np.zeros_like(gray)
-                labels = None
+            if self.viewModeVar.get() == "binary" or result.labels is None:
+                preview = result.binary
             else:
-                binary, labels, _ = runSeparationPipeline(img, tparams, sparams)
-                preview = binary if (self.viewModeVar.get() == "binary" or labels is None) else \
-                          self._labelsPreview(labels, img, sparams)
-        except Exception as e:
-            self.statusVar.set(f"Error: {e}")
+                preview = self._labelsPreview(result.labels, img)
+        except (tk.TclError, TypeError, ValueError):
             return
+        self._cachedRightNp = (
+            preview if preview.ndim == 3 else cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
+        )
+        self._renderCachedView()
 
-        self._lastBinary = binary if 'binary' in locals() else None
-        self._lastLabels = labels if 'labels' in locals() else None
+    def _updateApplyState(self):
+        state = "normal" if self._ownership.can_apply and not self._draftDirty else "disabled"
+        self.applyCurrentButton.configure(state=state)
 
-        # Left = original, Right = preview
-        # Cache numpy arrays for fast viewport cropping during zoom/pan
-        self._cachedLeftNp = img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        self._cachedRightNp = preview if preview.ndim == 3 else cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
-        # Cache PIL images for initial display
-        self._cachedLeftPil = self._npToPil(img)
-        self._cachedRightPil = self._npToPil(preview)
-        self._displayOn(self.leftCanvas, self._cachedLeftPil, "_leftScale", "_leftPhoto")
-        self._displayOn(self.rightCanvas, self._cachedRightPil, "_rightScale", "_rightPhoto")
-
-    def _labelsPreview(self, labels: np.ndarray, img, sparams) -> np.ndarray:
-        alpha = float(np.clip(sparams.get("overlayAlpha", 0.45), 0.0, 1.0))
+    def _labelsPreview(self, labels: np.ndarray, img) -> np.ndarray:
+        alpha = float(np.clip(float(self.overlayAlphaVar.get()), 0.0, 1.0))
         gray = self._prepGrayLocal(img) if self.overlayOnOriginalVar.get() else None
         return labelsToColor(labels, bgGray=gray, alpha=alpha)
 
@@ -815,19 +1031,15 @@ class ProcessingWindow(tk.Toplevel):
         self.pickValueVar.set(val)
         self._pickPointCanvas = (event.x, event.y)
         self._drawPickMarker()
-        self.statusVar.set(f"Picked gray={val}")
-
-        # Only recompute automatically if Auto preview is ON
-        if self.autoPreviewVar.get():
-            self._recomputePreview()
-        else:
+        self._commitProcessingParams()
+        if not self.autoPreviewVar.get():
             self.statusVar.set(f"Picked gray={val} (manual mode). Click Recompute.")
 
 
     # ----------------- Advanced dialogs -----------------
 
     def openAdvancedDialog(self):
-        method = self.methodVar.get()
+        method = str(self._committedConfig.threshold_dict()["method"])
         self._openAdvancedFor(method)
 
     def _openAdvancedFor(self, method: str):
@@ -837,7 +1049,8 @@ class ProcessingWindow(tk.Toplevel):
 
         # Common preprocessing
         row = 0
-        cmn = self.settings["common"]
+        current = self._committedConfig.threshold_dict()
+        cmn = current
         useCLAHEVar = tk.BooleanVar(value=bool(cmn["useCLAHE"]))
         claheClipVar = tk.DoubleVar(value=float(cmn["claheClip"]))
         claheTileVar = tk.IntVar(value=int(cmn["claheTile"]))
@@ -857,19 +1070,19 @@ class ProcessingWindow(tk.Toplevel):
 
         # Method-specific
         if method == "adaptive":
-            ad = self.settings["adaptive"]
+            ad = current
             adaptiveBlockVar = tk.IntVar(value=int(ad["adaptiveBlock"]))
             adaptiveCVar = tk.IntVar(value=int(ad["adaptiveC"]))
             ttk.Label(dlg, text="Adaptive").grid(row=row, column=0, columnspan=4, pady=(8,4), sticky="w"); row += 1
             ttk.Label(dlg, text="Block (odd)").grid(row=row, column=1, sticky="e"); ttk.Entry(dlg, textvariable=adaptiveBlockVar, width=8).grid(row=row, column=2, sticky="w"); row += 1
             ttk.Label(dlg, text="C").grid(row=row, column=1, sticky="e"); ttk.Entry(dlg, textvariable=adaptiveCVar, width=8).grid(row=row, column=2, sticky="w"); row += 1
         elif method == "percentile":
-            pe = self.settings["percentile"]
+            pe = current
             percentileVar = tk.DoubleVar(value=float(pe["percentile"]))
             ttk.Label(dlg, text="Percentile").grid(row=row, column=0, columnspan=4, pady=(8,4), sticky="w"); row += 1
             ttk.Label(dlg, text="Percentile (0..100)").grid(row=row, column=1, sticky="e"); ttk.Entry(dlg, textvariable=percentileVar, width=8).grid(row=row, column=2, sticky="w"); row += 1
         elif method == "pick":
-            pk = self.settings["pick"]
+            pk = current
             pickTolVar = tk.IntVar(value=int(pk["pickTolerance"]))
             ttk.Label(dlg, text="Pick").grid(row=row, column=0, columnspan=4, pady=(8,4), sticky="w"); row += 1
             ttk.Label(dlg, text="Tolerance ±").grid(row=row, column=1, sticky="e"); ttk.Entry(dlg, textvariable=pickTolVar, width=8).grid(row=row, column=2, sticky="w"); row += 1
@@ -877,27 +1090,52 @@ class ProcessingWindow(tk.Toplevel):
         # Buttons
         row += 1
         btns = ttk.Frame(dlg); btns.grid(row=row, column=0, columnspan=4, pady=(10,8))
+        errorVar = tk.StringVar(value="")
+        ttk.Label(dlg, textvariable=errorVar, foreground="#b00020").grid(
+            row=row + 1, column=0, columnspan=4, padx=8, sticky="w"
+        )
         def on_ok():
-            cmn = self.settings["common"]
-            cmn["useCLAHE"] = bool(useCLAHEVar.get())
-            cmn["claheClip"] = float(claheClipVar.get())
-            cmn["claheTile"] = int(claheTileVar.get())
-            cmn["medianK"] = int(medianKVar.get())
-            cmn["gaussianK"] = int(gaussianKVar.get())
-            cmn["applyOpenClose"] = bool(applyOpenCloseVar.get())
-            cmn["morphK"] = int(morphKVar.get())
-
-            if method == "adaptive":
-                self.settings["adaptive"]["adaptiveBlock"] = int(adaptiveBlockVar.get())
-                self.settings["adaptive"]["adaptiveC"] = int(adaptiveCVar.get())
-            elif method == "percentile":
-                self.settings["percentile"]["percentile"] = float(percentileVar.get())
-            elif method == "pick":
-                self.settings["pick"]["pickTolerance"] = int(pickTolVar.get())
-
+            try:
+                values = {
+                    "useCLAHE": bool(useCLAHEVar.get()),
+                    "claheClip": float(claheClipVar.get()),
+                    "claheTile": int(claheTileVar.get()),
+                    "medianK": int(medianKVar.get()),
+                    "gaussianK": int(gaussianKVar.get()),
+                    "applyOpenClose": bool(applyOpenCloseVar.get()),
+                    "morphK": int(morphKVar.get()),
+                }
+                if method == "adaptive":
+                    values["adaptiveBlock"] = int(adaptiveBlockVar.get())
+                    values["adaptiveC"] = int(adaptiveCVar.get())
+                elif method == "percentile":
+                    values["percentile"] = float(percentileVar.get())
+                elif method == "pick":
+                    values["pickTolerance"] = int(pickTolVar.get())
+            except (tk.TclError, TypeError, ValueError) as exc:
+                errorVar.set(f"Invalid value: {exc}")
+                return
+            self._updatingVars = True
+            try:
+                self.useCLAHEVar.set(values["useCLAHE"])
+                self.claheClipVar.set(values["claheClip"])
+                self.claheTileVar.set(values["claheTile"])
+                self.medianKVar.set(values["medianK"])
+                self.gaussianKVar.set(values["gaussianK"])
+                self.applyOpenCloseVar.set(values["applyOpenClose"])
+                self.morphKVar.set(values["morphK"])
+                if method == "adaptive":
+                    self.adaptiveBlockVar.set(values["adaptiveBlock"])
+                    self.adaptiveCVar.set(values["adaptiveC"])
+                elif method == "percentile":
+                    self.percentileVar.set(values["percentile"])
+                elif method == "pick":
+                    self.pickTolVar.set(values["pickTolerance"])
+                self.useDefaultsVar.set(False)
+            finally:
+                self._updatingVars = False
             dlg.destroy()
-            self.useDefaultsVar.set(False)
-            self._recomputePreview()
+            self._commitProcessingParams()
         def on_cancel():
             dlg.destroy()
 
@@ -977,7 +1215,10 @@ class ProcessingWindow(tk.Toplevel):
                 labels=self.labels,
                 paths=self.paths,
                 scales=getattr(self, "scales", None),
-                start_index=self.currentIndex if hasattr(self, "currentIndex") else 0
+                start_index=self.currentIndex if hasattr(self, "currentIndex") else 0,
+                image_revisions=self.imageRevisions,
+                label_revisions=self.labelRevisions,
+                calibration_revisions=self.calibrationRevisions,
             )
         except Exception as e:
             messagebox.showerror("Stereology", f"Failed to open stereology window:\n{e}")
@@ -985,12 +1226,14 @@ class ProcessingWindow(tk.Toplevel):
     # ----------------- Apply / Save -----------------
 
     def applyToCurrent(self):
-        # Must have a computed preview
-        if not hasattr(self, "_lastBinary"):
-            messagebox.showwarning("Apply", "Nothing to apply yet.")
+        if self._draftDirty or not self._ownership.can_apply:
+            messagebox.showwarning("Apply", "Recompute the current preview before applying.")
             return
 
         idx = self.currentIndex
+        result = self._ownership.result
+        if result is None:
+            return
         n = len(self.images)
         if not hasattr(self, "binaries") or len(self.binaries) != n:
             self.binaries = [None] * n
@@ -1004,8 +1247,9 @@ class ProcessingWindow(tk.Toplevel):
             try: self.config(cursor="watch")
             except Exception: pass
 
-            self.binaries[idx] = self._lastBinary.copy() if getattr(self, "_lastBinary", None) is not None else None
-            self.labels[idx]   = self._lastLabels.copy()  if getattr(self, "_lastLabels", None)  is not None else None
+            self.binaries[idx] = result.binary.copy() if result.binary is not None else None
+            self.labels[idx] = result.labels.copy() if result.labels is not None else None
+            self.labelRevisions[idx] += 1
 
             cb = getattr(self, "resultsCallback", None)
             if callable(cb):
@@ -1039,8 +1283,10 @@ class ProcessingWindow(tk.Toplevel):
         if not hasattr(self, "labels") or len(self.labels) != n:
             self.labels = [None] * n
 
-        tparams = self._currentThreshParams()
-        sparams = self._currentSepParams()
+        if not self._commitProcessingParams(request_if_auto=False):
+            return
+        tparams = self._committedConfig.threshold_dict()
+        sparams = self._committedConfig.separation_dict()
 
         # Determine worker count (use half of CPU cores for responsiveness)
         import os as _os
@@ -1079,6 +1325,7 @@ class ProcessingWindow(tk.Toplevel):
             for i in range(n):
                 self.binaries[i] = binaries[i]
                 self.labels[i] = labels_list[i]
+                self.labelRevisions[i] += 1
 
             saved = sum(1 for b in self.binaries if b is not None)
 

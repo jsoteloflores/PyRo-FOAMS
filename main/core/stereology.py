@@ -76,8 +76,9 @@ def colorize_labels(
     lab = labels.astype(np.int32, copy=False)
 
     # build a color lookup table (LUT)
-    u = np.unique(lab)
-    u = u[u > 0]
+    all_labels, compact_labels = np.unique(lab, return_inverse=True)
+    positive = all_labels > 0
+    u = all_labels[positive]
     rng = np.random.default_rng(seed)
     # evenly spaced hues, then permute for variety
     n = len(u)
@@ -89,11 +90,9 @@ def colorize_labels(
     hsv = np.stack([hues, sat, val], axis=1).reshape(-1,1,3)
     bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR).reshape(-1,3)
 
-    lut = {int(lbl): tuple(int(c) for c in bgr[i]) for i, lbl in enumerate(u)}
-
-    out = np.zeros((h, w, 3), np.uint8)
-    for lbl, col in lut.items():
-        out[lab == lbl] = col
+    compact_colors = np.zeros((all_labels.size, 3), dtype=np.uint8)
+    compact_colors[positive] = bgr
+    out = compact_colors[compact_labels].reshape(h, w, 3)
 
     if bg_gray is not None:
         if bg_gray.ndim == 3:
@@ -142,15 +141,24 @@ def measure_labels(
     if labs.size == 0:
         return props
 
-    # pre-alloc a uint8 scratch for contours
-    scratch = np.zeros_like(labels, dtype=np.uint8)
+    foreground_y, foreground_x = np.nonzero(labels > 0)
+    foreground_labels = labels[foreground_y, foreground_x]
+    compact = np.searchsorted(labs, foreground_labels)
+    areas = np.bincount(compact, minlength=labs.size)
+    x0_values = np.full(labs.size, W, dtype=np.int64)
+    y0_values = np.full(labs.size, H, dtype=np.int64)
+    x1_values = np.zeros(labs.size, dtype=np.int64)
+    y1_values = np.zeros(labs.size, dtype=np.int64)
+    np.minimum.at(x0_values, compact, foreground_x)
+    np.minimum.at(y0_values, compact, foreground_y)
+    np.maximum.at(x1_values, compact, foreground_x + 1)
+    np.maximum.at(y1_values, compact, foreground_y + 1)
 
-    for lbl in labs:
-        # mask
-        np.equal(labels, lbl, out=scratch)       # scratch is 0/1
-        area = int(np.count_nonzero(scratch))
-        if area == 0:
-            continue
+    for compact_index, lbl in enumerate(labs):
+        area = int(areas[compact_index])
+        x0 = int(x0_values[compact_index]); x1 = int(x1_values[compact_index])
+        y0 = int(y0_values[compact_index]); y1 = int(y1_values[compact_index])
+        scratch = np.equal(labels[y0:y1, x0:x1], lbl).astype(np.uint8)
 
         # perimeter via external contours (holes ignored by default)
         cnts, _ = cv2.findContours(scratch, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -162,13 +170,10 @@ def measure_labels(
             # extremely tiny / degenerate
             cx = cy = float("nan")
         else:
-            cx = float(m["m10"] / m["m00"])
-            cy = float(m["m01"] / m["m00"])
+            cx = float(m["m10"] / m["m00"] + x0)
+            cy = float(m["m01"] / m["m00"] + y0)
 
         # bbox
-        ys, xs = np.nonzero(scratch)
-        x0 = int(xs.min()); x1 = int(xs.max()) + 1  # exclusive
-        y0 = int(ys.min()); y1 = int(ys.max()) + 1
         touches_border = (x0 == 0) or (y0 == 0) or (x1 >= W) or (y1 >= H)
 
         # basic shape scalars
@@ -180,6 +185,8 @@ def measure_labels(
         flat_pts = None
         if len(cnts) > 0:
             flat_pts = np.vstack(cnts).squeeze(1)  # (N,2)
+            flat_pts[:, 0] += x0
+            flat_pts[:, 1] += y0
             if flat_pts.shape[0] >= 5:
                 (ex, ey), (w, h), angle = cv2.fitEllipse(flat_pts)
                 # ensure major>=minor
