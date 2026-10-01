@@ -14,6 +14,7 @@ from gui.preview_controller import (
     PreviewCompletion,
     PreviewOwnership,
     PreviewRequest,
+    ProcessingConfigError,
     make_processing_key,
 )
 
@@ -31,6 +32,52 @@ def key(image="a", revision=0, **threshold):
 
 
 class TestPreviewOwnership(unittest.TestCase):
+    def test_configuration_rejects_nonfinite_values_by_field(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                ProcessingConfigError, "percentile"
+            ):
+                CommittedProcessingConfig.create(
+                    {"method": "percentile", "percentile": value},
+                    {"method": "none"},
+                )
+
+    def test_configuration_rejects_invalid_enums_and_integer_fields(self):
+        invalid_candidates = (
+            ({"method": "unknown"}, {"method": "none"}, "method"),
+            ({"method": "otsu", "polarity": "sideways"}, {"method": "none"}, "polarity"),
+            ({"method": "otsu", "medianK": 3.5}, {"method": "none"}, "medianK"),
+            ({"method": "otsu", "medianK": True}, {"method": "none"}, "medianK"),
+            ({"method": "otsu"}, {"method": "watershed", "connectivity": 6}, "connectivity"),
+            ({"method": "otsu", "useCLAHE": True, "claheTile": 0}, {"method": "none"}, "claheTile"),
+        )
+        for threshold, separation, field in invalid_candidates:
+            with self.subTest(field=field), self.assertRaisesRegex(
+                ProcessingConfigError, field
+            ):
+                CommittedProcessingConfig.create(threshold, separation)
+
+    def test_configuration_canonicalizes_core_effective_values(self):
+        config = CommittedProcessingConfig.create(
+            {
+                "method": "adaptive", "adaptiveBlock": 4,
+                "medianK": 4, "gaussianK": 2,
+                "percentile": 120.0,
+            },
+            {
+                "method": "watershed", "distanceBlurK": 4,
+                "peakMinDistance": 0, "peakRelThreshold": 2.0,
+                "minAreaPx": 0, "connectivity": 8,
+            },
+        )
+        self.assertEqual(config.threshold_dict()["adaptiveBlock"], 5)
+        self.assertEqual(config.threshold_dict()["medianK"], 5)
+        self.assertEqual(config.threshold_dict()["gaussianK"], 0)
+        self.assertEqual(config.separation_dict()["distanceBlurK"], 5)
+        self.assertEqual(config.separation_dict()["peakMinDistance"], 1)
+        self.assertEqual(config.separation_dict()["peakRelThreshold"], 1.0)
+        self.assertEqual(config.separation_dict()["minAreaPx"], 1)
+
     def test_disabled_parameters_do_not_change_effective_key(self):
         self.assertEqual(key(claheClip=2.0, morphK=3), key(claheClip=99.0, morphK=101))
         self.assertNotEqual(key(useCLAHE=True, claheClip=2.0), key(useCLAHE=True, claheClip=3.0))

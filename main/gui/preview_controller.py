@@ -12,6 +12,18 @@ import numpy as np
 
 FrozenParams = Tuple[Tuple[str, Any], ...]
 
+THRESHOLD_METHODS = frozenset({"otsu", "adaptive", "percentile", "pick"})
+SEPARATION_METHODS = frozenset({"none", "watershed"})
+POLARITIES = frozenset({"auto", "poresDarker", "poresBrighter"})
+
+
+class ProcessingConfigError(ValueError):
+    """A processing candidate contains an invalid named field."""
+
+    def __init__(self, field: str, message: str) -> None:
+        self.field = field
+        super().__init__(f"{field}: {message}")
+
 
 def _freeze(params: Mapping[str, Any]) -> FrozenParams:
     return tuple(sorted((str(key), value) for key, value in params.items()))
@@ -23,6 +35,124 @@ def _odd_kernel(value: Any, disabled_below: int = 1) -> int:
         return 0
     kernel = max(1, kernel)
     return kernel if kernel % 2 else kernel + 1
+
+
+def _finite_float(params: Mapping[str, Any], field: str) -> None:
+    if field not in params:
+        return
+    value = params[field]
+    if isinstance(value, (bool, np.bool_)):
+        raise ProcessingConfigError(field, "must be a finite number")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ProcessingConfigError(field, "must be a finite number") from exc
+    if not np.isfinite(numeric):
+        raise ProcessingConfigError(field, "must be finite")
+    params[field] = numeric
+
+
+def _integral(params: Mapping[str, Any], field: str) -> None:
+    if field not in params:
+        return
+    value = params[field]
+    if isinstance(value, (bool, np.bool_)):
+        raise ProcessingConfigError(field, "must be an integer, not Boolean")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ProcessingConfigError(field, "must be an integer") from exc
+    if not np.isfinite(numeric) or not numeric.is_integer():
+        raise ProcessingConfigError(field, "must be a finite integer")
+    params[field] = int(numeric)
+
+
+def _boolean(params: Mapping[str, Any], field: str) -> None:
+    if field in params and not isinstance(params[field], (bool, np.bool_)):
+        raise ProcessingConfigError(field, "must be Boolean")
+    if field in params:
+        params[field] = bool(params[field])
+
+
+def _validated_parameters(
+    threshold: Mapping[str, Any], separation: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    threshold_values = dict(threshold)
+    separation_values = dict(separation)
+
+    method = str(threshold_values.get("method", "otsu"))
+    if method not in THRESHOLD_METHODS:
+        raise ProcessingConfigError("method", f"unsupported threshold method {method!r}")
+    threshold_values["method"] = method
+    polarity = str(threshold_values.get("polarity", "auto"))
+    if polarity not in POLARITIES:
+        raise ProcessingConfigError("polarity", f"unsupported value {polarity!r}")
+    if "polarity" in threshold_values:
+        threshold_values["polarity"] = polarity
+
+    for field in ("useCLAHE", "applyOpenClose"):
+        _boolean(threshold_values, field)
+    for field in (
+        "claheTile", "medianK", "gaussianK", "adaptiveBlock", "adaptiveC",
+        "pickValue", "pickTolerance", "morphK",
+    ):
+        _integral(threshold_values, field)
+    for field in ("claheClip", "percentile"):
+        _finite_float(threshold_values, field)
+
+    if threshold_values.get("useCLAHE", False):
+        if "claheTile" in threshold_values and threshold_values["claheTile"] <= 0:
+            raise ProcessingConfigError("claheTile", "must be a positive integer")
+        if "claheClip" in threshold_values and threshold_values["claheClip"] <= 0:
+            raise ProcessingConfigError("claheClip", "must be positive")
+    for field in ("medianK", "gaussianK"):
+        if field in threshold_values:
+            threshold_values[field] = _odd_kernel(
+                threshold_values[field], disabled_below=3
+            )
+    if "adaptiveBlock" in threshold_values:
+        threshold_values["adaptiveBlock"] = max(
+            3, _odd_kernel(threshold_values["adaptiveBlock"])
+        )
+    if "percentile" in threshold_values:
+        threshold_values["percentile"] = float(
+            np.clip(threshold_values["percentile"], 0.0, 100.0)
+        )
+    if "pickTolerance" in threshold_values:
+        threshold_values["pickTolerance"] = max(
+            0, threshold_values["pickTolerance"]
+        )
+    if "morphK" in threshold_values:
+        threshold_values["morphK"] = _odd_kernel(threshold_values["morphK"])
+
+    separation_method = str(separation_values.get("method", "none"))
+    if separation_method not in SEPARATION_METHODS:
+        raise ProcessingConfigError(
+            "method", f"unsupported separation method {separation_method!r}"
+        )
+    separation_values["method"] = separation_method
+    for field in ("fillHoles", "clearBorder"):
+        _boolean(separation_values, field)
+    for field in ("minAreaPx", "distanceBlurK", "peakMinDistance", "connectivity"):
+        _integral(separation_values, field)
+    _finite_float(separation_values, "peakRelThreshold")
+    if "connectivity" in separation_values and separation_values["connectivity"] not in (4, 8):
+        raise ProcessingConfigError("connectivity", "must be 4 or 8")
+    if "minAreaPx" in separation_values:
+        separation_values["minAreaPx"] = max(1, separation_values["minAreaPx"])
+    if "distanceBlurK" in separation_values:
+        separation_values["distanceBlurK"] = _odd_kernel(
+            separation_values["distanceBlurK"], disabled_below=3
+        )
+    if "peakMinDistance" in separation_values:
+        separation_values["peakMinDistance"] = max(
+            1, separation_values["peakMinDistance"]
+        )
+    if "peakRelThreshold" in separation_values:
+        separation_values["peakRelThreshold"] = float(
+            np.clip(separation_values["peakRelThreshold"], 0.0, 1.0)
+        )
+    return threshold_values, separation_values
 
 
 @dataclass(frozen=True)
@@ -38,7 +168,10 @@ class CommittedProcessingConfig:
         threshold: Mapping[str, Any],
         separation: Mapping[str, Any],
     ) -> CommittedProcessingConfig:
-        return cls(_freeze(threshold), _freeze(separation))
+        threshold_values, separation_values = _validated_parameters(
+            threshold, separation
+        )
+        return cls(_freeze(threshold_values), _freeze(separation_values))
 
     def threshold_dict(self) -> dict[str, Any]:
         return dict(self.threshold)
@@ -51,7 +184,9 @@ def normalize_effective_parameters(
     threshold: Mapping[str, Any], separation: Mapping[str, Any]
 ) -> Tuple[FrozenParams, FrozenParams]:
     """Return only values that can affect core processing output."""
-    threshold_effective = dict(threshold)
+    threshold_effective, separation_effective = _validated_parameters(
+        threshold, separation
+    )
     threshold_effective.pop("overlayAlpha", None)
     for key in ("medianK", "gaussianK"):
         if key in threshold_effective:
@@ -59,9 +194,11 @@ def normalize_effective_parameters(
                 threshold_effective[key], disabled_below=3
             )
     if not threshold_effective.get("useCLAHE", False):
+        threshold_effective.pop("useCLAHE", None)
         threshold_effective.pop("claheClip", None)
         threshold_effective.pop("claheTile", None)
     if not threshold_effective.get("applyOpenClose", False):
+        threshold_effective.pop("applyOpenClose", None)
         threshold_effective.pop("morphK", None)
     elif "morphK" in threshold_effective:
         threshold_effective["morphK"] = _odd_kernel(threshold_effective["morphK"])
@@ -89,7 +226,6 @@ def normalize_effective_parameters(
             0, int(threshold_effective["pickTolerance"])
         )
 
-    separation_effective = dict(separation)
     separation_effective.pop("overlayAlpha", None)
     if separation_effective.get("method", "none") != "watershed":
         for key in ("distanceBlurK", "peakMinDistance", "peakRelThreshold"):
@@ -261,10 +397,12 @@ class LatestPreviewWorker:
             self._pending = None
             self._condition.notify_all()
 
-    def discard_pending(self) -> None:
+    def discard_pending(self) -> bool:
         """Discard queued work without interrupting the currently running call."""
         with self._condition:
+            discarded = self._pending is not None
             self._pending = None
+            return discarded
 
     def _run(self) -> None:
         while True:

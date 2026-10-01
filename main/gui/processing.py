@@ -31,6 +31,7 @@ from .preview_controller import (
     LatestPreviewWorker,
     PreviewOwnership,
     PreviewRequest,
+    ProcessingConfigError,
     make_processing_key,
 )
 from .widgets import debounce
@@ -440,7 +441,7 @@ class ProcessingWindow(tk.Toplevel):
             self._onComputationChanged(event)
 
     def _commitSpinbox(self, widget):
-        widget.after_idle(lambda: self._onComputationChanged(widget))
+        widget.after_idle(lambda source=widget: self._onComputationChanged(source))
 
     def _onDraftEdited(self, *_args):
         if self._updatingVars:
@@ -766,23 +767,23 @@ class ProcessingWindow(tk.Toplevel):
             "polarity": self.polarityVar.get(),
             # Common preprocessing options from GUI
             "useCLAHE": bool(self.useCLAHEVar.get()),
-            "claheClip": float(self.claheClipVar.get()),
-            "claheTile": int(self.claheTileVar.get()),
-            "medianK": int(self.medianKVar.get()),
-            "gaussianK": int(self.gaussianKVar.get()),
+            "claheClip": self._draftValue(self.claheClipVar, "claheClip"),
+            "claheTile": self._draftValue(self.claheTileVar, "claheTile"),
+            "medianK": self._draftValue(self.medianKVar, "medianK"),
+            "gaussianK": self._draftValue(self.gaussianKVar, "gaussianK"),
             "applyOpenClose": bool(self.applyOpenCloseVar.get()),
-            "morphK": int(self.morphKVar.get()),
+            "morphK": self._draftValue(self.morphKVar, "morphK"),
         }
 
         # Add method-specific parameters
         if m == "adaptive":
-            params["adaptiveBlock"] = int(self.adaptiveBlockVar.get())
-            params["adaptiveC"] = int(self.adaptiveCVar.get())
+            params["adaptiveBlock"] = self._draftValue(self.adaptiveBlockVar, "adaptiveBlock")
+            params["adaptiveC"] = self._draftValue(self.adaptiveCVar, "adaptiveC")
         elif m == "percentile":
-            params["percentile"] = float(self.percentileVar.get())
+            params["percentile"] = self._draftValue(self.percentileVar, "percentile")
         elif m == "pick":
-            params["pickTolerance"] = int(self.pickTolVar.get())
-            params["pickValue"] = int(self.pickValueVar.get())
+            params["pickTolerance"] = self._draftValue(self.pickTolVar, "pickTolerance")
+            params["pickValue"] = self._draftValue(self.pickValueVar, "pickValue")
         # otsu has no extra params beyond common preprocessing
 
         return params
@@ -791,14 +792,21 @@ class ProcessingWindow(tk.Toplevel):
         params = {
             "method": self.sepMethodVar.get(),
             "fillHoles": bool(self.fillHolesVar.get()),
-            "minAreaPx": int(self.minAreaVar.get()),
-            "distanceBlurK": int(self.distanceBlurVar.get()),
-            "peakMinDistance": int(self.peakMinDistVar.get()),
-            "peakRelThreshold": float(self.peakRelThrVar.get()),
-            "connectivity": int(self.connectivityVar.get()),
+            "minAreaPx": self._draftValue(self.minAreaVar, "minAreaPx"),
+            "distanceBlurK": self._draftValue(self.distanceBlurVar, "distanceBlurK"),
+            "peakMinDistance": self._draftValue(self.peakMinDistVar, "peakMinDistance"),
+            "peakRelThreshold": self._draftValue(self.peakRelThrVar, "peakRelThreshold"),
+            "connectivity": self._draftValue(self.connectivityVar, "connectivity"),
             "clearBorder": bool(self.clearBorderVar.get()),
         }
         return params
+
+    @staticmethod
+    def _draftValue(variable, field):
+        try:
+            return variable.get()
+        except (tk.TclError, TypeError, ValueError) as exc:
+            raise ProcessingConfigError(field, "contains invalid or incomplete text") from exc
 
     def _imageKey(self):
         index = self.currentIndex
@@ -817,36 +825,56 @@ class ProcessingWindow(tk.Toplevel):
         self._ownership.set_desired(key)
         return key
 
-    def _commitProcessingParams(self, request_if_auto=True, error_widget=None):
-        try:
-            threshold = self._currentThreshParams()
-            separation = self._currentSepParams()
-        except (tk.TclError, TypeError, ValueError) as exc:
-            self._draftDirty = True
-            if hasattr(error_widget, "state"):
-                error_widget.state(["invalid"])
-                self._invalidEntry = error_widget
-            self.statusVar.set(f"Invalid parameter: {exc}")
-            self._updateApplyState()
-            return False
+    def _cancelInvalidAutomaticWork(self):
+        if self._dispatchAfterId is not None:
+            try:
+                self.after_cancel(self._dispatchAfterId)
+            except tk.TclError:
+                pass
+            self._dispatchAfterId = None
+        if self._worker.discard_pending():
+            self._ownership.invalidate()
 
+    def _markInvalidDraft(self, error, error_widget=None):
+        self._draftDirty = True
+        self._cancelInvalidAutomaticWork()
+        if hasattr(error_widget, "state"):
+            error_widget.state(["invalid"])
+            self._invalidEntry = error_widget
+        self.statusVar.set(f"Invalid parameter: {error}")
+        self._updateApplyState()
+
+    def _installCommittedConfig(self, candidate, request_if_auto=True):
+        self._committedConfig = candidate
+        self._draftDirty = False
         if self._invalidEntry is not None:
             self._invalidEntry.state(["!invalid"])
             self._invalidEntry = None
-        self._committedConfig = CommittedProcessingConfig.create(threshold, separation)
-        self._draftDirty = False
         previous_key = self._ownership.desired_key
         current_key = self._setDesiredKey()
         effective_changed = current_key != previous_key
         if effective_changed:
             self._cachedRightNp = None
             self.rightCanvas.delete("all")
-            self._updateApplyState()
-        if effective_changed and request_if_auto and self.autoPreviewVar.get():
+        self._updateApplyState()
+        needs_request = effective_changed or (
+            not self._ownership.can_apply and not self._ownership.pending
+        )
+        if needs_request and request_if_auto and self.autoPreviewVar.get():
             self._schedulePreview()
         elif effective_changed:
             self.statusVar.set("Parameters committed. Press Recompute.")
         return True
+
+    def _commitProcessingParams(self, request_if_auto=True, error_widget=None):
+        try:
+            threshold = self._currentThreshParams()
+            separation = self._currentSepParams()
+            candidate = CommittedProcessingConfig.create(threshold, separation)
+        except (tk.TclError, TypeError, ValueError) as exc:
+            self._markInvalidDraft(exc, error_widget)
+            return False
+        return self._installCommittedConfig(candidate, request_if_auto)
 
     def _onComputationChanged(self, *args):
         if self._updatingVars:
@@ -857,8 +885,9 @@ class ProcessingWindow(tk.Toplevel):
                 self.useDefaultsVar.set(False)
             finally:
                 self._updatingVars = False
-        event = args[0] if args and hasattr(args[0], "widget") else None
-        self._commitProcessingParams(error_widget=getattr(event, "widget", event))
+        source = args[0] if args else None
+        error_widget = getattr(source, "widget", source)
+        self._commitProcessingParams(error_widget=error_widget)
 
     def _onUseDefaultsChanged(self, *_args):
         if self._updatingVars or not self.useDefaultsVar.get():
@@ -880,7 +909,9 @@ class ProcessingWindow(tk.Toplevel):
                 self._ownership.invalidate()
             self._updateApplyState()
             self.statusVar.set("Auto preview off. Press Recompute.")
-        elif not self._ownership.can_apply:
+        elif self._draftDirty:
+            self._commitProcessingParams()
+        elif not self._ownership.can_apply and not self._ownership.pending:
             self._schedulePreview()
 
     def _restoreDefaultVars(self):
@@ -954,7 +985,7 @@ class ProcessingWindow(tk.Toplevel):
             accepted = self._ownership.accept(completion)
             if is_current and completion.error is not None:
                 self.statusVar.set(f"Preview failed: {completion.error}")
-            elif accepted:
+            elif accepted and not self._draftDirty:
                 self._renderAcceptedPreview()
                 self.statusVar.set("Preview ready.")
         self._updateApplyState()
@@ -1042,6 +1073,44 @@ class ProcessingWindow(tk.Toplevel):
         method = str(self._committedConfig.threshold_dict()["method"])
         self._openAdvancedFor(method)
 
+    def _advancedCandidate(self, values):
+        threshold = self._committedConfig.threshold_dict()
+        threshold.update(values)
+        return CommittedProcessingConfig.create(
+            threshold, self._committedConfig.separation_dict()
+        )
+
+    def _setThresholdControls(self, threshold):
+        variable_fields = (
+            (self.methodVar, "method"),
+            (self.polarityVar, "polarity"),
+            (self.useCLAHEVar, "useCLAHE"),
+            (self.claheClipVar, "claheClip"),
+            (self.claheTileVar, "claheTile"),
+            (self.medianKVar, "medianK"),
+            (self.gaussianKVar, "gaussianK"),
+            (self.applyOpenCloseVar, "applyOpenClose"),
+            (self.morphKVar, "morphK"),
+            (self.adaptiveBlockVar, "adaptiveBlock"),
+            (self.adaptiveCVar, "adaptiveC"),
+            (self.percentileVar, "percentile"),
+            (self.pickTolVar, "pickTolerance"),
+            (self.pickValueVar, "pickValue"),
+        )
+        self._updatingVars = True
+        try:
+            for variable, field in variable_fields:
+                if field in threshold:
+                    variable.set(threshold[field])
+            self.useDefaultsVar.set(False)
+        finally:
+            self._updatingVars = False
+
+    def _commitAdvancedValues(self, values):
+        candidate = self._advancedCandidate(values)
+        self._setThresholdControls(candidate.threshold_dict())
+        return self._installCommittedConfig(candidate)
+
     def _openAdvancedFor(self, method: str):
         dlg = tk.Toplevel(self)
         dlg.title(f"Advanced Settings – {method.capitalize()}")
@@ -1098,44 +1167,25 @@ class ProcessingWindow(tk.Toplevel):
             try:
                 values = {
                     "useCLAHE": bool(useCLAHEVar.get()),
-                    "claheClip": float(claheClipVar.get()),
-                    "claheTile": int(claheTileVar.get()),
-                    "medianK": int(medianKVar.get()),
-                    "gaussianK": int(gaussianKVar.get()),
+                    "claheClip": self._draftValue(claheClipVar, "claheClip"),
+                    "claheTile": self._draftValue(claheTileVar, "claheTile"),
+                    "medianK": self._draftValue(medianKVar, "medianK"),
+                    "gaussianK": self._draftValue(gaussianKVar, "gaussianK"),
                     "applyOpenClose": bool(applyOpenCloseVar.get()),
-                    "morphK": int(morphKVar.get()),
+                    "morphK": self._draftValue(morphKVar, "morphK"),
                 }
                 if method == "adaptive":
-                    values["adaptiveBlock"] = int(adaptiveBlockVar.get())
-                    values["adaptiveC"] = int(adaptiveCVar.get())
+                    values["adaptiveBlock"] = self._draftValue(adaptiveBlockVar, "adaptiveBlock")
+                    values["adaptiveC"] = self._draftValue(adaptiveCVar, "adaptiveC")
                 elif method == "percentile":
-                    values["percentile"] = float(percentileVar.get())
+                    values["percentile"] = self._draftValue(percentileVar, "percentile")
                 elif method == "pick":
-                    values["pickTolerance"] = int(pickTolVar.get())
+                    values["pickTolerance"] = self._draftValue(pickTolVar, "pickTolerance")
+                self._commitAdvancedValues(values)
             except (tk.TclError, TypeError, ValueError) as exc:
                 errorVar.set(f"Invalid value: {exc}")
                 return
-            self._updatingVars = True
-            try:
-                self.useCLAHEVar.set(values["useCLAHE"])
-                self.claheClipVar.set(values["claheClip"])
-                self.claheTileVar.set(values["claheTile"])
-                self.medianKVar.set(values["medianK"])
-                self.gaussianKVar.set(values["gaussianK"])
-                self.applyOpenCloseVar.set(values["applyOpenClose"])
-                self.morphKVar.set(values["morphK"])
-                if method == "adaptive":
-                    self.adaptiveBlockVar.set(values["adaptiveBlock"])
-                    self.adaptiveCVar.set(values["adaptiveC"])
-                elif method == "percentile":
-                    self.percentileVar.set(values["percentile"])
-                elif method == "pick":
-                    self.pickTolVar.set(values["pickTolerance"])
-                self.useDefaultsVar.set(False)
-            finally:
-                self._updatingVars = False
             dlg.destroy()
-            self._commitProcessingParams()
         def on_cancel():
             dlg.destroy()
 
