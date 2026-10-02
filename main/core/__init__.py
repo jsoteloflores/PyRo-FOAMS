@@ -20,6 +20,17 @@ from .distributions import (
     create_diameter_bin_spec,
     geometric_diameter_bin_spec,
 )
+from .nesting import (
+    NESTING_METHOD,
+    Nested2DDistribution,
+    NestingPlan,
+    NestingSegment,
+    NestingTransition,
+    NestingValidationError,
+    OverlapBinComparison,
+    TransitionOverlapDiagnostics,
+    nest_2d_distribution,
+)
 from .preprocessing import (
     applyCropBatch,
     clampRectToImage,
@@ -109,6 +120,16 @@ __all__ = [
     "create_diameter_bin_spec",
     "geometric_diameter_bin_spec",
     "calculate_2d_number_densities",
+    # manual magnification nesting
+    "NESTING_METHOD",
+    "NestingValidationError",
+    "NestingSegment",
+    "NestingPlan",
+    "NestingTransition",
+    "OverlapBinComparison",
+    "TransitionOverlapDiagnostics",
+    "Nested2DDistribution",
+    "nest_2d_distribution",
     # preprocessing
     "loadImage",
     "clampRectToImage",
