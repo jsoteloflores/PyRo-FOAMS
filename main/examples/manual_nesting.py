@@ -1,4 +1,8 @@
-"""Runnable headless example of explicit manual magnification nesting."""
+"""Runnable headless example of explicit manual magnification nesting.
+
+The pore diameters are assigned synthetic values. This demonstrates auditable
+nesting and is not a segmentation accuracy benchmark.
+"""
 
 from dataclasses import replace
 
@@ -38,6 +42,11 @@ def _group_image(image_id, image_index, group_id, width, diameters):
     return image, pores
 
 
+def _format_interval(bin_index, lower, upper, number_of_source_bins):
+    closing = "]" if bin_index == number_of_source_bins - 1 else ")"
+    return f"[{lower:g}, {upper:g}{closing}"
+
+
 def main():
     fine_diameters = [0.15] * 20 + [0.3] * 10 + [0.6] * 5 + [1.2] * 2
     coarse_diameters = [0.15] * 180 + [0.3] * 120 + [0.6] * 40 + [1.2] * 10
@@ -73,8 +82,11 @@ def main():
         composite.number_densities_per_mm2,
     ):
         index, lower, upper, group, count, area, density = row
+        interval = _format_interval(
+            index, lower, upper, len(composite.bin_spec.bins)
+        )
         print(
-            f"{index:>3} | [{lower:g}, {upper:g}] | {group:>6} | "
+            f"{index:>3} | {interval} | {group:>6} | "
             f"{count:>5} | {area:>18g} | {density:g}"
         )
 

@@ -10,6 +10,8 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.distributions import (
+    DETECTION_ELIGIBILITY_POLICY,
+    DiameterBin,
     DistributionDiagnostics,
     DistributionResult,
     Group2DDistribution,
@@ -23,6 +25,7 @@ from core.nesting import (
     nest_2d_distribution,
 )
 from core.sampling import create_image_sampling_record
+from examples.manual_nesting import _format_interval
 
 
 def make_source_image(
@@ -120,7 +123,8 @@ class TestManualMagnificationNesting(unittest.TestCase):
         )
 
     def test_worked_fixture_preserves_source_rows_and_transition_ownership(self):
-        nested = nest_2d_distribution(self.worked_result(), self.worked_plan())
+        source = self.worked_result()
+        nested = nest_2d_distribution(source, self.worked_plan())
 
         self.assertEqual(nested.counts, (20, 10, 40, 10))
         self.assertEqual(nested.eligible_areas_mm2, (1.0, 1.0, 10.0, 10.0))
@@ -130,6 +134,11 @@ class TestManualMagnificationNesting(unittest.TestCase):
         self.assertEqual(nested.transitions[0].edge_index, 2)
         self.assertEqual(nested.transitions[0].diameter_mm, 0.4)
         self.assertEqual(nested.method, NESTING_METHOD)
+        self.assertEqual(nested.density_unit, "mm^-2")
+        self.assertEqual(
+            nested.detection_eligibility_policy, DETECTION_ELIGIBILITY_POLICY
+        )
+        self.assertEqual(source.density_unit, "mm^-2")
 
         comparisons = nested.overlap_diagnostics[0].comparisons
         self.assertEqual(nested.overlap_diagnostics[0].common_supported_bin_count, 4)
@@ -358,6 +367,18 @@ class TestManualMagnificationNesting(unittest.TestCase):
         self.assertEqual(source.source_images, before_images)
         self.assertEqual(tuple(source.groups.items()), before_groups)
         self.assertEqual(nested.contributing_images[0], (("sample", "fine-image"),))
+        self.assertIsInstance(nested.bin_spec.edges_mm, tuple)
+        self.assertIsInstance(nested.bin_spec.bins, tuple)
+        self.assertIsInstance(nested.source_images, tuple)
+        self.assertIsInstance(nested.source_diagnostics.unsupported_by_image, tuple)
+        self.assertTrue(
+            all(isinstance(image.included_labels, tuple) for image in nested.source_images)
+        )
+
+    def test_example_interval_notation_uses_absolute_source_bin(self):
+        self.assertEqual(_format_interval(0, 0.1, 0.2, 4), "[0.1, 0.2)")
+        self.assertEqual(_format_interval(2, 0.4, 0.8, 4), "[0.4, 0.8)")
+        self.assertEqual(_format_interval(3, 0.8, 1.6, 4), "[0.8, 1.6]")
 
     def test_inconsistent_direct_source_data_fails_validation(self):
         source = self.worked_result()
@@ -401,6 +422,215 @@ class TestManualMagnificationNesting(unittest.TestCase):
             nest_2d_distribution(
                 replace(source, groups=()), self.worked_plan()
             )
+
+    def test_unsupported_scientific_metadata_fails_without_mutation(self):
+        source = self.worked_result()
+        cases = (
+            ("density_unit", ""),
+            ("density_unit", None),
+            ("density_unit", "unknown"),
+            ("density_unit", "um^-2"),
+            ("detection_eligibility_policy", ""),
+            ("detection_eligibility_policy", None),
+            ("detection_eligibility_policy", "unknown"),
+            ("detection_eligibility_policy", "center-bin coverage"),
+        )
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                malformed = replace(source, **{field: value})
+                with self.assertRaisesRegex(NestingValidationError, field):
+                    nest_2d_distribution(malformed, self.worked_plan())
+                self.assertEqual(getattr(malformed, field), value)
+
+    def test_mutable_or_malformed_grid_collections_fail(self):
+        source = self.worked_result()
+        malformed_specs = (
+            replace(source.bin_spec, edges_mm=list(source.bin_spec.edges_mm)),
+            replace(source.bin_spec, bins=list(source.bin_spec.bins)),
+            replace(source.bin_spec, bins=(None,) + source.bin_spec.bins[1:]),
+            replace(
+                source.bin_spec,
+                edges_mm=("0.1",) + source.bin_spec.edges_mm[1:],
+            ),
+            replace(
+                source.bin_spec,
+                bins=(
+                    DiameterBin("0.1", 0.2, 0.1, math.sqrt(0.02)),
+                ) + source.bin_spec.bins[1:],
+            ),
+        )
+        for bin_spec in malformed_specs:
+            with self.subTest(bin_spec=bin_spec), self.assertRaises(
+                NestingValidationError
+            ):
+                nest_2d_distribution(
+                    replace(source, bin_spec=bin_spec), self.worked_plan()
+                )
+
+    def test_mutable_diagnostics_and_image_label_collections_fail(self):
+        source = self.worked_result()
+        mutable_diagnostics = replace(
+            source.diagnostics, unsupported_by_image=[(0, 7)]
+        )
+        with self.assertRaisesRegex(NestingValidationError, "unsupported_by_image"):
+            nest_2d_distribution(
+                replace(source, diagnostics=mutable_diagnostics), self.worked_plan()
+            )
+
+        malformed_diagnostics = replace(
+            source.diagnostics, unsupported_by_image=((0, True),)
+        )
+        with self.assertRaisesRegex(NestingValidationError, "unsupported_by_image"):
+            nest_2d_distribution(
+                replace(source, diagnostics=malformed_diagnostics), self.worked_plan()
+            )
+
+        for field in ("included_labels", "omitted_labels"):
+            image = replace(source.source_images[0], **{field: [1]})
+            malformed = replace(
+                source, source_images=(image,) + source.source_images[1:]
+            )
+            with self.subTest(field=field), self.assertRaisesRegex(
+                NestingValidationError, field
+            ):
+                nest_2d_distribution(malformed, self.worked_plan())
+
+        duplicate_labels = replace(
+            source.source_images[0], included_labels=(1, 1)
+        )
+        with self.assertRaisesRegex(NestingValidationError, "duplicate labels"):
+            nest_2d_distribution(
+                replace(
+                    source,
+                    source_images=(duplicate_labels,) + source.source_images[1:],
+                ),
+                self.worked_plan(),
+            )
+
+    def test_supported_bin_requires_real_positive_source_support(self):
+        source = self.worked_result()
+        fine = source.groups[("sample", "fine")]
+        fabricated = replace(
+            fine,
+            eligible_image_counts=(0,) * 4,
+            contributing_images=((),) * 4,
+            eligible_areas_mm2=(1e-16,) * 4,
+            number_densities_per_mm2=tuple(count / 1e-16 for count in fine.counts),
+        )
+        groups = dict(source.groups)
+        groups[("sample", "fine")] = fabricated
+        malformed = replace(
+            source,
+            groups=MappingProxyType(groups),
+            source_images=(source.source_images[1],),
+        )
+        with self.assertRaisesRegex(NestingValidationError, "positive source support"):
+            nest_2d_distribution(malformed, self.worked_plan())
+
+    def test_zero_area_source_fails_even_when_group_total_is_positive(self):
+        labels = np.zeros((1, 1), dtype=np.int32)
+        tiny = create_image_sampling_record(
+            sample_id="sample",
+            image_id="tiny",
+            image_index=10,
+            magnification_group_id="fine",
+            label_map=labels,
+            calibration=1e-9,
+            calibration_unit="mm",
+            min_detectable_diameter=0.1,
+            max_reliable_diameter=1.6,
+        )
+        positive = make_source_image(11, "positive", "fine", 1.0)
+        hidden_zero = replace(tiny, analyzed_area_mm2=0.0)
+        group = make_group(
+            "sample", "fine", self.bins, (hidden_zero, positive), (0, 0, 0, 0)
+        )
+        source = make_result(self.bins, (group,), (hidden_zero, positive))
+        with self.assertRaisesRegex(NestingValidationError, "analyzed_area_mm2"):
+            nest_2d_distribution(
+                source,
+                NestingPlan("sample", 0, 1, (NestingSegment("fine", 0, 1),)),
+            )
+
+    def test_tiny_positive_area_is_valid_but_relative_mismatch_fails(self):
+        labels = np.zeros((1, 1), dtype=np.int32)
+        image = create_image_sampling_record(
+            sample_id="tiny",
+            image_id="tiny-image",
+            image_index=10,
+            magnification_group_id="tiny-group",
+            label_map=labels,
+            calibration=1e-9,
+            calibration_unit="mm",
+            min_detectable_diameter=0.1,
+            max_reliable_diameter=1.6,
+        )
+        group = make_group("tiny", "tiny-group", self.bins, (image,), (0, 0, 0, 0))
+        source = make_result(self.bins, (group,), (image,))
+        plan = NestingPlan("tiny", 0, 1, (NestingSegment("tiny-group", 0, 1),))
+
+        nested = nest_2d_distribution(source, plan)
+        self.assertEqual(nested.eligible_areas_mm2, (1e-18,))
+        self.assertEqual(nested.number_densities_per_mm2, (0.0,))
+
+        mismatched = replace(
+            group,
+            eligible_areas_mm2=(1.01e-18,) + group.eligible_areas_mm2[1:],
+        )
+        with self.assertRaisesRegex(NestingValidationError, "eligible area"):
+            nest_2d_distribution(
+                make_result(self.bins, (mismatched,), (image,)), plan
+            )
+
+    def test_source_area_accumulation_overflow_is_contextual(self):
+        labels = np.zeros((1, 1), dtype=np.int32)
+        images = tuple(
+            create_image_sampling_record(
+                sample_id="huge",
+                image_id=f"huge-{index}",
+                image_index=20 + index,
+                magnification_group_id="huge-group",
+                label_map=labels,
+                calibration=1e154,
+                calibration_unit="mm",
+                min_detectable_diameter=0.1,
+                max_reliable_diameter=1.6,
+            )
+            for index in range(2)
+        )
+        contributors = tuple((image.sample_id, image.image_id) for image in images)
+        group = Group2DDistribution(
+            sample_id="huge",
+            magnification_group_id="huge-group",
+            counts=(0, 0, 0, 0),
+            eligible_image_counts=(2, 2, 2, 2),
+            eligible_areas_mm2=(1e308, 1e308, 1e308, 1e308),
+            number_densities_per_mm2=(0.0, 0.0, 0.0, 0.0),
+            supported=(True, True, True, True),
+            contributing_images=(contributors,) * 4,
+        )
+        source = make_result(self.bins, (group,), images)
+        plan = NestingPlan(
+            "huge", 0, 1, (NestingSegment("huge-group", 0, 1),)
+        )
+        with self.assertRaisesRegex(
+            NestingValidationError, "bin 0.*accumulation overflowed"
+        ):
+            nest_2d_distribution(source, plan)
+
+    def test_malformed_group_mapping_keys_fail_with_domain_error(self):
+        source = self.worked_result()
+        malformed_keys = (None, ("sample",), "sample:fine", ("sample", "fine", "extra"))
+        for key in malformed_keys:
+            groups = dict(source.groups)
+            groups[key] = groups.pop(("sample", "fine"))
+            with self.subTest(key=key), self.assertRaisesRegex(
+                NestingValidationError, "group key"
+            ):
+                nest_2d_distribution(
+                    replace(source, groups=MappingProxyType(groups)),
+                    self.worked_plan(),
+                )
 
     def test_repeated_calls_and_reordered_group_mapping_are_deterministic(self):
         source = self.worked_result()

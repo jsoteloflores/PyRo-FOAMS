@@ -16,8 +16,10 @@ from typing import Tuple
 import numpy as np
 
 from .distributions import (
+    DETECTION_ELIGIBILITY_POLICY,
     INTERVAL_CONVENTION,
     LENGTH_UNIT,
+    DiameterBin,
     DiameterBinSpec,
     DistributionDiagnostics,
     DistributionResult,
@@ -29,6 +31,8 @@ from .sampling import ImageSamplingRecord
 
 DENSITY_REL_TOLERANCE = 1e-12
 DENSITY_ABS_TOLERANCE = 1e-15
+AREA_REL_TOLERANCE = 1e-12
+AREA_ABS_TOLERANCE = 0.0
 NESTING_METHOD = "manual_group_selection_v1"
 
 
@@ -148,9 +152,29 @@ def _index(value: object, field: str, number_of_bins: int) -> int:
     return result
 
 
+def _is_real_number(value: object) -> bool:
+    return isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
+        value, (bool, np.bool_)
+    )
+
+
 def _validate_bin_spec(bin_spec: object) -> DiameterBinSpec:
     if not isinstance(bin_spec, DiameterBinSpec):
         raise NestingValidationError("distribution bin_spec must be a DiameterBinSpec")
+    if not isinstance(bin_spec.edges_mm, tuple):
+        raise NestingValidationError("bin_spec.edges_mm must be an immutable tuple")
+    if not isinstance(bin_spec.bins, tuple):
+        raise NestingValidationError("bin_spec.bins must be an immutable tuple")
+    for index, edge in enumerate(bin_spec.edges_mm):
+        if not _is_real_number(edge) or not math.isfinite(edge) or edge <= 0:
+            raise NestingValidationError(
+                f"bin_spec.edges_mm[{index}] must be a positive finite real number"
+            )
+    for index, bin_ in enumerate(bin_spec.bins):
+        if not isinstance(bin_, DiameterBin):
+            raise NestingValidationError(
+                f"bin_spec.bins[{index}] must be a DiameterBin"
+            )
     try:
         expected = create_diameter_bin_spec(bin_spec.edges_mm)
     except ValueError as exc:
@@ -244,6 +268,33 @@ def _validate_source_image(image: object, sample_id: str, group_id: str) -> None
             f"Source provenance for sample {sample_id!r}, group {group_id!r} "
             "contains a non-image record"
         )
+    if (
+        not _is_real_number(image.analyzed_area_mm2)
+        or not math.isfinite(image.analyzed_area_mm2)
+        or image.analyzed_area_mm2 <= 0
+    ):
+        raise NestingValidationError(
+            f"Source image {image.image_id!r} analyzed_area_mm2 must be positive and finite"
+        )
+    for field in ("included_labels", "omitted_labels"):
+        labels = getattr(image, field)
+        if not isinstance(labels, tuple):
+            raise NestingValidationError(
+                f"Source image {image.image_id!r} {field} must be an immutable tuple"
+            )
+        if any(
+            not isinstance(label, (int, np.integer))
+            or isinstance(label, (bool, np.bool_))
+            or label <= 0
+            for label in labels
+        ):
+            raise NestingValidationError(
+                f"Source image {image.image_id!r} {field} must contain positive integer labels"
+            )
+        if len(set(labels)) != len(labels):
+            raise NestingValidationError(
+                f"Source image {image.image_id!r} {field} contains duplicate labels"
+            )
     try:
         image.__post_init__()
     except (TypeError, ValueError) as exc:
@@ -293,6 +344,53 @@ def _validate_source_images(source_images: Tuple[ImageSamplingRecord, ...]) -> N
             )
         seen_indices.add(image.image_index)
         seen_identities.add(identity)
+
+
+def _validate_diagnostics(diagnostics: object) -> DistributionDiagnostics:
+    if not isinstance(diagnostics, DistributionDiagnostics):
+        raise NestingValidationError(
+            "distribution diagnostics must be DistributionDiagnostics"
+        )
+    for field in (
+        "excluded_border",
+        "below_grid",
+        "above_grid",
+        "unsupported_by_image",
+        "omitted_domain",
+    ):
+        identities = getattr(diagnostics, field)
+        if not isinstance(identities, tuple):
+            raise NestingValidationError(
+                f"distribution diagnostics {field} must be an immutable tuple"
+            )
+        for position, identity in enumerate(identities):
+            if (
+                not isinstance(identity, tuple)
+                or len(identity) != 2
+                or any(
+                    not isinstance(value, (int, np.integer))
+                    or isinstance(value, (bool, np.bool_))
+                    for value in identity
+                )
+            ):
+                raise NestingValidationError(
+                    f"distribution diagnostics {field}[{position}] must be a "
+                    "two-integer pore identity"
+                )
+    return diagnostics
+
+
+def _validate_group_keys(groups: Mapping) -> None:
+    for key in groups:
+        if (
+            not isinstance(key, tuple)
+            or len(key) != 2
+            or any(not isinstance(value, str) or not value.strip() for value in key)
+        ):
+            raise NestingValidationError(
+                f"distribution group key {key!r} must be a two-string "
+                "(sample_id, magnification_group_id) tuple"
+            )
 
 
 def _validate_group(
@@ -399,23 +497,33 @@ def _validate_group(
             raise NestingValidationError(
                 f"{prefix} contributors do not match source-image eligibility"
             )
-        expected_area = math.fsum(
-            image.analyzed_area_mm2 for image in expected_images
-        )
-        area_is_number = isinstance(area, (int, float, np.integer, np.floating)) and not isinstance(
-            area, (bool, np.bool_)
-        )
-        density_is_number = isinstance(
-            density, (int, float, np.integer, np.floating)
-        ) and not isinstance(density, (bool, np.bool_))
+        try:
+            expected_area = math.fsum(
+                image.analyzed_area_mm2 for image in expected_images
+            )
+        except OverflowError as exc:
+            raise NestingValidationError(
+                f"{prefix} source contributor area accumulation overflowed"
+            ) from exc
+        area_is_number = _is_real_number(area)
+        density_is_number = _is_real_number(density)
         if bool(supported):
+            if (
+                not expected_images
+                or int(eligible_count) <= 0
+                or not math.isfinite(expected_area)
+                or expected_area <= 0
+            ):
+                raise NestingValidationError(
+                    f"{prefix} supported bin requires positive source support"
+                )
             if not area_is_number or not math.isfinite(area) or area <= 0:
                 raise NestingValidationError(f"{prefix} supported area must be positive and finite")
             if not math.isclose(
                 area,
                 expected_area,
-                rel_tol=DENSITY_REL_TOLERANCE,
-                abs_tol=DENSITY_ABS_TOLERANCE,
+                rel_tol=AREA_REL_TOLERANCE,
+                abs_tol=AREA_ABS_TOLERANCE,
             ):
                 raise NestingValidationError(
                     f"{prefix} eligible area does not match source contributors"
@@ -534,27 +642,22 @@ def nest_2d_distribution(
     validated_plan = _validate_plan(plan, len(bin_spec.bins))
     if not isinstance(distribution_result.groups, Mapping):
         raise NestingValidationError("distribution groups must be a mapping")
+    _validate_group_keys(distribution_result.groups)
     if not isinstance(distribution_result.source_images, tuple):
         raise NestingValidationError("distribution source_images must be a tuple")
     _validate_source_images(distribution_result.source_images)
-    if not isinstance(distribution_result.diagnostics, DistributionDiagnostics):
-        raise NestingValidationError(
-            "distribution diagnostics must be DistributionDiagnostics"
-        )
+    _validate_diagnostics(distribution_result.diagnostics)
     if not isinstance(distribution_result.exclude_border, bool):
         raise NestingValidationError("distribution exclude_border must be Boolean")
-    if (
-        not isinstance(distribution_result.detection_eligibility_policy, str)
-        or not distribution_result.detection_eligibility_policy.strip()
-    ):
+    if distribution_result.detection_eligibility_policy != DETECTION_ELIGIBILITY_POLICY:
         raise NestingValidationError(
-            "distribution detection_eligibility_policy must be non-empty"
+            "distribution detection_eligibility_policy must be "
+            f"{DETECTION_ELIGIBILITY_POLICY!r}"
         )
-    if (
-        not isinstance(distribution_result.density_unit, str)
-        or not distribution_result.density_unit.strip()
-    ):
-        raise NestingValidationError("distribution density_unit must be non-empty")
+    if distribution_result.density_unit != "mm^-2":
+        raise NestingValidationError(
+            "distribution density_unit must be 'mm^-2'"
+        )
 
     selected_groups = {}
     for segment_index, segment in enumerate(validated_plan.segments):
