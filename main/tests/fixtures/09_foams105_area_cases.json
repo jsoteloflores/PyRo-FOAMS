@@ -1,0 +1,270 @@
+{
+  "origin": "Hand-authored analytical expectations from documented bwarea weights and FOAMS project.m formulas; not MATLAB-generated",
+  "source_repo": "jsoteloflores/FOAMS-1.0.5",
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "weighted_area_cases": [
+    {
+      "id": "empty",
+      "mask": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "expected_weighted_area_px": 0
+    },
+    {
+      "id": "one_pixel_at_frame",
+      "mask": [
+        [
+          1
+        ]
+      ],
+      "expected_weighted_area_px": 1
+    },
+    {
+      "id": "adjacent_pair",
+      "mask": [
+        [
+          1,
+          1
+        ]
+      ],
+      "expected_weighted_area_px": 2
+    },
+    {
+      "id": "diagonal_pair",
+      "mask": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "expected_weighted_area_px": 2.25
+    },
+    {
+      "id": "three_pixel_L",
+      "mask": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "expected_weighted_area_px": 3.125
+    },
+    {
+      "id": "filled_square",
+      "mask": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "expected_weighted_area_px": 4
+    }
+  ],
+  "area_cases": [
+    {
+      "id": "border_weight_and_one_exclusion",
+      "image": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "pore_value": 1,
+      "scale_px_per_mm": 2,
+      "excluded_phase_values": [
+        2,
+        null,
+        null,
+        null
+      ],
+      "excluded_min_area_mm2": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "expected_full_area_mm2": 12.25,
+      "expected_border_weighted_area_px": 2.25,
+      "expected_border_area_mm2": 0.5625,
+      "expected_excluded_area_mm2_by_slot": [
+        0.25,
+        0,
+        0,
+        0
+      ],
+      "expected_area2_mm2": 11.6875,
+      "expected_area1_mm2": 11.4375
+    },
+    {
+      "id": "strict_threshold_equality_not_selected",
+      "image": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "pore_value": 1,
+      "scale_px_per_mm": 2,
+      "excluded_phase_values": [
+        2,
+        null,
+        null,
+        null
+      ],
+      "excluded_min_area_mm2": [
+        0.25,
+        0,
+        0,
+        0
+      ],
+      "expected_full_area_mm2": 12.25,
+      "expected_border_weighted_area_px": 2.25,
+      "expected_border_area_mm2": 0.5625,
+      "expected_excluded_area_mm2_by_slot": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "expected_area2_mm2": 11.6875,
+      "expected_area1_mm2": 11.6875
+    }
+  ]
+}
