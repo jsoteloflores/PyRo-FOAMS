@@ -12,7 +12,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | Stage | Status | Evidence required or retained |
 |---|---|---|
 | 1. Post-nesting N_A-to-N_V conversion | Brief 06 accepted against bundled Calc_out fixture | All 29 rows, source alpha order, heights, duplicate metadata, validation, and smallest-class exception tested |
-| 2. Measurement, area, and histogram conventions | Pending | Connectivity, border/phase area, rounded labels, histc ownership, and trimming comparisons |
+| 2. Measurement, area, and histogram conventions | Brief 07 accepted for supplied-diameter size-class preparation; measurement and corrected area pending | 45-label recurrence/profile, threshold primitive, all 180 histogram cells, trimming, conservation, and caller-supplied area division tested |
 | 3. Automatic magnification cutoffs | Pending | Source algorithm, ties, zeros, no-overlap behavior, and selected-bin comparisons |
 | 4. 2D vesicularity and phase accounting | Pending | Multiscale area integration and excluded-phase denominators |
 | 5. Volume distributions and normalization | Pending | Original normalization modes and cumulative volume outputs |
@@ -25,11 +25,13 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 ## Current verified boundary
 
 The FOAMS 1.0.5 post-nesting `N_A`-to-`N_V` converter is verified against the
-bundled 29-row `Calc_out.xls` extraction. The artifact records the workbook
-hash and pinned source version. MATLAB was not executed as part of this test.
-The converter does not establish source-compatible image measurements,
-histogram preparation, area denominators, nesting selection, or full workflow
-parity.
+bundled 29-row `Calc_out.xls` extraction. Size-class preparation is separately
+verified for source-derived analytical boundaries and all 180 saved-workbook
+count cells from 2,988 already-thresholded observations. The artifacts record
+workbook hashes and the pinned source version. MATLAB was not executed as part
+of these tests. The current boundary does not establish source-compatible
+image measurements, corrected-area calculation, nesting selection, or full
+workflow parity.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.

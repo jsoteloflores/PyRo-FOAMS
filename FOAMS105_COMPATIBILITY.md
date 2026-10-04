@@ -40,8 +40,9 @@ workbook rows. Tests compare every candidate value with relative tolerance
 run Excel or MATLAB.
 
 This verifies only the FOAMS 1.0.5 **post-nesting conversion stage**. It does
-not establish complete image-to-output compatibility. Original histogram edge
-ownership, rounded-label preparation, area corrections, measurements,
+not establish complete image-to-output compatibility. Supplied-measurement
+histogram ownership and rounded-label preparation are now documented
+separately in `FOAMS105_SIZE_CLASSES.md`; area corrections, measurements,
 automatic transitions, vesicularity, volume normalization, shape outputs, UI,
 and exports remain separate milestones. The modern
 `spherical_upper_edge_triangular_v1` solver remains an independent API.
