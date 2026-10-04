@@ -20,6 +20,21 @@ from .distributions import (
     create_diameter_bin_spec,
     geometric_diameter_bin_spec,
 )
+from .legacy_foams import (
+    FOAMS105_COEFFICIENT_LOG10_STEP,
+    FOAMS105_HEIGHT_POLICY,
+    FOAMS105_MAX_CLASSES,
+    FOAMS105_METHOD,
+    FOAMS105_SCOPE,
+    FOAMS105_SMALLEST_CLASS_POLICY,
+    FOAMS105_SOURCE_COMMIT,
+    FOAMS105_SOURCE_FILE,
+    FOAMS105_SOURCE_REPOSITORY,
+    Foams105ConversionResult,
+    Foams105NumericalError,
+    Foams105ValidationError,
+    convert_foams105_nv,
+)
 from .nesting import (
     NESTING_METHOD,
     Nested2DDistribution,
@@ -136,6 +151,20 @@ __all__ = [
     "create_diameter_bin_spec",
     "geometric_diameter_bin_spec",
     "calculate_2d_number_densities",
+    # FOAMS 1.0.5 post-nesting conversion replay
+    "FOAMS105_METHOD",
+    "FOAMS105_SOURCE_REPOSITORY",
+    "FOAMS105_SOURCE_COMMIT",
+    "FOAMS105_SOURCE_FILE",
+    "FOAMS105_SMALLEST_CLASS_POLICY",
+    "FOAMS105_HEIGHT_POLICY",
+    "FOAMS105_SCOPE",
+    "FOAMS105_COEFFICIENT_LOG10_STEP",
+    "FOAMS105_MAX_CLASSES",
+    "Foams105ValidationError",
+    "Foams105NumericalError",
+    "Foams105ConversionResult",
+    "convert_foams105_nv",
     # manual magnification nesting
     "NESTING_METHOD",
     "NestingValidationError",
