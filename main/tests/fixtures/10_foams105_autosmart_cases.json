@@ -1,0 +1,304 @@
+{
+  "origin": "Hand-designed analytical cases derived from defaultbinrange.m; not saved MATLAB outputs",
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "index_convention": "zero-based, inclusive ranges in ascending calibration order",
+  "cases": [
+    {
+      "id": "two_groups_negative_tie_last_occurrence",
+      "labels_mm": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scales_px_per_mm": [
+        1,
+        2
+      ],
+      "na_per_mm2": [
+        [
+          0,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2.718281828459045,
+          0.36787944117144233,
+          0.36787944117144233,
+          0,
+          0
+        ]
+      ],
+      "expected_transition_indices": [
+        3
+      ],
+      "expected_ranges": [
+        [
+          4,
+          4
+        ],
+        [
+          0,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "exact_equal_overlap_is_not_candidate",
+      "labels_mm": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "scales_px_per_mm": [
+        1,
+        2
+      ],
+      "na_per_mm2": [
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          1,
+          4,
+          8
+        ]
+      ],
+      "expected_transition_indices": [
+        0
+      ],
+      "expected_ranges": [
+        [
+          1,
+          3
+        ],
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "three_groups",
+      "labels_mm": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scales_px_per_mm": [
+        1,
+        2,
+        3
+      ],
+      "na_per_mm2": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          8,
+          4,
+          8,
+          2,
+          4,
+          8
+        ],
+        [
+          128,
+          8,
+          128,
+          32,
+          64,
+          128
+        ]
+      ],
+      "expected_transition_indices": [
+        3,
+        1
+      ],
+      "expected_ranges": [
+        [
+          4,
+          5
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "four_groups",
+      "labels_mm": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scales_px_per_mm": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "na_per_mm2": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          8,
+          4,
+          8,
+          2,
+          4,
+          8
+        ],
+        [
+          128,
+          8,
+          128,
+          32,
+          64,
+          128
+        ],
+        [
+          256,
+          128,
+          2048,
+          512,
+          1024,
+          2048
+        ]
+      ],
+      "expected_transition_indices": [
+        3,
+        1,
+        0
+      ],
+      "expected_ranges": [
+        [
+          4,
+          5
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "one_group",
+      "labels_mm": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "scales_px_per_mm": [
+        1
+      ],
+      "na_per_mm2": [
+        [
+          0,
+          2,
+          0,
+          3
+        ]
+      ],
+      "expected_transition_indices": [],
+      "expected_ranges": [
+        [
+          1,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "all_equal_overlap_undefined",
+      "labels_mm": [
+        1,
+        2,
+        3
+      ],
+      "scales_px_per_mm": [
+        1,
+        2
+      ],
+      "na_per_mm2": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "expected_error": "no_nonzero_log_difference"
+    },
+    {
+      "id": "no_positive_overlap",
+      "labels_mm": [
+        1,
+        2,
+        3
+      ],
+      "scales_px_per_mm": [
+        1,
+        2
+      ],
+      "na_per_mm2": [
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "expected_error": "no_positive_overlap"
+    }
+  ]
+}

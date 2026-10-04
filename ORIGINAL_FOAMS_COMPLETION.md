@@ -12,8 +12,8 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | Stage | Status | Evidence required or retained |
 |---|---|---|
 | 1. Post-nesting N_A-to-N_V conversion | Brief 06 accepted against bundled Calc_out fixture | All 29 rows, source alpha order, heights, duplicate metadata, validation, and smallest-class exception tested |
-| 2. Measurement, area, and histogram conventions | Briefs 07 and 08 accepted; Brief 09 weighted border and corrected-area accounting implemented pending review; shape measurements pending | 45-label preparation, all 180 histogram cells, exact mask topology, calibrated component geometry, six weighted-area cases, strict four-slot exclusion thresholds, signed per-image denominators, and explicit compatible-group sums tested |
-| 3. Automatic magnification cutoffs | Pending | Source algorithm, ties, zeros, no-overlap behavior, and selected-bin comparisons |
+| 2. Measurement, area, and histogram conventions | Briefs 07, 08, and 09 accepted; shape measurements pending | 45-label preparation, all 180 histogram cells, exact mask topology, calibrated component geometry, six weighted-area cases, strict four-slot exclusion thresholds, signed per-image denominators, and explicit compatible-group sums tested |
+| 3. Automatic magnification cutoffs | Brief 10 AutoSmart suggestions implemented pending review; application and concatenation pending | Signed log-density transitions, excluded zeros, negative sign ties, last-occurrence ties, independent adjacent pairs, source-specific one-to-four-group ranges, and typed undefined-case diagnostics tested |
 | 4. 2D vesicularity and phase accounting | Pending | Multiscale area integration and excluded-phase denominators |
 | 5. Volume distributions and normalization | Pending | Original normalization modes and cumulative volume outputs |
 | 6. Density summaries and plotting quantities | Pending | NV/NVcorr, per-width density, cumulative counts, and logarithms |
@@ -35,6 +35,8 @@ of these tests. The current boundary does not establish original-image parity,
 shape-property equivalence, vesicularity, nesting selection, or full workflow
 parity. Corrected-area calculations are implemented from the measured masks
 and components, with signed nonpositive denominators retained as diagnostics.
+AutoSmart default cutoff suggestions are implemented separately, but their
+source-style selection and concatenation quirks are not yet replayed.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
