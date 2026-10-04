@@ -19,6 +19,7 @@ from core.legacy_foams import (
     convert_foams105_nv,
 )
 from core.reconstruction import RECONSTRUCTION_METHOD
+from examples.foams105_compatibility import _reference_errors
 
 FIXTURE_PATH = os.path.join(
     os.path.dirname(__file__), "fixtures", "06_foams105_nv_reference.json"
@@ -35,12 +36,18 @@ class TestFoams105ReferenceFixture(unittest.TestCase):
         )
 
     def test_all_29_original_workbook_rows_match_relative_tolerance(self):
+        labels = self.fixture["bin_labels_mm"]
+        densities = self.fixture["na_per_mm2"]
         expected = self.fixture["expected_nv_per_mm3"]
+        candidate = self.result.signed_nv_per_mm3
+        self.assertEqual(len(labels), 29)
+        self.assertEqual(len(densities), 29)
         self.assertEqual(len(expected), 29)
+        self.assertEqual(len(candidate), 29)
         errors = []
         relative_errors = []
         for index, (candidate, reference) in enumerate(
-            zip(self.result.signed_nv_per_mm3, expected)
+            zip(candidate, expected)
         ):
             error = abs(candidate - reference)
             errors.append(error)
@@ -50,14 +57,21 @@ class TestFoams105ReferenceFixture(unittest.TestCase):
                 1e-12 * abs(reference),
                 f"Workbook row {index} exceeds relative tolerance",
             )
-        self.assertEqual(errors.index(max(errors)), 0)
         self.assertLessEqual(max(relative_errors), 1e-12)
 
-    def test_reference_provenance_and_duplicate_transition_label_are_retained(self):
+    def test_reference_provenance_and_duplicate_label_rows_are_retained(self):
         self.assertEqual(
             self.result.bin_labels_mm, tuple(self.fixture["bin_labels_mm"])
         )
         self.assertEqual(self.result.bin_labels_mm[14:16], (0.15132, 0.15132))
+        self.assertEqual(
+            self.result.adjacent_duplicate_label_index_pairs, ((14, 15),)
+        )
+        self.assertNotEqual(self.fixture["na_per_mm2"][14], self.fixture["na_per_mm2"][15])
+        self.assertNotEqual(
+            self.fixture["expected_nv_per_mm3"][14],
+            self.fixture["expected_nv_per_mm3"][15],
+        )
         self.assertEqual(self.result.na_per_mm2, tuple(self.fixture["na_per_mm2"]))
         self.assertEqual(self.result.method, FOAMS105_METHOD)
         self.assertEqual(self.result.scope, FOAMS105_SCOPE)
@@ -182,8 +196,23 @@ class TestFoams105ConversionArithmetic(unittest.TestCase):
         self.assertEqual(labels, original_labels)
         self.assertEqual(densities, original_densities)
         self.assertIsInstance(first.bin_labels_mm, tuple)
+        self.assertIsInstance(first.adjacent_duplicate_label_index_pairs, tuple)
+        self.assertEqual(first.adjacent_duplicate_label_index_pairs, ((1, 2),))
+        self.assertEqual(first.mean_projected_heights_mm[2], 2.0)
         with self.assertRaises(FrozenInstanceError):
             first.method = "changed"
+
+    def test_adjacent_duplicate_metadata_covers_runs_and_empty_cases(self):
+        singleton = convert_foams105_nv((1.0,), (1.0,))
+        increasing = convert_foams105_nv((1.0, 2.0, 3.0), (1.0, 1.0, 1.0))
+        pair = convert_foams105_nv((1.0, 2.0, 2.0, 4.0), (1.0, 1.0, 1.0, 1.0))
+        run = convert_foams105_nv((1.0, 2.0, 2.0, 2.0), (1.0, 1.0, 1.0, 1.0))
+        self.assertEqual(singleton.adjacent_duplicate_label_index_pairs, ())
+        self.assertEqual(increasing.adjacent_duplicate_label_index_pairs, ())
+        self.assertEqual(pair.adjacent_duplicate_label_index_pairs, ((1, 2),))
+        self.assertEqual(
+            run.adjacent_duplicate_label_index_pairs, ((1, 2), (2, 3))
+        )
 
     def test_modern_method_identifier_is_unchanged(self):
         self.assertEqual(RECONSTRUCTION_METHOD, "spherical_upper_edge_triangular_v1")
@@ -236,6 +265,26 @@ class TestFoams105Validation(unittest.TestCase):
     def test_numerical_overflow_fails_contextually(self):
         with self.assertRaisesRegex(Foams105NumericalError, "index 0"):
             convert_foams105_nv((1.0,), (1e308,))
+
+    def test_oversized_integer_conversion_failures_are_contextual(self):
+        cases = (
+            ((10**400,), (1.0,), "bin_labels_mm\\[0\\]"),
+            ((1.0,), (10**400,), "na_per_mm2\\[0\\]"),
+        )
+        for labels, densities, field_pattern in cases:
+            with self.subTest(field=field_pattern), self.assertRaisesRegex(
+                Foams105ValidationError,
+                field_pattern,
+            ) as caught:
+                convert_foams105_nv(labels, densities)
+            self.assertIn("finite float64", str(caught.exception))
+
+    def test_reference_comparison_rejects_truncation_and_zero_mismatch(self):
+        with self.assertRaisesRegex(ValueError, "length"):
+            _reference_errors((1.0,), (1.0, 2.0))
+        self.assertEqual(_reference_errors((0.0,), (0.0,)), ((0.0,), (0.0,)))
+        with self.assertRaisesRegex(ValueError, "row 0"):
+            _reference_errors((1e-300,), (0.0,))
 
 
 if __name__ == "__main__":

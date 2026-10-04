@@ -4,7 +4,8 @@ This module reproduces the conversion arithmetic in ``analysis.m`` from the
 pinned original source. It does not reproduce original histogram preparation,
 area correction, automatic nesting, measurements, or the complete workflow.
 Repeated adjacent labels are retained because they occur in the authoritative
-nested workbook fixture; descending labels remain invalid.
+workbook fixture; their acquisition cause has not been reconstructed.
+Descending labels remain invalid.
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ class Foams105ConversionResult:
     larger_contributions_per_mm2: Tuple[float, ...]
     signed_nv_per_mm3: Tuple[float, ...]
     negative_indices: Tuple[int, ...]
+    adjacent_duplicate_label_index_pairs: Tuple[Tuple[int, int], ...]
     method: str = FOAMS105_METHOD
     source_repository: str = FOAMS105_SOURCE_REPOSITORY
     source_commit: str = FOAMS105_SOURCE_COMMIT
@@ -76,7 +78,12 @@ def _numeric_tuple(values: object, field: str) -> Tuple[float, ...]:
             raise Foams105ValidationError(
                 f"{field}[{index}] must be a finite real scalar"
             )
-        numeric = float(value)
+        try:
+            numeric = float(value)
+        except (OverflowError, ValueError) as exc:
+            raise Foams105ValidationError(
+                f"{field}[{index}] must be representable as a finite float64"
+            ) from exc
         if not math.isfinite(numeric):
             raise Foams105ValidationError(f"{field}[{index}] must be finite")
         converted.append(numeric)
@@ -163,8 +170,8 @@ def convert_foams105_nv(
     """Replay the FOAMS 1.0.5 post-nesting conversion for supplied labels.
 
     Labels must be positive and nondecreasing. Equal adjacent labels are kept
-    because rounded labels can repeat at original magnification transitions.
-    This function does not certify complete original-workflow equivalence.
+    and reported without assigning an acquisition cause. This function does
+    not certify complete original-workflow equivalence.
     """
     if length_unit != "mm":
         raise Foams105ValidationError("length_unit must be 'mm'")
@@ -238,5 +245,10 @@ def convert_foams105_nv(
         signed_nv_per_mm3=signed_values,
         negative_indices=tuple(
             index for index, value in enumerate(signed_values) if value < 0.0
+        ),
+        adjacent_duplicate_label_index_pairs=tuple(
+            (index - 1, index)
+            for index in range(1, len(labels))
+            if labels[index - 1] == labels[index]
         ),
     )

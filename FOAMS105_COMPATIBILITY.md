@@ -7,14 +7,17 @@ post-nesting `N_A`-to-`N_V` conversion in `analysis.m` from
 
 The function accepts one to 45 already nested original-style labels in mm and
 bin-integrated `N_A` in mm^-2. Labels must be finite, positive, and
-nondecreasing. Equal adjacent labels are retained because the pinned workbook
-contains a repeated rounded label at a magnification transition. Descending
-labels are rejected. Optional `length_unit` and `input_density_unit` arguments
+nondecreasing. The pinned workbook contains a repeated label, and the original
+nesting code permits repeated labels through concatenation and inclusive
+selection. The workbook's acquisition settings have not been reconstructed,
+so the cause of its repeated pair is not established. Descending labels are
+rejected. Optional `length_unit` and `input_density_unit` arguments
 must remain `mm` and `mm^-2`; the converter never guesses units.
 
 The immutable result includes the source probability sequence, alpha
 coefficients, cube-volume midpoint heights, larger-class contributions, signed
-`N_V` in mm^-3, negative indices, and pinned source provenance. Its smallest
+`N_V` in mm^-3, negative indices, adjacent duplicate-label index pairs, and
+pinned source provenance. Its smallest
 selected class deliberately uses
 `legacy_no_larger_class_subtraction`, matching this source version rather than
 repairing that behavior.

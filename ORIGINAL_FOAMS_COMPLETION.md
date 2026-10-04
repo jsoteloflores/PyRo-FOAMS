@@ -11,7 +11,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 
 | Stage | Status | Evidence required or retained |
 |---|---|---|
-| 1. Post-nesting N_A-to-N_V conversion | Implemented and locally verified against bundled Calc_out fixture | All 29 rows, source alpha order, heights, and smallest-class exception tested |
+| 1. Post-nesting N_A-to-N_V conversion | Brief 06 accepted against bundled Calc_out fixture | All 29 rows, source alpha order, heights, duplicate metadata, validation, and smallest-class exception tested |
 | 2. Measurement, area, and histogram conventions | Pending | Connectivity, border/phase area, rounded labels, histc ownership, and trimming comparisons |
 | 3. Automatic magnification cutoffs | Pending | Source algorithm, ties, zeros, no-overlap behavior, and selected-bin comparisons |
 | 4. 2D vesicularity and phase accounting | Pending | Multiscale area integration and excluded-phase denominators |
