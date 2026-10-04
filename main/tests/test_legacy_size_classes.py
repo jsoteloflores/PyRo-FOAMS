@@ -15,6 +15,9 @@ from core.legacy_size_classes import (
     FOAMS105_HISTOGRAM_METHOD,
     FOAMS105_LABEL_METHOD,
     FOAMS105_ROUNDING_VERIFICATION,
+    FOAMS105_SIZE_SOURCE_COMMIT,
+    FOAMS105_SIZE_SOURCE_FILE,
+    FOAMS105_SIZE_SOURCE_REPOSITORY,
     Foams105SizeClassNumericalError,
     Foams105SizeClassValidationError,
     _round_nonnegative_5_decimals,
@@ -113,6 +116,7 @@ class TestFoams105LabelPreparation(unittest.TestCase):
     def test_rounding_preserves_and_reports_zero_and_duplicate_labels(self):
         result = build_foams105_bin_labels(1e-320, (1.0,))
         self.assertEqual(len(result.bin_labels_mm), 45)
+        self.assertTrue(all(value > 0.0 for value in result.raw_bin_labels_mm))
         self.assertEqual(result.zero_label_indices, tuple(range(45)))
         self.assertEqual(
             result.adjacent_duplicate_label_index_pairs,
@@ -137,6 +141,12 @@ class TestFoams105LabelPreparation(unittest.TestCase):
             build_foams105_bin_labels(1e308, (1.0,))
         with self.assertRaisesRegex(Foams105SizeClassNumericalError, "rounding scale"):
             build_foams105_bin_labels(2e303, (1.0,))
+
+    def test_raw_first_label_underflow_fails_contextually(self):
+        with self.assertRaisesRegex(
+            Foams105SizeClassNumericalError, "index 0.*underflowed.*division"
+        ):
+            build_foams105_bin_labels(5e-324, (2.0,))
 
 
 class TestFoams105DiameterFiltering(unittest.TestCase):
@@ -283,10 +293,19 @@ class TestFoams105Normalization(unittest.TestCase):
         normalized = normalize_foams105_counts(first, 2)
         self.assertEqual(first, second)
         for result in (built, filtered, first, normalized):
+            self.assertEqual(
+                result.source_repository, FOAMS105_SIZE_SOURCE_REPOSITORY
+            )
+            self.assertEqual(result.source_commit, FOAMS105_SIZE_SOURCE_COMMIT)
+            self.assertEqual(result.source_file, FOAMS105_SIZE_SOURCE_FILE)
             with self.subTest(result=type(result).__name__), self.assertRaises(
                 FrozenInstanceError
             ):
                 result.method = "changed"
+        self.assertEqual(normalized.area_provenance, FOAMS105_AREA_PROVENANCE)
+        self.assertEqual(normalized.length_unit, "mm")
+        with self.assertRaises(FrozenInstanceError):
+            filtered.source_commit = "changed"
 
 
 if __name__ == "__main__":

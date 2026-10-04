@@ -15,10 +15,13 @@ The focused APIs in `main.core` replay four operations from `project.m` in
 - `normalize_foams105_counts` divides counts by a finite positive corrected area
   supplied by the caller.
 
-All results are immutable and retain source, policy, unit, duplicate-label,
-and conservation metadata. Rounded zero or duplicate labels are preserved by
-the preparation API. The accepted post-nesting converter remains stricter and
-continues to require positive selected labels.
+All results are immutable and carry the pinned source repository, commit, and
+file alongside their distinct method and unit metadata. Normalization source
+provenance identifies the arithmetic; its area remains explicitly
+`caller_supplied_not_computed_here`. Rounded zero or duplicate labels are
+preserved when positive raw values round to zero. A raw first label that
+underflows to zero during division is rejected. The accepted post-nesting
+converter remains stricter and continues to require positive selected labels.
 
 ```python
 from main.core import (

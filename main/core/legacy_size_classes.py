@@ -73,6 +73,9 @@ class Foams105DiameterFilterResult:
     input_count: int
     method: str = FOAMS105_FILTER_METHOD
     threshold_policy: str = "minimum_over_scale_times_10_to_negative_0_1"
+    source_repository: str = FOAMS105_SIZE_SOURCE_REPOSITORY
+    source_commit: str = FOAMS105_SIZE_SOURCE_COMMIT
+    source_file: str = FOAMS105_SIZE_SOURCE_FILE
     length_unit: str = "mm"
     scale_unit: str = "pixels/mm"
 
@@ -115,6 +118,10 @@ class Foams105NormalizationResult:
     edge_policy: str = FOAMS105_EDGE_POLICY
     upper_tail_policy: str = FOAMS105_UPPER_TAIL_POLICY
     area_provenance: str = FOAMS105_AREA_PROVENANCE
+    source_repository: str = FOAMS105_SIZE_SOURCE_REPOSITORY
+    source_commit: str = FOAMS105_SIZE_SOURCE_COMMIT
+    source_file: str = FOAMS105_SIZE_SOURCE_FILE
+    length_unit: str = "mm"
     area_unit: str = "mm^2"
     output_density_unit: str = "mm^-2"
 
@@ -205,13 +212,18 @@ def build_foams105_bin_labels(
         raise Foams105SizeClassNumericalError(
             "Raw label is nonfinite at index 0"
         )
+    if first <= 0.0:
+        raise Foams105SizeClassNumericalError(
+            "Raw label at index 0 underflowed to zero during division of "
+            "positive minimum_diameter_px by max(scales_px_per_mm)"
+        )
     raw_labels = [first]
     multiplier = 10.0 ** FOAMS105_LABEL_LOG10_STEP
     for index in range(1, FOAMS105_LABEL_COUNT):
         next_label = raw_labels[-1] * multiplier
-        if not math.isfinite(next_label):
+        if not math.isfinite(next_label) or next_label <= 0.0:
             raise Foams105SizeClassNumericalError(
-                f"Raw label recurrence is nonfinite at index {index}"
+                f"Raw label recurrence is not positive and finite at index {index}"
             )
         raw_labels.append(next_label)
 

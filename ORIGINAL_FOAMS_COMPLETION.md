@@ -12,7 +12,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | Stage | Status | Evidence required or retained |
 |---|---|---|
 | 1. Post-nesting N_A-to-N_V conversion | Brief 06 accepted against bundled Calc_out fixture | All 29 rows, source alpha order, heights, duplicate metadata, validation, and smallest-class exception tested |
-| 2. Measurement, area, and histogram conventions | Brief 07 accepted for supplied-diameter size-class preparation; measurement and corrected area pending | 45-label recurrence/profile, threshold primitive, all 180 histogram cells, trimming, conservation, and caller-supplied area division tested |
+| 2. Measurement, area, and histogram conventions | Brief 07 histogram arithmetic verified; Brief 07a numerical/provenance closure implemented pending review; measurement and corrected area pending | 45-label recurrence/profile including raw-grid underflow, complete result provenance, threshold primitive, all 180 histogram cells, trimming, conservation, and caller-supplied area division tested |
 | 3. Automatic magnification cutoffs | Pending | Source algorithm, ties, zeros, no-overlap behavior, and selected-bin comparisons |
 | 4. 2D vesicularity and phase accounting | Pending | Multiscale area integration and excluded-phase denominators |
 | 5. Volume distributions and normalization | Pending | Original normalization modes and cumulative volume outputs |
