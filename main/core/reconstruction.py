@@ -63,7 +63,7 @@ class SphericalSectionOperator:
 
 @dataclass(frozen=True)
 class SphericalInverseResult:
-    """Signed algebraic inverse and forward-consistency diagnostics."""
+    """Signed inverse with residuals defined as fitted minus input density."""
 
     input_na_per_mm2: Tuple[float, ...]
     signed_nv_per_mm3: Tuple[float, ...]
@@ -151,35 +151,47 @@ def _compute_coefficients(
             if row_index > column_index:
                 coefficient = 0.0
             else:
+                lower = edges[row_index]
+                upper = edges[row_index + 1]
                 diameter = edges[column_index + 1]
-                lower_ratio = edges[row_index] / diameter
-                lower_root = math.sqrt(
-                    max(0.0, (1.0 - lower_ratio) * (1.0 + lower_ratio))
+                lower_ratio = lower / diameter
+                lower_radicand = (
+                    ((diameter - lower) / diameter) * (1.0 + lower_ratio)
                 )
+                if not math.isfinite(lower_radicand) or lower_radicand <= 0.0:
+                    raise ReconstructionNumericalError(
+                        f"Invalid lower root at row {row_index}, column {column_index}"
+                    )
+                lower_root = math.sqrt(lower_radicand)
                 if row_index == column_index:
-                    probability = lower_root
+                    coefficient = diameter * lower_root
                 else:
-                    upper_ratio = edges[row_index + 1] / diameter
-                    upper_root = math.sqrt(
-                        max(0.0, (1.0 - upper_ratio) * (1.0 + upper_ratio))
+                    upper_ratio = upper / diameter
+                    upper_radicand = (
+                        ((diameter - upper) / diameter) * (1.0 + upper_ratio)
                     )
+                    if not math.isfinite(upper_radicand) or upper_radicand < 0.0:
+                        raise ReconstructionNumericalError(
+                            f"Invalid upper root at row {row_index}, column {column_index}"
+                        )
+                    upper_root = math.sqrt(upper_radicand)
                     denominator = lower_root + upper_root
-                    numerator = (
-                        (upper_ratio - lower_ratio)
-                        * (upper_ratio + lower_ratio)
+                    if not math.isfinite(denominator) or denominator <= 0.0:
+                        raise ReconstructionNumericalError(
+                            f"Invalid coefficient denominator at row {row_index}, "
+                            f"column {column_index}"
+                        )
+                    coefficient = (upper - lower) * (
+                        (lower_ratio + upper_ratio) / denominator
                     )
-                    probability = numerator / denominator
-                coefficient = diameter * probability
-            if not math.isfinite(coefficient) or coefficient < 0:
+            if not math.isfinite(coefficient) or (
+                row_index <= column_index and coefficient <= 0.0
+            ):
                 raise ReconstructionNumericalError(
-                    f"Nonfinite or negative coefficient at row {row_index}, "
+                    f"Positive coefficient is not representable at row {row_index}, "
                     f"column {column_index}"
                 )
             row.append(float(coefficient))
-        if row[row_index] <= 0:
-            raise ReconstructionNumericalError(
-                f"Grid diagonal {row_index} is not representable as a positive float64"
-            )
         rows.append(tuple(row))
     return tuple(rows)
 
@@ -196,7 +208,28 @@ def _validate_operator(operator: object) -> SphericalSectionOperator:
         raise ReconstructionValidationError(
             "operator representative_diameters_mm must be an immutable tuple"
         )
-    if operator.representative_diameters_mm != expected_diameters:
+    if len(operator.representative_diameters_mm) != number_of_bins:
+        raise ReconstructionValidationError(
+            f"operator representative_diameters_mm must contain {number_of_bins} values"
+        )
+    validated_diameters = []
+    for index, diameter in enumerate(operator.representative_diameters_mm):
+        if (
+            not isinstance(diameter, (int, float, np.integer, np.floating))
+            or isinstance(diameter, (bool, np.bool_))
+        ):
+            raise ReconstructionValidationError(
+                f"operator representative_diameters_mm[{index}] must be a "
+                "positive finite real number"
+            )
+        value = float(diameter)
+        if not math.isfinite(value) or value <= 0.0:
+            raise ReconstructionValidationError(
+                f"operator representative_diameters_mm[{index}] must be a "
+                "positive finite real number"
+            )
+        validated_diameters.append(value)
+    if tuple(validated_diameters) != expected_diameters:
         raise ReconstructionValidationError(
             "operator representative diameters must equal upper bin edges"
         )
@@ -405,8 +438,9 @@ def solve_spherical_number_densities(
 
     signed_solution = tuple(solution)
     fitted = _signed_project(validated_operator, signed_solution)
+    # Positive residual means the reconstructed model overpredicts the input.
     residuals = tuple(
-        input_value - fitted_value
+        fitted_value - input_value
         for fitted_value, input_value in zip(fitted, input_values)
     )
     if any(not math.isfinite(value) for value in residuals):

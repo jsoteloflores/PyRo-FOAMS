@@ -3,6 +3,7 @@ import os
 import sys
 import unittest
 from dataclasses import FrozenInstanceError, replace
+from decimal import Decimal, localcontext
 from unittest.mock import patch
 
 import numpy as np
@@ -23,6 +24,19 @@ from core.reconstruction import (
     solve_spherical_number_densities,
 )
 from tests.test_nesting import make_group, make_result, make_source_image
+
+
+def decimal_coefficient(edges, row_index, column_index):
+    with localcontext() as context:
+        context.prec = 500
+        lower = Decimal.from_float(float(edges[row_index]))
+        upper = Decimal.from_float(float(edges[row_index + 1]))
+        diameter = Decimal.from_float(float(edges[column_index + 1]))
+        lower_root = (diameter * diameter - lower * lower).sqrt()
+        upper_root = (diameter * diameter - upper * upper).sqrt()
+        return float(
+            (upper - lower) * (upper + lower) / (lower_root + upper_root)
+        )
 
 
 class TestSphericalSectionOperator(unittest.TestCase):
@@ -128,6 +142,55 @@ class TestSphericalSectionOperator(unittest.TestCase):
                     all(math.isfinite(value) for row in first.coefficients_mm for value in row)
                 )
 
+    def test_wide_grid_preserves_representable_off_diagonal_and_projection(self):
+        edges = (1e-200, 1.0, 1e200)
+        operator = build_spherical_section_operator(create_diameter_bin_spec(edges))
+        coefficient = operator.coefficients_mm[0][1]
+        self.assertGreater(coefficient, 0.0)
+        self.assertTrue(math.isclose(coefficient, 5e-201, rel_tol=1e-12, abs_tol=0.0))
+
+        projected = project_spherical_number_densities(operator, (0.0, 1e100))
+        self.assertTrue(math.isclose(projected[0], 5e-101, rel_tol=1e-12, abs_tol=0.0))
+        self.assertTrue(all(math.isfinite(value) for value in projected))
+
+    def test_adjacent_edges_near_one_match_decimal_oracle(self):
+        first = np.nextafter(1.0, math.inf)
+        edges = (1.0, first, np.nextafter(first, math.inf))
+        operator = build_spherical_section_operator(create_diameter_bin_spec(edges))
+        for row_index, column_index in ((0, 0), (0, 1), (1, 1)):
+            expected = decimal_coefficient(edges, row_index, column_index)
+            actual = operator.coefficients_mm[row_index][column_index]
+            self.assertTrue(
+                math.isclose(actual, expected, rel_tol=1e-12, abs_tol=0.0),
+                (row_index, column_index, actual, expected),
+            )
+
+    def test_geometric_tenth_decade_coefficients_match_independent_values(self):
+        ratio = 10.0 ** 0.1
+        edges = tuple(ratio**index for index in range(5))
+        operator = build_spherical_section_operator(create_diameter_bin_spec(edges))
+        diagonal_probability = operator.coefficients_mm[0][0] / edges[1]
+        self.assertTrue(
+            math.isclose(
+                diagonal_probability,
+                0.6074888110243734,
+                rel_tol=1e-12,
+                abs_tol=0.0,
+            )
+        )
+        for column_index in (1, 2):
+            expected = decimal_coefficient(edges, 0, column_index)
+            actual = operator.coefficients_mm[0][column_index]
+            self.assertTrue(math.isclose(actual, expected, rel_tol=1e-12, abs_tol=0.0))
+
+    def test_unrepresentable_positive_coefficient_fails_contextually(self):
+        with self.assertRaisesRegex(
+            ReconstructionNumericalError, "row 0, column 1"
+        ):
+            build_spherical_section_operator(
+                create_diameter_bin_spec((5e-324, 1e-323, 1e308))
+            )
+
     def test_operator_and_result_records_are_immutable(self):
         operator = build_spherical_section_operator(
             create_diameter_bin_spec((1.0, 2.0))
@@ -165,6 +228,66 @@ class TestSignedTriangularInverse(unittest.TestCase):
             self.assertAlmostEqual(actual, expected * 7.5, places=13)
         self.assertTrue(result.forward_consistency_passed)
         self.assertEqual(result.status, "nonnegative")
+
+    def test_fixed_measured_fixture_recovers_independent_population(self):
+        result = self.solve((18.138271537828096, 6.928203230275509))
+        for actual, expected in zip(result.signed_nv_per_mm3, (10.0, 2.0)):
+            self.assertTrue(math.isclose(actual, expected, rel_tol=1e-12, abs_tol=0.0))
+
+    def test_fixed_negative_fixture_preserves_signed_solution(self):
+        result = self.solve((0.0, math.sqrt(12.0)))
+        expected = (-0.23606797749978992, 1.0)
+        for actual, target in zip(result.signed_nv_per_mm3, expected):
+            self.assertTrue(math.isclose(actual, target, rel_tol=1e-12, abs_tol=0.0))
+        self.assertEqual(result.status, "negative_solution")
+
+    def test_physical_scale_covariance(self):
+        edges = (0.2, 0.5, 1.7, 4.0)
+        measured = (8.0, 3.0, 1.0)
+        reference = solve_spherical_number_densities(
+            build_spherical_section_operator(create_diameter_bin_spec(edges)),
+            measured,
+            upper_tail_assumption=UPPER_TAIL_ASSUMPTION,
+        )
+        for scale in (1e-3, 1e3):
+            scaled = solve_spherical_number_densities(
+                build_spherical_section_operator(
+                    create_diameter_bin_spec(tuple(value * scale for value in edges))
+                ),
+                tuple(value / scale**2 for value in measured),
+                upper_tail_assumption=UPPER_TAIL_ASSUMPTION,
+            )
+            for actual, expected in zip(
+                scaled.signed_nv_per_mm3, reference.signed_nv_per_mm3
+            ):
+                self.assertTrue(
+                    math.isclose(
+                        actual,
+                        expected / scale**3,
+                        rel_tol=1e-12,
+                        abs_tol=0.0,
+                    )
+                )
+
+    def test_residual_is_fitted_minus_input_for_nonzero_roundoff(self):
+        operator = build_spherical_section_operator(
+            create_diameter_bin_spec((0.2, 0.5, 1.7, 4.0))
+        )
+        result = solve_spherical_number_densities(
+            operator,
+            (8.0, 3.0, 1.0),
+            upper_tail_assumption=UPPER_TAIL_ASSUMPTION,
+        )
+        self.assertTrue(any(value != 0.0 for value in result.residuals_per_mm2))
+        self.assertEqual(
+            result.residuals_per_mm2,
+            tuple(
+                fitted - measured
+                for fitted, measured in zip(
+                    result.fitted_na_per_mm2, result.input_na_per_mm2
+                )
+            ),
+        )
 
     def test_zero_input_is_exact_and_has_zero_tolerances(self):
         result = self.solve((0.0, 0.0))
@@ -256,6 +379,43 @@ class TestReconstructionValidation(unittest.TestCase):
         with self.assertRaises(ReconstructionValidationError):
             build_spherical_section_operator(replace(valid, edges_mm=[1.0, 2.0]))
 
+    def test_representative_diameters_require_typed_positive_finite_scalars(self):
+        single = build_spherical_section_operator(
+            create_diameter_bin_spec((0.5, 1.0))
+        )
+        malformed_values = (
+            (True,),
+            (np.bool_(True),),
+            ("1.0",),
+            (math.nan,),
+            (math.inf,),
+            (),
+            (1.0, 2.0),
+            (0.75,),
+            (np.array(1.0),),
+        )
+        for diameters in malformed_values:
+            malformed = replace(
+                single, representative_diameters_mm=diameters
+            )
+            for api in ("project", "solve"):
+                with self.subTest(diameters=diameters, api=api), self.assertRaises(
+                    ReconstructionValidationError
+                ):
+                    if api == "project":
+                        project_spherical_number_densities(malformed, (1.0,))
+                    else:
+                        solve_spherical_number_densities(
+                            malformed,
+                            (1.0,),
+                            upper_tail_assumption=UPPER_TAIL_ASSUMPTION,
+                        )
+
+        self.assertEqual(
+            project_spherical_number_densities(single, (1.0,)),
+            single.coefficients_mm[0],
+        )
+
 
 class TestNestingReconstructionAdapter(unittest.TestCase):
     def setUp(self):
@@ -302,6 +462,15 @@ class TestNestingReconstructionAdapter(unittest.TestCase):
         self.assertIsNone(result.upper_range_advisory)
         self.assertEqual(len(result.nested_distribution.overlap_diagnostics), 1)
         self.assertFalse(result.nested_distribution.exclude_border)
+        self.assertEqual(
+            result.residuals_per_mm2,
+            tuple(
+                fitted - measured
+                for fitted, measured in zip(
+                    result.fitted_na_per_mm2, result.input_na_per_mm2
+                )
+            ),
+        )
 
     def test_negative_diagnostics_use_absolute_source_indices(self):
         plan = NestingPlan("sample", 1, 3, (NestingSegment("fine", 1, 3),))
