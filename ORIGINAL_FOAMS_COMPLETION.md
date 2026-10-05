@@ -13,7 +13,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 |---|---|---|
 | 1. Post-nesting N_A-to-N_V conversion | Brief 06 accepted against bundled Calc_out fixture | All 29 rows, source alpha order, heights, duplicate metadata, validation, and smallest-class exception tested |
 | 2. Measurement, area, and histogram conventions | Briefs 07, 08, and 09 accepted; shape measurements pending | 45-label preparation, all 180 histogram cells, exact mask topology, calibrated component geometry, six weighted-area cases, strict four-slot exclusion thresholds, signed per-image denominators, and explicit compatible-group sums tested |
-| 3. Automatic magnification cutoffs | Brief 10 accepted; Brief 11 scientific scope accepted at `382f1dd4620a33a318b008ce8bfdd212066c3af5`; Brief 11a portability correction pending CI | Signed log-density transitions, exact source-slice identity, inclusive duplicate boundaries, gaps, overlaps, row provenance, and LF/CRLF fixture-pin portability tested |
+| 3. Automatic magnification cutoffs | Brief 10 accepted; Brief 11 scientific scope accepted; Brief 11a CI queued at `732bbd0920eb1b758cb11b499dcaf2bf12eba762`; Brief 12 raw-object selection implemented pending review | Signed log-density transitions, exact binned source slices, LF/CRLF fixture pins, raw predecessor bounds, stable component identities, inclusive unrounded filtering, and ascending raw-slot provenance tested |
 | 4. 2D vesicularity and phase accounting | Pending | Multiscale area integration and excluded-phase denominators |
 | 5. Volume distributions and normalization | Pending | Original normalization modes and cumulative volume outputs |
 | 6. Density summaries and plotting quantities | Pending | NV/NVcorr, per-width density, cumulative counts, and logarithms |
@@ -46,6 +46,13 @@ is retained, and regression checks prove both LF/CRLF equivalence and
 sensitivity to a changed numerical value. No fixture values or scientific
 selection code changed. Acceptance remains pending until the correction has a
 commit and all configured CI jobs pass.
+
+Brief 12 adds a bounded raw-object cutoff replay with active-prefix validation,
+the original predecessor-label rules, slot 4's zero lower bound, stable image
+and component identities, and aligned diameter/area projections. Its eleven
+cases are hand-derived analytical expectations, not a MATLAB run or workbook
+raw-selection oracle. The reconstructed 29 binned workbook rows do not verify
+raw selection. Vesicularity and shape calculations remain outside this stage.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.

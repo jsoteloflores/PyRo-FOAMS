@@ -1,0 +1,463 @@
+{
+  "schema_version": 1,
+  "source_repository": "jsoteloflores/FOAMS-1.0.5",
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "source_file": "analysis.m",
+  "verification": "Hand-derived synthetic source-rule expectations; not a MATLAB run or original-workbook raw-selection oracle.",
+  "construction": "Group IDs slot-N; source_slot N. For each diameter at zero-based index i use image_id image-N, component_id i+1, area_mm2 = pi*diameter^2/4. All inputs are already thresholded. Expected indices refer to each group's input order. Compare projected diameters and areas to the corresponding unchanged input fields.",
+  "cases": [
+    {
+      "id": "one_group_own_lower",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          2,
+          4
+        ]
+      ],
+      "diameters": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      ],
+      "effective_lowers": [
+        2
+      ],
+      "expected_indices": [
+        [
+          1,
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "two_groups_predecessor",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          4,
+          8
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "diameters": [
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ],
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ]
+      ],
+      "effective_lowers": [
+        2,
+        1
+      ],
+      "expected_indices": [
+        [
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "id": "three_groups_predecessors",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          4,
+          8
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "diameters": [
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ],
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ],
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ]
+      ],
+      "effective_lowers": [
+        2,
+        1,
+        1
+      ],
+      "expected_indices": [
+        [
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          1,
+          2,
+          3,
+          4
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "id": "fourth_slot_ignores_lower",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          4,
+          8
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          0.25,
+          1
+        ]
+      ],
+      "diameters": [
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ],
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ],
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ],
+        [
+          0.5,
+          1,
+          2,
+          3,
+          4,
+          8,
+          9
+        ]
+      ],
+      "effective_lowers": [
+        2,
+        1,
+        1,
+        0
+      ],
+      "expected_indices": [
+        [
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          1,
+          2,
+          3,
+          4
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "rounded_lookup_unrounded_comparison",
+      "labels": [
+        1.000004,
+        2.000004,
+        4.000004
+      ],
+      "ranges": [
+        [
+          1.000001,
+          2.000001
+        ]
+      ],
+      "diameters": [
+        [
+          1,
+          1.000004,
+          2,
+          2.000003
+        ]
+      ],
+      "effective_lowers": [
+        1.000004
+      ],
+      "expected_indices": [
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "id": "input_order_and_disabled_tail",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          2,
+          4
+        ],
+        null
+      ],
+      "diameters": [
+        [
+          4,
+          1,
+          3,
+          2
+        ],
+        [
+          2
+        ]
+      ],
+      "effective_lowers": [
+        2,
+        null
+      ],
+      "expected_indices": [
+        [
+          0,
+          2,
+          3
+        ],
+        []
+      ]
+    },
+    {
+      "id": "valid_empty_selection",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          2,
+          4
+        ]
+      ],
+      "diameters": [
+        [
+          0.5,
+          8
+        ]
+      ],
+      "effective_lowers": [
+        2
+      ],
+      "expected_indices": [
+        []
+      ]
+    },
+    {
+      "id": "missing_lower_match",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          1.5,
+          4
+        ]
+      ],
+      "diameters": [
+        [
+          2
+        ]
+      ],
+      "expected_error": "lower_label_not_found"
+    },
+    {
+      "id": "ambiguous_rounded_lower",
+      "labels": [
+        1.000001,
+        1.000002,
+        2
+      ],
+      "ranges": [
+        [
+          1,
+          2
+        ]
+      ],
+      "diameters": [
+        [
+          1.5
+        ]
+      ],
+      "expected_error": "ambiguous_lower_label"
+    },
+    {
+      "id": "predecessor_underflow",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          1,
+          8
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "diameters": [
+        [
+          2
+        ],
+        [
+          1
+        ]
+      ],
+      "expected_error": "missing_predecessor_label"
+    },
+    {
+      "id": "disabled_middle_slot",
+      "labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "ranges": [
+        [
+          4,
+          8
+        ],
+        null,
+        [
+          1,
+          2
+        ]
+      ],
+      "diameters": [
+        [
+          4
+        ],
+        [],
+        [
+          1
+        ]
+      ],
+      "expected_error": "noncontiguous_active_slots"
+    }
+  ]
+}
