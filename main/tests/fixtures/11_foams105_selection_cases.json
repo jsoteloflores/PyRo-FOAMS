@@ -1,0 +1,323 @@
+{
+  "origin": "Hand-authored analytical tests for checked binned replay; not MATLAB exports",
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "conventions": "densities/ranges ordered by original slots 1..G; range endpoints are inclusive labels; null disables; global indices zero-based",
+  "cases": [
+    {
+      "id": "inclusive_shared_boundary",
+      "labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "densities": [
+        [
+          0,
+          10,
+          20,
+          30
+        ],
+        [
+          1,
+          2,
+          3,
+          0
+        ]
+      ],
+      "ranges": [
+        [
+          2,
+          4
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "expected_labels": [
+        1,
+        2,
+        2,
+        3,
+        4
+      ],
+      "expected_na": [
+        1,
+        2,
+        10,
+        20,
+        30
+      ],
+      "expected_source_slots": [
+        2,
+        2,
+        1,
+        1,
+        1
+      ],
+      "expected_global_indices": [
+        0,
+        1,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "id": "coarsest_all_zero",
+      "labels": [
+        1,
+        2,
+        3
+      ],
+      "densities": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "expected_labels": [
+        1,
+        2,
+        3
+      ],
+      "expected_na": [
+        0,
+        0,
+        0
+      ],
+      "expected_source_slots": [
+        1,
+        1,
+        1
+      ],
+      "expected_global_indices": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "id": "second_slot_zero_endpoint",
+      "labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "densities": [
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          2,
+          3,
+          0
+        ]
+      ],
+      "ranges": [
+        [
+          4,
+          4
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "expected_error": "source_slice_mismatch"
+    },
+    {
+      "id": "second_slot_empty_support",
+      "labels": [
+        1,
+        2,
+        3
+      ],
+      "densities": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "ranges": [
+        [
+          3,
+          3
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "expected_error": "empty_selected_density_support"
+    },
+    {
+      "id": "fourth_slot_zero_prefix",
+      "labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "densities": [
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          0
+        ]
+      ],
+      "ranges": [
+        [
+          4,
+          4
+        ],
+        null,
+        null,
+        [
+          1,
+          2
+        ]
+      ],
+      "expected_labels": [
+        1,
+        2,
+        4
+      ],
+      "expected_na": [
+        0,
+        2,
+        1
+      ],
+      "expected_source_slots": [
+        4,
+        4,
+        1
+      ],
+      "expected_global_indices": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "fourth_slot_shift_equal_lengths",
+      "labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "densities": [
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          0
+        ]
+      ],
+      "ranges": [
+        [
+          4,
+          4
+        ],
+        null,
+        null,
+        [
+          2,
+          3
+        ]
+      ],
+      "expected_error": "source_slice_mismatch"
+    },
+    {
+      "id": "descending_join",
+      "labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "densities": [
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "ranges": [
+        [
+          1,
+          2
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "expected_error": "concatenation_not_nondecreasing"
+    }
+  ]
+}
