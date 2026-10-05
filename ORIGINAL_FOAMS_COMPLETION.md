@@ -1,6 +1,6 @@
 # Original FOAMS completion tracker
 
-Last updated: 2026-10-04.
+Last updated: 2026-10-05.
 
 **Original FOAMS implementation: NOT COMPLETE.**
 
@@ -13,7 +13,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 |---|---|---|
 | 1. Post-nesting N_A-to-N_V conversion | Brief 06 accepted against bundled Calc_out fixture | All 29 rows, source alpha order, heights, duplicate metadata, validation, and smallest-class exception tested |
 | 2. Measurement, area, and histogram conventions | Briefs 07, 08, and 09 accepted; shape measurements pending | 45-label preparation, all 180 histogram cells, exact mask topology, calibrated component geometry, six weighted-area cases, strict four-slot exclusion thresholds, signed per-image denominators, and explicit compatible-group sums tested |
-| 3. Automatic magnification cutoffs | Brief 10 AutoSmart suggestions accepted; Brief 11 checked binned selection implemented pending review | Signed log-density transitions, source-specific ranges, exact source-slice identity, inclusive duplicate boundaries, gaps, overlaps, and concatenated row provenance tested |
+| 3. Automatic magnification cutoffs | Brief 10 accepted; Brief 11 scientific scope accepted at `382f1dd4620a33a318b008ce8bfdd212066c3af5`; Brief 11a portability correction pending CI | Signed log-density transitions, exact source-slice identity, inclusive duplicate boundaries, gaps, overlaps, row provenance, and LF/CRLF fixture-pin portability tested |
 | 4. 2D vesicularity and phase accounting | Pending | Multiscale area integration and excluded-phase denominators |
 | 5. Volume distributions and normalization | Pending | Original normalization modes and cumulative volume outputs |
 | 6. Density summaries and plotting quantities | Pending | NV/NVcorr, per-width density, cumulative counts, and logarithms |
@@ -39,6 +39,13 @@ AutoSmart default cutoff suggestions are accepted. Explicit and suggested
 binned ranges now replay checked source-style selection and concatenation,
 including duplicate boundary rows and source-slot provenance. Raw-object
 selection remains outside this boundary.
+
+Brief 11a changes only the test-local integrity calculation: CRLF checkout
+pairs are normalized to LF before hashing the fixture. The existing LF digest
+is retained, and regression checks prove both LF/CRLF equivalence and
+sensitivity to a changed numerical value. No fixture values or scientific
+selection code changed. Acceptance remains pending until the correction has a
+commit and all configured CI jobs pass.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.

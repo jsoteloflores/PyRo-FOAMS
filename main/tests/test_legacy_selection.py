@@ -40,6 +40,13 @@ HISTOGRAM_FIXTURE_PATH = os.path.join(
 CONVERSION_FIXTURE_PATH = os.path.join(
     os.path.dirname(__file__), "fixtures", "06_foams105_nv_reference.json"
 )
+SELECTION_FIXTURE_LF_SHA256 = (
+    "acaa9f08ac3aaa3326f6d661b6df02c724d09eedb3b41020e1985da1a06f1a4b"
+)
+
+
+def _normalized_text_sha256(raw_bytes):
+    return sha256(raw_bytes.replace(b"\r\n", b"\n")).hexdigest()
 
 
 class TestFoams105SelectionFixture(unittest.TestCase):
@@ -93,10 +100,29 @@ class TestFoams105SelectionFixture(unittest.TestCase):
                 )
 
     def test_vendored_fixture_hash_is_pinned(self):
-        digest = sha256(Path(FIXTURE_PATH).read_bytes()).hexdigest()
+        raw_bytes = Path(FIXTURE_PATH).read_bytes()
+        lf_bytes = raw_bytes.replace(b"\r\n", b"\n")
+        self.assertEqual(_normalized_text_sha256(lf_bytes), SELECTION_FIXTURE_LF_SHA256)
+
+    def test_vendored_fixture_hash_accepts_crlf_checkout(self):
+        raw_bytes = Path(FIXTURE_PATH).read_bytes()
+        lf_bytes = raw_bytes.replace(b"\r\n", b"\n")
+        crlf_bytes = lf_bytes.replace(b"\n", b"\r\n")
         self.assertEqual(
-            digest,
-            "acaa9f08ac3aaa3326f6d661b6df02c724d09eedb3b41020e1985da1a06f1a4b",
+            _normalized_text_sha256(crlf_bytes), SELECTION_FIXTURE_LF_SHA256
+        )
+
+    def test_vendored_fixture_hash_rejects_changed_numerical_value(self):
+        raw_bytes = Path(FIXTURE_PATH).read_bytes()
+        lf_bytes = raw_bytes.replace(b"\r\n", b"\n")
+        original = b'"expected_na": [\n        1,\n        2,\n        10,'
+        replacement = b'"expected_na": [\n        1,\n        2,\n        10.5,'
+        self.assertEqual(lf_bytes.count(original), 1)
+        changed_bytes = lf_bytes.replace(original, replacement, 1)
+        self.assertNotEqual(changed_bytes, lf_bytes)
+        self.assertEqual(changed_bytes.count(replacement), 1)
+        self.assertNotEqual(
+            _normalized_text_sha256(changed_bytes), SELECTION_FIXTURE_LF_SHA256
         )
 
 

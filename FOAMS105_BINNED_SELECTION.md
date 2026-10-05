@@ -16,6 +16,16 @@
 
 The selector does not call `convert_foams105_nv()`. Callers must make conversion explicit after checking converter eligibility.
 
+## Fixture integrity
+
+The analytical selection fixture is pinned to SHA-256
+`acaa9f08ac3aaa3326f6d661b6df02c724d09eedb3b41020e1985da1a06f1a4b`.
+The test normalizes only CRLF pairs to LF before hashing so text checkouts have
+the same digest on Windows and POSIX systems. All other bytes remain covered,
+including the final newline, spacing, key order, BOM presence and reference
+values. Regression checks cover the real fixture, a synthesized CRLF checkout
+and an in-memory numerical-value change.
+
 ## Scope
 
 This is a checked replay of the binned range-selection stage from pinned `analysis.m`. It does not implement raw-object selection, shape behavior, vesicularity, or the complete original workflow.
