@@ -176,7 +176,8 @@ def ordering_report():
     print("\nSeparate concatenation policies")
     print("raw object slots, ascending:", raw_slots)
     print("binned rows, descending:", binned_slots)
-    print("boundary: no vesicularity, shape, or original-workbook raw oracle")
+    print("boundary: this report does not calculate vesicularity or shape statistics")
+    print("boundary: no original-workbook raw-selection oracle")
 
 
 def main():

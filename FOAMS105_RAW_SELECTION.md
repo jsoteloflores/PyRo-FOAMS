@@ -13,7 +13,7 @@
 - Slot 4 always uses zero as its effective lower bound. Its supplied positive lower cutoff is retained only as provenance and is not looked up.
 - Literal upper bounds and object diameters are not rounded. Selection is inclusive at both bounds.
 - Selected rows concatenate active slots in ascending `1, 2, 3, 4` order and preserve object order within each slot. This intentionally differs from Brief 11 binned row concatenation.
-- Empty groups and empty selections are valid. The selector does not measure masks, repeat threshold filtering, infer geometry, run binned selection or calculate vesicularity.
+- Empty groups and empty selections are valid. The selector does not measure masks, repeat threshold filtering, infer geometry, run binned selection or itself calculate vesicularity.
 
 The result contains a trace for every group, complete selected/rejected index partitions, stable object identities and aligned diameter/area projections.
 
@@ -23,7 +23,11 @@ The eleven hand-derived analytical cases are pinned after normalizing only CRLF 
 
 ## Scope
 
-This is a bounded replay of raw-object cutoff behavior from pinned `analysis.m`. Shape measurements, 2D vesicularity, volume normalization, density summaries, interface integration, export parity and complete original-image reconciliation remain outside this stage.
+This is a bounded replay of raw-object cutoff behavior from pinned `analysis.m`.
+It supplies selected-object provenance to the separate 2D vesicularity API but
+does not itself calculate vesicularity. Shape measurements, volume
+normalization, density summaries, interface integration, export parity and
+complete original-image reconciliation remain outside this stage.
 
 Run the report with:
 

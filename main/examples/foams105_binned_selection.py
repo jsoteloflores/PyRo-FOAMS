@@ -113,7 +113,7 @@ def workbook_report():
     print("duplicate output pairs:", selected.adjacent_duplicate_output_index_pairs)
     print("overlapping global indices:", selected.overlapping_global_indices)
     print("converter rows reconciled:", len(expected_nv))
-    print("boundary: binned selection only; raw-object selection is not implemented")
+    print("boundary: this report exercises binned selection, not raw-object selection")
 
 
 def main():

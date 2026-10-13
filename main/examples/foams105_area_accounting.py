@@ -106,7 +106,8 @@ def area_report():
     print("image-area cases:", len(image_cases))
     print("group area1/area2:", group.phase_corrected_area_mm2, group.border_corrected_area_mm2)
     print("mismatches: 0")
-    print("boundary: no MATLAB, original images, vesicularity, nesting, or shape statistics")
+    print("boundary: this report does not calculate vesicularity, nesting, or shape")
+    print("boundary: no MATLAB or original-image parity")
 
 
 def main():

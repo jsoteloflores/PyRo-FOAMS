@@ -27,9 +27,10 @@ collision diagnostics.
 
 The bundled fixture contains six weighted-mask expectations and two integrated
 analytical image cases. It is hand-authored from documented weights and pinned
-source formulas; MATLAB and original images were not run. This stage does not
-implement vesicularity, automatic magnification nesting, shape statistics,
-GUI behavior, or full original-workflow equivalence.
+source formulas; MATLAB and original images were not run. This area-accounting
+API does not itself calculate vesicularity, automatic magnification nesting,
+shape statistics, GUI behavior, or full original-workflow equivalence. The
+separate vesicularity replay is documented in `FOAMS105_2D_VESICULARITY.md`.
 
 Run the report with:
 

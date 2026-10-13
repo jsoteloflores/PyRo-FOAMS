@@ -1,0 +1,470 @@
+{
+  "schema_version": 1,
+  "source_repository": "jsoteloflores/FOAMS-1.0.5",
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "source_files": [
+    "analysis.m",
+    "project.m"
+  ],
+  "verification": "Hand-derived numerical-stage expectations, not MATLAB outputs or workbook parity.",
+  "units": {
+    "areas": "mm^2",
+    "scales": "pixels/mm",
+    "percentages": "percent"
+  },
+  "notes": [
+    "Each image_area2_by_group entry preserves supplied image order within its source slot.",
+    "active_slot_count defaults to declared group count. Disabled trailing groups still participate in the original declared-group recurrence with zero selected pore area.",
+    "All expected numeric values are independent fixture literals; compare with rtol 1e-12 and atol 1e-12. Expected errors apply before any successful result is returned.",
+    "The fixture describes numerical-stage inputs; implement public-API integration tests separately with coherent area records and selected/unfiltered object identities.",
+    "Absent expected_reassignment_slots means no reassigned area-value multisets. Percentages outside [0,100] and negative residuals must remain signed and carry diagnostics."
+  ],
+  "cases": [
+    {
+      "id": "one_group",
+      "scales": [
+        1
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ]
+      ],
+      "selected_area_sums": [
+        20
+      ],
+      "unfiltered_area_sums": [
+        25
+      ],
+      "expected_source_denominators": [
+        100
+      ],
+      "expected_residuals": [
+        80
+      ],
+      "expected_integrated_percent": 20,
+      "expected_group_percent": [
+        25
+      ],
+      "expected_mean_percent": 25
+    },
+    {
+      "id": "two_groups",
+      "scales": [
+        1,
+        2
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ],
+        [
+          25
+        ]
+      ],
+      "selected_area_sums": [
+        20,
+        5
+      ],
+      "unfiltered_area_sums": [
+        25,
+        10
+      ],
+      "expected_source_denominators": [
+        100,
+        25
+      ],
+      "expected_residuals": [
+        80,
+        64
+      ],
+      "expected_integrated_percent": 36,
+      "expected_group_percent": [
+        25,
+        40
+      ],
+      "expected_mean_percent": 32.5
+    },
+    {
+      "id": "three_groups",
+      "scales": [
+        1,
+        2,
+        5
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ],
+        [
+          25
+        ],
+        [
+          4
+        ]
+      ],
+      "selected_area_sums": [
+        20,
+        5,
+        1
+      ],
+      "unfiltered_area_sums": [
+        25,
+        10,
+        2
+      ],
+      "expected_source_denominators": [
+        100,
+        25,
+        4
+      ],
+      "expected_residuals": [
+        80,
+        64,
+        48
+      ],
+      "expected_integrated_percent": 52,
+      "expected_group_percent": [
+        25,
+        40,
+        50
+      ],
+      "expected_mean_percent": 38.333333333333336
+    },
+    {
+      "id": "four_groups",
+      "scales": [
+        1,
+        2,
+        5,
+        10
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ],
+        [
+          25
+        ],
+        [
+          4
+        ],
+        [
+          1
+        ]
+      ],
+      "selected_area_sums": [
+        20,
+        5,
+        1,
+        0.5
+      ],
+      "unfiltered_area_sums": [
+        25,
+        10,
+        2,
+        0.75
+      ],
+      "expected_source_denominators": [
+        100,
+        25,
+        4,
+        1
+      ],
+      "expected_residuals": [
+        80,
+        64,
+        48,
+        24
+      ],
+      "expected_integrated_percent": 76,
+      "expected_group_percent": [
+        25,
+        40,
+        50,
+        75
+      ],
+      "expected_mean_percent": 47.5
+    },
+    {
+      "id": "zero_pores",
+      "scales": [
+        1,
+        2
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ],
+        [
+          25
+        ]
+      ],
+      "selected_area_sums": [
+        0,
+        0
+      ],
+      "unfiltered_area_sums": [
+        0,
+        0
+      ],
+      "expected_source_denominators": [
+        100,
+        25
+      ],
+      "expected_residuals": [
+        100,
+        100
+      ],
+      "expected_integrated_percent": 0,
+      "expected_group_percent": [
+        0,
+        0
+      ],
+      "expected_mean_percent": 0
+    },
+    {
+      "id": "disabled_trailing_group",
+      "active_slot_count": 1,
+      "scales": [
+        1,
+        2
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ],
+        [
+          25
+        ]
+      ],
+      "selected_area_sums": [
+        20,
+        0
+      ],
+      "unfiltered_area_sums": [
+        25,
+        10
+      ],
+      "expected_source_denominators": [
+        100,
+        25
+      ],
+      "expected_residuals": [
+        80,
+        80
+      ],
+      "expected_integrated_percent": 20,
+      "expected_group_percent": [
+        25,
+        40
+      ],
+      "expected_mean_percent": 32.5
+    },
+    {
+      "id": "source_sort_reassigns_areas",
+      "scales": [
+        1,
+        2
+      ],
+      "image_area2_by_group": [
+        [
+          10
+        ],
+        [
+          100
+        ]
+      ],
+      "selected_area_sums": [
+        2,
+        5
+      ],
+      "unfiltered_area_sums": [
+        3,
+        10
+      ],
+      "expected_source_denominators": [
+        100,
+        10
+      ],
+      "expected_residuals": [
+        98,
+        49
+      ],
+      "expected_integrated_percent": 51,
+      "expected_group_percent": [
+        30,
+        10
+      ],
+      "expected_mean_percent": 20,
+      "expected_reassignment_slots": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "pooled_images_arithmetic_group_mean",
+      "scales": [
+        1,
+        2
+      ],
+      "image_area2_by_group": [
+        [
+          60,
+          40
+        ],
+        [
+          25
+        ]
+      ],
+      "selected_area_sums": [
+        20,
+        5
+      ],
+      "unfiltered_area_sums": [
+        30,
+        10
+      ],
+      "expected_source_denominators": [
+        100,
+        25
+      ],
+      "expected_residuals": [
+        80,
+        64
+      ],
+      "expected_integrated_percent": 36,
+      "expected_group_percent": [
+        30,
+        40
+      ],
+      "expected_mean_percent": 35
+    },
+    {
+      "id": "exhausted_residual",
+      "scales": [
+        1,
+        2
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ],
+        [
+          25
+        ]
+      ],
+      "selected_area_sums": [
+        100,
+        5
+      ],
+      "unfiltered_area_sums": [
+        100,
+        10
+      ],
+      "expected_source_denominators": [
+        100,
+        25
+      ],
+      "expected_residuals": [
+        0,
+        0
+      ],
+      "expected_integrated_percent": 100,
+      "expected_group_percent": [
+        100,
+        40
+      ],
+      "expected_mean_percent": 70
+    },
+    {
+      "id": "signed_nonphysical_not_clipped",
+      "scales": [
+        1
+      ],
+      "image_area2_by_group": [
+        [
+          100
+        ]
+      ],
+      "selected_area_sums": [
+        120
+      ],
+      "unfiltered_area_sums": [
+        125
+      ],
+      "expected_source_denominators": [
+        100
+      ],
+      "expected_residuals": [
+        -20
+      ],
+      "expected_integrated_percent": 120,
+      "expected_group_percent": [
+        125
+      ],
+      "expected_mean_percent": 125,
+      "expected_nonphysical": true
+    },
+    {
+      "id": "zero_image_area_rejected",
+      "scales": [
+        1
+      ],
+      "image_area2_by_group": [
+        [
+          0
+        ]
+      ],
+      "selected_area_sums": [
+        0
+      ],
+      "unfiltered_area_sums": [
+        0
+      ],
+      "expected_error": "nonpositive_border_corrected_area"
+    },
+    {
+      "id": "negative_image_area_rejected",
+      "scales": [
+        1
+      ],
+      "image_area2_by_group": [
+        [
+          -1
+        ]
+      ],
+      "selected_area_sums": [
+        0
+      ],
+      "unfiltered_area_sums": [
+        0
+      ],
+      "expected_error": "nonpositive_border_corrected_area"
+    },
+    {
+      "id": "source_intermediate_overflow",
+      "scales": [
+        1,
+        2
+      ],
+      "image_area2_by_group": [
+        [
+          1e+308
+        ],
+        [
+          1e-308
+        ]
+      ],
+      "selected_area_sums": [
+        1,
+        1
+      ],
+      "unfiltered_area_sums": [
+        1,
+        1
+      ],
+      "expected_error": "nonfinite_recurrence"
+    }
+  ]
+}

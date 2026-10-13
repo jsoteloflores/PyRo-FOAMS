@@ -28,7 +28,10 @@ and an in-memory numerical-value change.
 
 ## Scope
 
-This is a checked replay of the binned range-selection stage from pinned `analysis.m`. It does not implement raw-object selection, shape behavior, vesicularity, or the complete original workflow.
+This is a checked replay of the binned range-selection stage from pinned
+`analysis.m`. This API does not itself perform raw-object selection, shape
+behavior, vesicularity, or the complete original workflow. Those compatibility
+stages remain separate APIs.
 
 Run the reconciliation report with:
 
