@@ -17,7 +17,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened, MATLAB capture blocked by unavailable Image Processing Toolbox | Unit-square central moments and strict identity/validation joins are accepted analytically; 16a direct-script CLIs pass clean-environment subprocess tests; R2025b was queried, but its first `regionprops` call failed because Image Processing Toolbox is unavailable; no valid perimeter reference values captured; historical compatibility and Brief 16b method acceptance remain pending |
+| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened; Brief 16b profiles implemented and matched to supplied R2025b evidence locally | Unit-square central moments and strict identity/validation joins remain separate; perimeter profiles match 30 valid primary-capture components plus all 526 supplementary components; the primary 31st object is retained as invalid-topology diagnostic; local Ruff passes, all 539 tests pass, and all 15 example modules run successfully; hosted CI, historical runtime selection, shape statistics, and full workflow parity remain pending |
 | 8. Analysis interface | Pending | Original analyses available through the application |
 | 9. Original-equivalent exports | Pending | Calc/Area/Ves/Misc/Shape-equivalent outputs verified |
 | 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
@@ -139,7 +139,26 @@ fails at `regionprops`. The partial `.tmp` TSVs and complete logs are preserved;
 they are not importable reference evidence. No component perimeter values,
 within-run report, or historical compatibility result is claimed. Install or
 license Image Processing Toolbox and repeat capture into a new unique directory
-before proceeding to the Brief 16b method review.
+before this implementation work began. Separately supplied reviewer evidence
+was later bundled under `main/tests/fixtures/16b_perimeter_evidence/`; it comes
+from MATLAB 25.2.0.2998904 (R2025b) with Image Processing Toolbox 25.2 and is
+not produced by the blocked local capture attempt.
+
+Brief 16b adds two explicit perimeter profiles, Moore pixel-center boundary
+tracing, linear grouped label/topology validation, calibrated perimeter
+records, and canonical raw-selection identity joins. The profile
+`matlab_perimeter_old_r2025b_verified_v1` matches MATLAB `PerimeterOld`; the
+profile `matlab_perimeter_r2025b_verified_v1` matches MATLAB `Perimeter`.
+Regression checks match the 30 valid primary-capture objects and all 526
+supplementary objects within relative/absolute `1e-12` pixel tolerance. The
+captured `narrow_neck_final` values remain diagnostic because its same-ID
+region is not four-connected. Local perimeter tests, full test suite, lint,
+and examples pass; configured hosted CI remains a gate. This establishes
+R2025b property equivalence on the supplied evidence, not the historical
+runtime for original workbooks or full original-workflow parity. Moment-only
+verification metadata and its pending-perimeter marker remain unchanged. The
+implementation was committed locally after the 539-test, Ruff, and 15-example
+verification; the commit is recorded in the accompanying change history.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.

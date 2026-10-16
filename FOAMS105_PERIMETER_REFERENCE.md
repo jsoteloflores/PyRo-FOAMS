@@ -167,10 +167,25 @@ Provide these files from a runtime capture:
 
 ## Current evidence status
 
-- Tooling and CI-safe synthetic transport tests are implemented.
-- No MATLAB runtime evidence is bundled by default in this repository.
-- MATLAB availability is an external dependency for runtime evidence capture.
-- Local R2025b launch was verified, but capture is blocked because Image
-  Processing Toolbox is unavailable; this attempt is not a valid reference run.
-- Historical perimeter equivalence remains pending Brief 16b review and method
-  acceptance.
+- Tooling and CI-safe synthetic transport tests remain available for preparing,
+  importing, and comparing new runtime captures.
+- Reviewer-supplied MATLAB R2025b evidence is bundled under
+  `main/tests/fixtures/16b_perimeter_evidence/`. It contains the 29-case,
+  31-object primary capture and 64 supplementary masks with 526 components.
+  The primary `narrow_neck_final` component is retained as diagnostic input; it
+  is not a valid four-connected production measurement.
+- `main.core` exposes `measure_foams105_perimeter` and
+  `select_foams105_perimeter` with explicit profiles
+  `matlab_perimeter_old_r2025b_verified_v1` and
+  `matlab_perimeter_r2025b_verified_v1`. The example
+  `python -m main.examples.foams105_perimeter_profiles` replays the 526
+  supplementary objects and makes intentional profile differences visible.
+- Both profiles match the valid primary reference components and all 526
+  supplementary MATLAB values within relative/absolute `1e-12` pixel
+  tolerance. This verifies these R2025b properties only; it does not identify
+  the historical MATLAB release used for original FOAMS workbooks or establish
+  full original-workflow parity.
+- A separate local R2025b capture attempt is retained in
+  `reference-tools/matlab/perimeter-evidence-r2025b-20261016-004729-c559cf4f`.
+  That attempt is blocked because local Image Processing Toolbox is
+  unavailable and is not the source of the bundled evidence above.

@@ -1,0 +1,86 @@
+[
+  {
+    "path": "16a_foams105_perimeter_cases.json",
+    "sha256": "a197e231c8650d75428ade888eefe82da9d3edfcaae10f27b1297873282b2528"
+  },
+  {
+    "path": "capture_review.m",
+    "sha256": "d45e61c1a1241f12b3587f50b6608812c2a58c016c7d7414b165f1c93bfc8ccc"
+  },
+  {
+    "path": "capture_supplementary.m",
+    "sha256": "feccec880ec7b53b45408e513b79913dc934947f175c564b5948fe74780746a5"
+  },
+  {
+    "path": "check_supplementary.py",
+    "sha256": "4e032c0b5d5ac13ba972e31ec00ef8d60f4b2cd60eaea35696132588968b4e3d"
+  },
+  {
+    "path": "foams105_perimeter_capture_tsv.m",
+    "sha256": "8319eed01619ecff82fc3976247da8d20de81c10d6a781e05a5dd69c56291c82"
+  },
+  {
+    "path": "foams105_perimeter_cases_generated.m",
+    "sha256": "c5cbdaef6524277c605cdee95c7c62afe6e3a91cea7ed145fcaadc4577a3ae89"
+  },
+  {
+    "path": "foams105_perimeter_manifest.json",
+    "sha256": "e0c53af73c9feef4ca1242210d09edd4b9dc7a303c9acf594d32b494ad5e48cd"
+  },
+  {
+    "path": "matlab-review.log",
+    "sha256": "bc755becc77b887b453e859aaae53153e210cf457428bf42389b608e61647783"
+  },
+  {
+    "path": "matlab-supplementary.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "prepare_supplementary.py",
+    "sha256": "fc03ad849ab2e51fffd166b4da9c98b62bad6724605007431a1502865641785c"
+  },
+  {
+    "path": "prototype_perimeter.py",
+    "sha256": "ff78c0dee134d560e09c76a19ecd466d9f189dbffa066725c56b43dd107b3e9e"
+  },
+  {
+    "path": "README.md",
+    "sha256": "f5911b5270e349d09df237a54ba513749d5a6d4080164457532056849f1625e9"
+  },
+  {
+    "path": "reference_capture/cases.tsv",
+    "sha256": "cf4611eea982162722df69f15af92570ca0e7dba6b6661af0b7466778873d448"
+  },
+  {
+    "path": "reference_capture/comparison.json",
+    "sha256": "23092238a7252e4e136fe8869743f13991e28b93f16bb8c9f8a1e1c1ae6dddda"
+  },
+  {
+    "path": "reference_capture/completed.marker",
+    "sha256": "a4bccf5c13ef5ff8311e59b34d492bc7072a55298723601a6a9c127053aee8fc"
+  },
+  {
+    "path": "reference_capture/components.tsv",
+    "sha256": "3447fd9b019d438d0649dc41956efc12f96a09be9bf41ae719b9e385ef0acdcf"
+  },
+  {
+    "path": "reference_capture/labels.tsv",
+    "sha256": "8ab4410909c8a78203537315242c6ba0045c8902736501d0a16a94d9e2392e59"
+  },
+  {
+    "path": "reference_capture/metadata.tsv",
+    "sha256": "581c75e10dd480766bbe9871809c7d365e49886e72f4354b745073a4922c485b"
+  },
+  {
+    "path": "review_supplementary_cases.json",
+    "sha256": "4eb46929063cc123911c28c8be08a363395c3c4eaa326826ba465c5b5046c6ca"
+  },
+  {
+    "path": "review_supplementary.tsv",
+    "sha256": "0794d43c2f38c05ad3dfb4c4605f6fc2e11fce894ff15dd9b112e17b6df47a89"
+  },
+  {
+    "path": "supplementary_report.json",
+    "sha256": "0666eea6809f989f051d9db902e6640dc2922140e2061d1adee5b5c68dde7fb7"
+  }
+]
