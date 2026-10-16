@@ -30,10 +30,15 @@ claim historical MATLAB parity.
 
 ## Preparation step (required)
 
+Run all documented commands from the checked repository root. The three direct
+Python wrappers locate the repository package relative to their own script
+paths and do not require `PYTHONPATH`; their default input/output paths are
+still relative to the repository-root working directory.
+
 Generate deterministic MATLAB constructor + hash manifest:
 
 ```bash
-python reference-tools/perimeter/prepare_perimeter_reference.py
+python reference-tools/perimeter/prepare_perimeter_reference.py --constructor reference-tools/matlab/foams105_perimeter_cases_generated.m --manifest reference-tools/perimeter/foams105_perimeter_manifest.json
 ```
 
 Default outputs:
@@ -54,8 +59,13 @@ The manifest records:
 Run in MATLAB (when available):
 
 ```matlab
-foams105_perimeter_capture_tsv('foams105_perimeter_cases_generated', 'reference-tools/matlab/perimeter-run', 'manual capture command string')
+addpath('reference-tools/matlab');
+foams105_perimeter_capture_tsv('foams105_perimeter_cases_generated', 'reference-tools/matlab/perimeter-run-YYYYMMDD-HHMMSS', 'MATLAB <release> perimeter reference capture <unique-id>')
 ```
+
+Use a new, unique output directory for every attempt. The runner replaces an
+existing output directory and its `.tmp` sibling. Retain the full MATLAB
+console log and process exit status separately, including failed attempts.
 
 Expected output directory files:
 
@@ -84,7 +94,7 @@ Notes:
 Validate a capture directory against the catalog and expected hashes:
 
 ```bash
-python reference-tools/perimeter/import_perimeter_reference.py reference-tools/matlab/perimeter-run
+python reference-tools/perimeter/import_perimeter_reference.py reference-tools/matlab/perimeter-run-YYYYMMDD-HHMMSS --catalog main/tests/fixtures/16a_foams105_perimeter_cases.json --manifest reference-tools/perimeter/foams105_perimeter_manifest.json
 ```
 
 Importer checks include:
@@ -100,13 +110,13 @@ Importer checks include:
 Perimeter vs PerimeterOld within one run:
 
 ```bash
-python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run --mode within-run --output-json reference-tools/perimeter/report-within-run.json
+python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run-YYYYMMDD-HHMMSS --mode within-run --catalog main/tests/fixtures/16a_foams105_perimeter_cases.json --manifest reference-tools/perimeter/foams105_perimeter_manifest.json --output-json reference-tools/perimeter/report-within-run.json
 ```
 
 Run-to-run perimeter comparison:
 
 ```bash
-python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run --mode run-to-run --other-run-dir path/to/other/run --output-json reference-tools/perimeter/report-run-to-run.json
+python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run-YYYYMMDD-HHMMSS --mode run-to-run --other-run-dir path/to/other/run --catalog main/tests/fixtures/16a_foams105_perimeter_cases.json --manifest reference-tools/perimeter/foams105_perimeter_manifest.json --output-json reference-tools/perimeter/report-run-to-run.json
 ```
 
 Console summary includes mode, schema/topology/numerical/historical states,
@@ -151,11 +161,16 @@ Provide these files from a runtime capture:
 7. constructor and manifest hashes used for the run
 8. comparison command(s) executed
 9. generated JSON report file(s)
+10. full MATLAB log, runtime/toolbox information, and MATLAB process exit status
+11. SHA-256 hashes for the retained catalog, generated constructor, manifest,
+    runner, capture TSV files, and report
 
 ## Current evidence status
 
 - Tooling and CI-safe synthetic transport tests are implemented.
 - No MATLAB runtime evidence is bundled by default in this repository.
 - MATLAB availability is an external dependency for runtime evidence capture.
+- Local R2025b launch was verified, but capture is blocked because Image
+  Processing Toolbox is unavailable; this attempt is not a valid reference run.
 - Historical perimeter equivalence remains pending Brief 16b review and method
   acceptance.

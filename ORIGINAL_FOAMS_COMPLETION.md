@@ -1,6 +1,6 @@
 # Original FOAMS completion tracker
 
-Last updated: 2026-10-15.
+Last updated: 2026-10-16.
 
 **Original FOAMS implementation: NOT COMPLETE.**
 
@@ -17,7 +17,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a reference tooling implemented | Unit-square central moments and strict identity/validation joins are accepted analytically; perimeter historical compatibility still pending runtime reference evidence and Brief 16b method acceptance |
+| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened, MATLAB capture blocked by unavailable Image Processing Toolbox | Unit-square central moments and strict identity/validation joins are accepted analytically; 16a direct-script CLIs pass clean-environment subprocess tests; R2025b was queried, but its first `regionprops` call failed because Image Processing Toolbox is unavailable; no valid perimeter reference values captured; historical compatibility and Brief 16b method acceptance remain pending |
 | 8. Analysis interface | Pending | Original analyses available through the application |
 | 9. Original-equivalent exports | Pending | Calc/Area/Ves/Misc/Shape-equivalent outputs verified |
 | 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
@@ -120,14 +120,26 @@ incidental conversion/arithmetic exceptions. Valid NumPy integer scalar inputs
 remain supported. This remains a boundary correction only: perimeter,
 historical MATLAB equivalence, and derived shape statistics are still pending.
 
+friendly MATLAB TSV capture runner, Python preparation/import/comparison
 Brief 16a adds perimeter reference capture/comparison tooling rather than a
 production perimeter estimator. A deterministic input case catalog, legacy-
 friendly MATLAB TSV capture runner, Python preparation/import/comparison
 utilities, strict schema/topology/hash validation, and CI-safe transport
-fixtures are now in place. This stage records runtime provenance and preserves
-unsupported/error property states explicitly. Historical MATLAB perimeter
-compatibility is not yet claimed because runtime capture evidence and method
-selection remain pending for Brief 16b.
+fixtures are in place. Direct-script wrappers now bootstrap the repository root
+without `PYTHONPATH`, and subprocess tests exercise all three wrappers plus a
+synthetic prepare/import/compare sequence. Local tests and lint are recorded in
+the implementation handoff; configured hosted Linux/Windows Python 3.11/3.12
+CI is still required for acceptance.
+
+The real capture attempt is retained under
+`reference-tools/matlab/perimeter-evidence-r2025b-20261016-004729-c559cf4f`.
+MATLAB 25.2.0.2998904 (R2025b) starts successfully, but Image Processing
+Toolbox is unavailable (`ver('images')` returns no installation), and capture
+fails at `regionprops`. The partial `.tmp` TSVs and complete logs are preserved;
+they are not importable reference evidence. No component perimeter values,
+within-run report, or historical compatibility result is claimed. Install or
+license Image Processing Toolbox and repeat capture into a new unique directory
+before proceeding to the Brief 16b method review.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.

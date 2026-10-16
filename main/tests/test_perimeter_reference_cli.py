@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,17 +18,41 @@ from main.tests.test_perimeter_reference_tools import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI_PATH = REPO_ROOT / "reference-tools" / "perimeter" / "compare_perimeter_reference.py"
+PREPARE_CLI_PATH = REPO_ROOT / "reference-tools" / "perimeter" / "prepare_perimeter_reference.py"
+IMPORT_CLI_PATH = REPO_ROOT / "reference-tools" / "perimeter" / "import_perimeter_reference.py"
 
 
 class TestPerimeterReferenceCli(unittest.TestCase):
     def _run_cli(self, *args: str):
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
         return subprocess.run(
             [sys.executable, str(CLI_PATH), *args],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             check=False,
+            env=environment,
         )
+
+    def _run_script(self, script_path: Path, *args: str):
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        return subprocess.run(
+            [sys.executable, str(script_path), *args],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+
+    def test_direct_wrappers_start_without_pythonpath(self):
+        for script_path in (PREPARE_CLI_PATH, IMPORT_CLI_PATH, CLI_PATH):
+            with self.subTest(script=script_path.name):
+                result = self._run_script(script_path, "--help")
+                self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+                self.assertNotIn("ModuleNotFoundError", result.stderr)
 
     def test_within_run_agreement_exit_zero_and_json_rows(self):
         prepared = prepare_catalog(FIXTURE_PATH)
@@ -71,6 +96,8 @@ class TestPerimeterReferenceCli(unittest.TestCase):
                 str(out_json),
             )
             self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+            self.assertTrue(out_json.is_file())
+            self.assertNotIn("ModuleNotFoundError", result.stderr)
 
             payload = json.loads(out_json.read_text(encoding="utf-8"))
             self.assertEqual(payload["mode"], "within-run")
@@ -128,9 +155,18 @@ class TestPerimeterReferenceCli(unittest.TestCase):
                 str(out_json),
             )
             self.assertEqual(result.returncode, 1, msg=result.stdout + result.stderr)
+            self.assertTrue(out_json.is_file())
+            self.assertNotIn("ModuleNotFoundError", result.stderr)
             payload = json.loads(out_json.read_text(encoding="utf-8"))
             self.assertGreaterEqual(payload["counts"]["mismatch_rows"], 1)
             self.assertFalse(payload["states"]["numerical_valid"])
+            mismatch_row = next(
+                row
+                for row in payload["rows"]
+                if row["case_id"] == "isolated_pixel_final" and row["native_component_id"] == 1
+            )
+            self.assertEqual(mismatch_row["candidate_px"], 999.0)
+            self.assertFalse(mismatch_row["within_tolerance"])
 
     def test_within_run_no_comparable_or_partial_rows_exit_two(self):
         prepared = prepare_catalog(FIXTURE_PATH)
@@ -172,6 +208,8 @@ class TestPerimeterReferenceCli(unittest.TestCase):
                 str(out_json),
             )
             self.assertEqual(result.returncode, 2, msg=result.stdout + result.stderr)
+            self.assertTrue(out_json.is_file())
+            self.assertNotIn("ModuleNotFoundError", result.stderr)
             payload = json.loads(out_json.read_text(encoding="utf-8"))
             self.assertEqual(payload["counts"]["comparable_rows"], 0)
 
@@ -203,6 +241,8 @@ class TestPerimeterReferenceCli(unittest.TestCase):
                 str(out_json),
             )
             self.assertEqual(result.returncode, 2, msg=result.stdout + result.stderr)
+            self.assertTrue(out_json.is_file())
+            self.assertNotIn("ModuleNotFoundError", result.stderr)
             payload = json.loads(out_json.read_text(encoding="utf-8"))
             self.assertGreater(payload["counts"]["skipped_rows"], 0)
             self.assertGreater(len(payload["skipped_reasons"]), 0)
@@ -223,7 +263,10 @@ class TestPerimeterReferenceCli(unittest.TestCase):
                 str(out_json),
             )
             self.assertEqual(result.returncode, 2)
-            self.assertIn("validation_error", out_json.read_text(encoding="utf-8"))
+            self.assertTrue(out_json.is_file())
+            payload = json.loads(out_json.read_text(encoding="utf-8"))
+            self.assertIn("validation_error", " ".join(payload["notes"]))
+            self.assertNotIn("ModuleNotFoundError", result.stderr)
 
     def test_run_to_run_mode_uses_run_to_run_exit_status(self):
         prepared = prepare_catalog(FIXTURE_PATH)
@@ -276,6 +319,8 @@ class TestPerimeterReferenceCli(unittest.TestCase):
                 str(out_json),
             )
             self.assertEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+            self.assertTrue(out_json.is_file())
+            self.assertNotIn("ModuleNotFoundError", result.stderr)
             payload = json.loads(out_json.read_text(encoding="utf-8"))
             self.assertEqual(payload["mode"], "run-to-run")
             self.assertEqual(payload["counts"]["mismatch_rows"], 0)
@@ -308,8 +353,77 @@ class TestPerimeterReferenceCli(unittest.TestCase):
                 str(out_json),
             )
             self.assertEqual(result.returncode, 1, msg=result.stdout + result.stderr)
+            self.assertTrue(out_json.is_file())
+            self.assertNotIn("ModuleNotFoundError", result.stderr)
             payload = json.loads(out_json.read_text(encoding="utf-8"))
             self.assertGreater(payload["counts"]["mismatch_rows"], 0)
+
+    def test_documented_prepare_import_compare_sequence_without_pythonpath(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            constructor = root / "generated.m"
+            manifest = root / "manifest.json"
+            prepare = self._run_script(
+                PREPARE_CLI_PATH,
+                "--catalog",
+                str(FIXTURE_PATH),
+                "--runner",
+                str(RUNNER_PATH),
+                "--constructor",
+                str(constructor),
+                "--manifest",
+                str(manifest),
+            )
+            self.assertEqual(prepare.returncode, 0, msg=prepare.stdout + prepare.stderr)
+            self.assertTrue(constructor.is_file())
+            self.assertTrue(manifest.is_file())
+            self.assertNotIn("ModuleNotFoundError", prepare.stderr)
+
+            prepared = prepare_catalog(FIXTURE_PATH)
+            manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+            run_dir = root / "synthetic-run"
+            _build_valid_transport_run(
+                run_dir,
+                prepared,
+                expected_catalog_hash=manifest_payload["case_catalog_hash"],
+                expected_preparation_hash=manifest_payload["preparation_hash"],
+                expected_runner_hash=manifest_payload["runner_hash"],
+            )
+
+            imported = self._run_script(
+                IMPORT_CLI_PATH,
+                str(run_dir),
+                "--catalog",
+                str(FIXTURE_PATH),
+                "--manifest",
+                str(manifest),
+            )
+            self.assertEqual(imported.returncode, 0, msg=imported.stdout + imported.stderr)
+            self.assertIn("case_count:", imported.stdout)
+            self.assertNotIn("ModuleNotFoundError", imported.stderr)
+
+            report_path = root / "report.json"
+            compared = self._run_cli(
+                str(run_dir),
+                "--mode",
+                "within-run",
+                "--catalog",
+                str(FIXTURE_PATH),
+                "--manifest",
+                str(manifest),
+                "--output-json",
+                str(report_path),
+            )
+            self.assertEqual(compared.returncode, 0, msg=compared.stdout + compared.stderr)
+            self.assertTrue(report_path.is_file())
+            self.assertNotIn("ModuleNotFoundError", compared.stderr)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertGreater(report["counts"]["expected_rows"], 0)
+            self.assertEqual(report["counts"]["comparable_rows"], report["counts"]["expected_rows"])
+            self.assertEqual(report["counts"]["mismatch_rows"], 0)
+            self.assertTrue(report["states"]["schema_valid"])
+            self.assertTrue(report["states"]["topology_valid"])
+            self.assertTrue(report["states"]["numerical_valid"])
 
 
 class TestPerimeterRunnerSourceCompatibility(unittest.TestCase):
