@@ -854,7 +854,22 @@ def calculate_foams105_2d_vesicularity(
             raise Foams105VesicularityValidationError(
                 f"groups[{group_index}] must be a Foams105VesicularityGroupInput"
             )
-        if context.group_id != raw_group.group_id or context.source_slot != source_slot:
+        if (
+            not isinstance(context.source_slot, (int, np.integer))
+            or isinstance(context.source_slot, (bool, np.bool_))
+        ):
+            raise Foams105VesicularityValidationError(
+                f"groups[{group_index}].source_slot must be an integer",
+                context={
+                    "group_index": group_index,
+                    "actual_source_slot": context.source_slot,
+                },
+            )
+        normalized_source_slot = int(context.source_slot)
+        if (
+            context.group_id != raw_group.group_id
+            or normalized_source_slot != source_slot
+        ):
             raise Foams105VesicularityValidationError(
                 "group ID and source slot must exactly match raw_selection",
                 context={
@@ -862,7 +877,7 @@ def calculate_foams105_2d_vesicularity(
                     "expected_group_id": raw_group.group_id,
                     "actual_group_id": context.group_id,
                     "expected_source_slot": source_slot,
-                    "actual_source_slot": context.source_slot,
+                    "actual_source_slot": normalized_source_slot,
                 },
             )
         if not isinstance(context.image_area_results, tuple):

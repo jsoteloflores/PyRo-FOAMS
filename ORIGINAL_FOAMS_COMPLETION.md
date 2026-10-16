@@ -13,9 +13,9 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 |---|---|---|
 | 1. Post-nesting N_A-to-N_V conversion | Brief 06 accepted against bundled Calc_out fixture | All 29 rows, source alpha order, heights, duplicate metadata, validation, and smallest-class exception tested |
 | 2. Measurement, area, and histogram conventions | Briefs 07, 08, and 09 accepted; shape measurements pending | 45-label preparation, all 180 histogram cells, exact mask topology, calibrated component geometry, six weighted-area cases, strict four-slot exclusion thresholds, signed per-image denominators, and explicit compatible-group sums tested |
-| 3. Automatic magnification cutoffs | Briefs 10-12 implemented and locally validated; latest configured CI run was cancelled before executing steps | Signed log-density transitions, exact binned source slices, LF/CRLF fixture pins, raw predecessor bounds, stable component identities, inclusive unrounded filtering, and ascending raw-slot provenance tested |
-| 4. 2D vesicularity and phase accounting | Brief 13 implemented and locally validated; review and configured CI pending | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, and signed diagnostics tested |
-| 5. Volume distributions and normalization | Pending | Original normalization modes and cumulative volume outputs |
+| 3. Automatic magnification cutoffs | Briefs 10-12 accepted in configured CI with Brief 13 commit `ffc59f5` | Signed log-density transitions, exact binned source slices, LF/CRLF fixture pins, raw predecessor bounds, stable component identities, inclusive unrounded filtering, and ascending raw-slot provenance tested |
+| 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
+| 5. Volume distributions and normalization | Brief 14 implemented and locally validated; configured CI pending | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Pending | NV/NVcorr, per-width density, cumulative counts, and logarithms |
 | 7. Shape outputs and statistics | Pending | Original conventions and ellipse-algorithm differences resolved |
 | 8. Analysis interface | Pending | Original analyses available through the application |
@@ -63,6 +63,15 @@ provenance. Thirteen independent numerical cases and coherent public pipeline
 tests cover source area reassignment, disabled groups, pooled images, signed
 nonphysical results, identity ownership, overflow, and underflow. These tests
 are not MATLAB output, workbook vesicularity parity, or original-image parity.
+
+Brief 14 adds equivalent-sphere volume fractions from canonical converter
+heights and signed N_V rows. Unnormalized, integrated-2D, and known-percentage
+modes preserve converter order and values while adjusting only volume
+fractions. Ten calculated analytical cases cover signed rows, duplicate labels,
+zero targets, zero and cancellation denominators, and signed integrated
+targets. The expectations are not original workbook references. Plotting
+reductions, cumulative counts, NV/NVcorr summaries, shape, exports, GUI, and
+complete original-image parity remain pending.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.

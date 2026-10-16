@@ -407,6 +407,21 @@ class TestFoams105VesicularityValidation(unittest.TestCase):
                 with self.assertRaises(Foams105VesicularityValidationError):
                     calculate_foams105_2d_vesicularity(self.raw, (context,))
 
+    def test_source_slot_rejects_booleans_and_nonintegers(self):
+        for source_slot in (True, np.bool_(True), 1.0):
+            context = replace(self.context, source_slot=source_slot)
+            with self.subTest(source_slot=source_slot), self.assertRaises(
+                Foams105VesicularityValidationError
+            ) as caught:
+                calculate_foams105_2d_vesicularity(self.raw, (context,))
+            self.assertIn("source_slot must be an integer", str(caught.exception))
+
+    def test_source_slot_accepts_and_normalizes_numpy_integer(self):
+        context = replace(self.context, source_slot=np.int64(1))
+        result = calculate_foams105_2d_vesicularity(self.raw, (context,))
+        self.assertEqual(result.groups[0].source_slot, 1)
+        self.assertIsInstance(result.groups[0].source_slot, int)
+
     def test_malformed_scalar_is_typed(self):
         image = replace(self.context.image_area_results[0], scale_px_per_mm=True)
         context = replace(self.context, image_area_results=(image,))
