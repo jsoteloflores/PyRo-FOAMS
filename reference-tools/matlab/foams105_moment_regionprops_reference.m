@@ -98,9 +98,7 @@ if maxLabel == 0
     return
 end
 
-height = size(labels, 1);
-flat = labels';
-flat = flat(:);
+flat = labels(:);
 positions = find(flat > 0);
 values = flat(positions);
 minimum = inf(maxLabel, 1);
@@ -118,7 +116,4 @@ end
 reordered = lookup(labels + 1);
 reordered = reshape(reordered, size(labels));
 reordered = cast(reordered, 'like', labels);
-
-% Keep MATLAB from warning about an unused variable in compatibility checks.
-height = height; %#ok<NASGU>
 end

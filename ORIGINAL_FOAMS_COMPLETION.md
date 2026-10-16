@@ -17,7 +17,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Brief 16 moment geometry implemented with review-boundary correction; configured CI pending | Unit-square central moments, major/minor axes, eccentricity, source and project orientations, and strict canonical raw-identity shape joins verified analytically; historical perimeter compatibility and derived statistics pending |
+| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a reference tooling implemented | Unit-square central moments and strict identity/validation joins are accepted analytically; perimeter historical compatibility still pending runtime reference evidence and Brief 16b method acceptance |
 | 8. Analysis interface | Pending | Original analyses available through the application |
 | 9. Original-equivalent exports | Pending | Calc/Area/Ves/Misc/Shape-equivalent outputs verified |
 | 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
@@ -119,6 +119,15 @@ nonscalar payloads now fail with typed contextual validation errors instead of
 incidental conversion/arithmetic exceptions. Valid NumPy integer scalar inputs
 remain supported. This remains a boundary correction only: perimeter,
 historical MATLAB equivalence, and derived shape statistics are still pending.
+
+Brief 16a adds perimeter reference capture/comparison tooling rather than a
+production perimeter estimator. A deterministic input case catalog, legacy-
+friendly MATLAB TSV capture runner, Python preparation/import/comparison
+utilities, strict schema/topology/hash validation, and CI-safe transport
+fixtures are now in place. This stage records runtime provenance and preserves
+unsupported/error property states explicitly. Historical MATLAB perimeter
+compatibility is not yet claimed because runtime capture evidence and method
+selection remain pending for Brief 16b.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
