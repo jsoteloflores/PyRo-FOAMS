@@ -1,0 +1,13 @@
+﻿status=blocked_incomplete_capture
+matlab_version=25.2.0.2998904
+matlab_release=R2025b
+image_processing_toolbox=unavailable
+prepared_case_count=29
+case_rows_started=1
+component_rows_captured=0
+completed_marker=absent
+import_attempted=no; capture did not complete
+comparison_report=not generated
+error=regionprops requires Image Processing Toolbox
+matlab_exit_code=1
+partial_tsv_directory=capture.tmp

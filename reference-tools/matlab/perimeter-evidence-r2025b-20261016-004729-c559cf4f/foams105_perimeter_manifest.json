@@ -1,0 +1,12 @@
+{
+  "case_catalog_hash": "a197e231c8650d75428ade888eefe82da9d3edfcaae10f27b1297873282b2528",
+  "case_count": 29,
+  "catalog_path": "main\\tests\\fixtures\\16a_foams105_perimeter_cases.json",
+  "constructor_hash": "83036d7f3b198df8d823193848cecd501348453e2016f0233f863102ca448a3e",
+  "constructor_path": "C:\\Users\\SauxJoel's PC\\PyRo-FOAMS\\reference-tools\\matlab\\perimeter-evidence-r2025b-20261016-004729-c559cf4f\\foams105_perimeter_cases_generated.m",
+  "preparation_hash": "3ca96fd1e4c9d5d735de9a8dd3b0f91d494cd273e3830216945e0cb90bb2c31d",
+  "runner_hash": "8319eed01619ecff82fc3976247da8d20de81c10d6a781e05a5dd69c56291c82",
+  "runner_path": "reference-tools\\matlab\\foams105_perimeter_capture_tsv.m",
+  "schema_version": 1,
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8"
+}

@@ -1,0 +1,2 @@
+case_id	stage	height	width	scale_px_per_mm	foreground_pixel_count	component_count	outcome
+empty_final	final_label_matrix	6	6	1	0	0	success

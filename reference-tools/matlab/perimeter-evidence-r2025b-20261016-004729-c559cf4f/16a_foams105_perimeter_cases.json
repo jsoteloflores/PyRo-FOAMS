@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "catalog_id": "foams105_perimeter_reference_cases_v1",
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "notes": "Input-only perimeter reference catalog. No historical perimeter values are embedded.",
+  "coordinate_system": "zero-based [row,column]",
+  "cases": [
+    {
+      "id": "empty_final",
+      "stage": "final_label_matrix",
+      "purpose": "empty foreground",
+      "shape": [6, 6],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [],
+      "topology_assertions": {"component_count": 0, "first_pixels": [], "areas": []}
+    },
+    {
+      "id": "isolated_pixel_final",
+      "stage": "final_label_matrix",
+      "purpose": "single isolated pixel",
+      "shape": [6, 6],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 3]], "areas": [1]}
+    },
+    {
+      "id": "bar_h2_final",
+      "stage": "final_label_matrix",
+      "purpose": "horizontal bar length 2",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1], [3, 4, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 3]], "areas": [2]}
+    },
+    {
+      "id": "bar_h3_final",
+      "stage": "final_label_matrix",
+      "purpose": "horizontal bar length 3",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 2, 1], [3, 3, 1], [3, 4, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 2]], "areas": [3]}
+    },
+    {
+      "id": "bar_h7_final",
+      "stage": "final_label_matrix",
+      "purpose": "horizontal bar length 7",
+      "shape": [10, 12],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[5, 2, 1], [5, 3, 1], [5, 4, 1], [5, 5, 1], [5, 6, 1], [5, 7, 1], [5, 8, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[5, 2]], "areas": [7]}
+    },
+    {
+      "id": "bar_v2_final",
+      "stage": "final_label_matrix",
+      "purpose": "vertical bar length 2",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1], [4, 3, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 3]], "areas": [2]}
+    },
+    {
+      "id": "bar_v3_final",
+      "stage": "final_label_matrix",
+      "purpose": "vertical bar length 3",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[2, 3, 1], [3, 3, 1], [4, 3, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[2, 3]], "areas": [3]}
+    },
+    {
+      "id": "bar_v7_final",
+      "stage": "final_label_matrix",
+      "purpose": "vertical bar length 7",
+      "shape": [12, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[2, 5, 1], [3, 5, 1], [4, 5, 1], [5, 5, 1], [6, 5, 1], [7, 5, 1], [8, 5, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[2, 5]], "areas": [7]}
+    },
+    {
+      "id": "rect_2x2_final",
+      "stage": "final_label_matrix",
+      "purpose": "solid rectangle 2x2",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[2, 2, 1], [2, 3, 1], [3, 2, 1], [3, 3, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[2, 2]], "areas": [4]}
+    },
+    {
+      "id": "rect_3x3_final",
+      "stage": "final_label_matrix",
+      "purpose": "solid rectangle 3x3",
+      "shape": [9, 9],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[2, 2, 1], [2, 3, 1], [2, 4, 1], [3, 2, 1], [3, 3, 1], [3, 4, 1], [4, 2, 1], [4, 3, 1], [4, 4, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[2, 2]], "areas": [9]}
+    },
+    {
+      "id": "rect_3x5_final",
+      "stage": "final_label_matrix",
+      "purpose": "solid rectangle 3x5",
+      "shape": [11, 12],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1], [3, 4, 1], [3, 5, 1], [3, 6, 1], [3, 7, 1], [4, 3, 1], [4, 4, 1], [4, 5, 1], [4, 6, 1], [4, 7, 1], [5, 3, 1], [5, 4, 1], [5, 5, 1], [5, 6, 1], [5, 7, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 3]], "areas": [15]}
+    },
+    {
+      "id": "l_triomino_a_final",
+      "stage": "final_label_matrix",
+      "purpose": "L triomino base",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1], [3, 4, 1], [4, 3, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 3]], "areas": [3]}
+    },
+    {
+      "id": "l_triomino_rot90_final",
+      "stage": "final_label_matrix",
+      "purpose": "L triomino rotated 90 degrees",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1], [4, 3, 1], [4, 4, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 3]], "areas": [3]}
+    },
+    {
+      "id": "l_triomino_reflect_final",
+      "stage": "final_label_matrix",
+      "purpose": "L triomino reflected",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 4, 1], [3, 5, 1], [4, 5, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 4]], "areas": [3]}
+    },
+    {
+      "id": "staircase_final",
+      "stage": "final_label_matrix",
+      "purpose": "staircase shape",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[2, 2, 1], [2, 3, 1], [3, 3, 1], [3, 4, 1], [4, 4, 1], [4, 5, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[2, 2]], "areas": [6]}
+    },
+    {
+      "id": "plus_final",
+      "stage": "final_label_matrix",
+      "purpose": "plus shape",
+      "shape": [9, 9],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 4, 1], [4, 3, 1], [4, 4, 1], [4, 5, 1], [5, 4, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[4, 3]], "areas": [5]}
+    },
+    {
+      "id": "t_shape_final",
+      "stage": "final_label_matrix",
+      "purpose": "T shape",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[2, 3, 1], [2, 4, 1], [2, 5, 1], [3, 4, 1], [4, 4, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[2, 3]], "areas": [5]}
+    },
+    {
+      "id": "narrow_neck_final",
+      "stage": "final_label_matrix",
+      "purpose": "two lobes connected by one-pixel neck",
+      "shape": [12, 12],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1], [3, 4, 1], [4, 3, 1], [4, 4, 1], [5, 5, 1], [6, 6, 1], [6, 7, 1], [7, 6, 1], [7, 7, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 3]], "areas": [9]}
+    },
+    {
+      "id": "diagonal_touching_two_components_final",
+      "stage": "final_label_matrix",
+      "purpose": "diagonal-only contact remains two components in four-connectivity",
+      "shape": [8, 8],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 3, 1], [4, 4, 2]],
+      "topology_assertions": {"component_count": 2, "first_pixels": [[3, 3], [4, 4]], "areas": [1, 1]}
+    },
+    {
+      "id": "opposing_order_singletons_final",
+      "stage": "final_label_matrix",
+      "purpose": "ordering counterexample with opposing first-pixel rows/cols",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[6, 2, 1], [2, 6, 2]],
+      "topology_assertions": {"component_count": 2, "first_pixels": [[6, 2], [2, 6]], "areas": [1, 1]}
+    },
+    {
+      "id": "opposing_order_distinguishable_final",
+      "stage": "final_label_matrix",
+      "purpose": "ordering counterexample with distinguishable areas/perimeters",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[6, 2, 1], [6, 3, 1], [2, 6, 2]],
+      "topology_assertions": {"component_count": 2, "first_pixels": [[6, 2], [2, 6]], "areas": [2, 1]}
+    },
+    {
+      "id": "raw_ring_hole_fill",
+      "stage": "raw_phase_mask",
+      "purpose": "raw ring verifies hole fill before labeling",
+      "shape": [11, 11],
+      "scale_px_per_mm": 1.0,
+      "phase_value": 1,
+      "foreground_pixels": [[4, 4], [4, 5], [4, 6], [5, 4], [5, 6], [6, 4], [6, 5], [6, 6]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[4, 4]], "areas": [9]}
+    },
+    {
+      "id": "raw_border_removal",
+      "stage": "raw_phase_mask",
+      "purpose": "raw border-connected foreground removed before labeling",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "phase_value": 1,
+      "foreground_pixels": [[0, 0], [0, 1], [1, 0], [6, 6]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[6, 6]], "areas": [1]}
+    },
+    {
+      "id": "translation_pair_a_final",
+      "stage": "final_label_matrix",
+      "purpose": "translation pair A",
+      "shape": [12, 12],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[2, 2, 1], [2, 3, 1], [3, 2, 1], [3, 3, 1], [4, 3, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[2, 2]], "areas": [5]}
+    },
+    {
+      "id": "translation_pair_b_final",
+      "stage": "final_label_matrix",
+      "purpose": "translation pair B",
+      "shape": [12, 12],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[6, 7, 1], [6, 8, 1], [7, 7, 1], [7, 8, 1], [8, 8, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[6, 7]], "areas": [5]}
+    },
+    {
+      "id": "rotation_pair_a_final",
+      "stage": "final_label_matrix",
+      "purpose": "rotation pair horizontal",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[4, 3, 1], [4, 4, 1], [4, 5, 1], [4, 6, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[4, 3]], "areas": [4]}
+    },
+    {
+      "id": "rotation_pair_b_final",
+      "stage": "final_label_matrix",
+      "purpose": "rotation pair vertical",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[3, 4, 1], [4, 4, 1], [5, 4, 1], [6, 4, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[3, 4]], "areas": [4]}
+    },
+    {
+      "id": "calibration_pair_scale1_final",
+      "stage": "final_label_matrix",
+      "purpose": "identical mask calibration pair scale 1",
+      "shape": [10, 10],
+      "scale_px_per_mm": 1.0,
+      "label_entries": [[4, 4, 1], [4, 5, 1], [5, 4, 1], [5, 5, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[4, 4]], "areas": [4]}
+    },
+    {
+      "id": "calibration_pair_scale4_final",
+      "stage": "final_label_matrix",
+      "purpose": "identical mask calibration pair scale 4",
+      "shape": [10, 10],
+      "scale_px_per_mm": 4.0,
+      "label_entries": [[4, 4, 1], [4, 5, 1], [5, 4, 1], [5, 5, 1]],
+      "topology_assertions": {"component_count": 1, "first_pixels": [[4, 4]], "areas": [4]}
+    }
+  ]
+}

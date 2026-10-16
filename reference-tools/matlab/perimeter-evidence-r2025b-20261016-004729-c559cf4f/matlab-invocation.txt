@@ -1,0 +1,4 @@
+﻿executable=C:/Program Files/MATLAB/R2025b/bin/matlab.exe
+working_directory=C:\Users\SauxJoel's PC\PyRo-FOAMS
+invocation=MATLAB R2025b perimeter reference capture 20261016-004729-c559cf4f
+expression=fprintf('MATLAB_CAPTURE_CWD=%s\n', pwd); addpath('C:/Users/SauxJoel''s PC/PyRo-FOAMS/reference-tools/matlab'); addpath('C:/Users/SauxJoel''s PC/PyRo-FOAMS/reference-tools/matlab/perimeter-evidence-r2025b-20261016-004729-c559cf4f'); foams105_perimeter_capture_tsv('foams105_perimeter_cases_generated', 'C:/Users/SauxJoel''s PC/PyRo-FOAMS/reference-tools/matlab/perimeter-evidence-r2025b-20261016-004729-c559cf4f/capture', 'MATLAB R2025b perimeter reference capture 20261016-004729-c559cf4f');

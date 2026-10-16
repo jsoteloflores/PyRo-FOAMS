@@ -1,0 +1,4 @@
+﻿evidence_root=C:\Users\SauxJoel's PC\PyRo-FOAMS\reference-tools\matlab\perimeter-evidence-r2025b-20261016-004729-c559cf4f
+capture_dir=C:\Users\SauxJoel's PC\PyRo-FOAMS\reference-tools\matlab\perimeter-evidence-r2025b-20261016-004729-c559cf4f\capture
+constructor=C:\Users\SauxJoel's PC\PyRo-FOAMS\reference-tools\matlab\perimeter-evidence-r2025b-20261016-004729-c559cf4f\foams105_perimeter_cases_generated.m
+manifest=C:\Users\SauxJoel's PC\PyRo-FOAMS\reference-tools\matlab\perimeter-evidence-r2025b-20261016-004729-c559cf4f\foams105_perimeter_manifest.json
