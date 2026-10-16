@@ -3,7 +3,10 @@ from __future__ import annotations
 import csv
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
+
+import numpy as np
 
 from main.reference_tools.perimeter_reference import (
     PerimeterReferenceValidationError,
@@ -91,9 +94,10 @@ def _build_valid_transport_run(
                 "area_px": component.area_px,
                 "perimeter_px": f"{float(component.area_px):.17g}",
                 "perimeter_status": "success",
+                "perimeter_error": "",
                 "perimeter_old_px": f"{float(component.area_px):.17g}",
                 "perimeter_old_status": "success",
-                "property_error": "",
+                "perimeter_old_error": "",
             }
             if per_component_override is not None:
                 updates = per_component_override(case.case_id, component.native_component_id)
@@ -127,9 +131,10 @@ def _build_valid_transport_run(
             "area_px",
             "perimeter_px",
             "perimeter_status",
+            "perimeter_error",
             "perimeter_old_px",
             "perimeter_old_status",
-            "property_error",
+            "perimeter_old_error",
         ],
         component_rows,
     )
@@ -182,6 +187,24 @@ class TestPerimeterReferenceCatalog(unittest.TestCase):
             self.assertEqual(first.preparation_hash, second.preparation_hash)
             self.assertEqual(first.runner_hash, second.runner_hash)
             self.assertEqual(first.constructor_hash, second.constructor_hash)
+
+    def test_prepare_constructor_retains_raw_phase_inputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            constructor = root / "generated.m"
+            manifest = root / "manifest.json"
+
+            prepare_matlab_constructor(
+                FIXTURE_PATH,
+                constructor,
+                manifest,
+                runner_path=RUNNER_PATH,
+                preparation_path=PREP_SCRIPT_PATH,
+            )
+            text = constructor.read_text(encoding="utf-8")
+            self.assertIn("raw_phase_image", text)
+            self.assertIn("raw_phase_value", text)
+            self.assertIn("stage = 'raw_phase_mask'", text)
 
 
 class TestPerimeterReferenceImport(unittest.TestCase):
@@ -271,7 +294,7 @@ class TestPerimeterReferenceImport(unittest.TestCase):
                 expected_runner_hash=hashes.runner_hash,
             )
             with (run_duplicate / "components.tsv").open("a", encoding="utf-8") as handle:
-                handle.write("isolated_pixel_final\t1\t1\t3\t3\t1\t1\tsuccess\t1\tsuccess\t\n")
+                handle.write("isolated_pixel_final\t1\t1\t3\t3\t1\t1\tsuccess\t\t1\tsuccess\t\n")
             with self.assertRaises(PerimeterReferenceValidationError) as caught:
                 import_reference_run(
                     run_duplicate,
@@ -302,6 +325,56 @@ class TestPerimeterReferenceImport(unittest.TestCase):
                     expected_runner_hash=hashes.runner_hash,
                 )
             self.assertEqual(caught.exception.code, "label_mismatch")
+
+            run_bad_stage = root / "run_bad_stage"
+            _build_valid_transport_run(
+                run_bad_stage,
+                prepared,
+                expected_catalog_hash=hashes.catalog_hash,
+                expected_preparation_hash=hashes.preparation_hash,
+                expected_runner_hash=hashes.runner_hash,
+            )
+            rows = (run_bad_stage / "cases.tsv").read_text(encoding="utf-8").splitlines()
+            header = rows[0].split("\t")
+            data = rows[1].split("\t")
+            stage_idx = header.index("stage")
+            data[stage_idx] = "final_mask"
+            rows[1] = "\t".join(data)
+            (run_bad_stage / "cases.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+            with self.assertRaises(PerimeterReferenceValidationError) as caught:
+                import_reference_run(
+                    run_bad_stage,
+                    FIXTURE_PATH,
+                    expected_case_catalog_hash=hashes.catalog_hash,
+                    expected_preparation_hash=hashes.preparation_hash,
+                    expected_runner_hash=hashes.runner_hash,
+                )
+            self.assertEqual(caught.exception.code, "invalid_export")
+
+            run_bad_scale = root / "run_bad_scale"
+            _build_valid_transport_run(
+                run_bad_scale,
+                prepared,
+                expected_catalog_hash=hashes.catalog_hash,
+                expected_preparation_hash=hashes.preparation_hash,
+                expected_runner_hash=hashes.runner_hash,
+            )
+            rows = (run_bad_scale / "cases.tsv").read_text(encoding="utf-8").splitlines()
+            header = rows[0].split("\t")
+            data = rows[1].split("\t")
+            scale_idx = header.index("scale_px_per_mm")
+            data[scale_idx] = "2"
+            rows[1] = "\t".join(data)
+            (run_bad_scale / "cases.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+            with self.assertRaises(PerimeterReferenceValidationError) as caught:
+                import_reference_run(
+                    run_bad_scale,
+                    FIXTURE_PATH,
+                    expected_case_catalog_hash=hashes.catalog_hash,
+                    expected_preparation_hash=hashes.preparation_hash,
+                    expected_runner_hash=hashes.runner_hash,
+                )
+            self.assertEqual(caught.exception.code, "invalid_export")
 
 
 class TestPerimeterReferenceComparison(unittest.TestCase):
@@ -374,6 +447,90 @@ class TestPerimeterReferenceComparison(unittest.TestCase):
             self.assertGreater(mismatch_report.compared_rows, 0)
             self.assertGreater(mismatch_report.mismatch_rows, 0)
             self.assertFalse(mismatch_report.numerical_valid)
+
+            run_b_labels = {case_id: np.array(labels, copy=True) for case_id, labels in run_b.label_matrices.items()}
+            changed_case = next(iter(run_b_labels))
+            labels = run_b_labels[changed_case]
+            labels[0, 0] = labels[0, 0] + 1
+            run_b_bad_labels = replace(run_b, label_matrices=run_b_labels)
+            with self.assertRaises(PerimeterReferenceValidationError) as caught:
+                compare_runs(run_a, run_b_bad_labels)
+            self.assertEqual(caught.exception.code, "run_mismatch")
+
+            changed_case = next(iter(run_b.captured_cases))
+            changed_captured_cases = dict(run_b.captured_cases)
+            changed_captured_cases[changed_case] = replace(
+                changed_captured_cases[changed_case], scale_px_per_mm=999.0
+            )
+            run_b_bad_scale = replace(run_b, captured_cases=changed_captured_cases)
+            with self.assertRaises(PerimeterReferenceValidationError) as caught:
+                compare_runs(run_a, run_b_bad_scale)
+            self.assertEqual(caught.exception.code, "run_mismatch")
+
+    def test_comparison_reports_skipped_rows_reasons(self):
+        prepared = prepare_catalog(FIXTURE_PATH)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            constructor = root / "constructor.m"
+            manifest = root / "manifest.json"
+            hashes = prepare_matlab_constructor(
+                FIXTURE_PATH,
+                constructor,
+                manifest,
+                runner_path=RUNNER_PATH,
+                preparation_path=PREP_SCRIPT_PATH,
+            )
+
+            run_a_dir = root / "run_a"
+            _build_valid_transport_run(
+                run_a_dir,
+                prepared,
+                expected_catalog_hash=hashes.catalog_hash,
+                expected_preparation_hash=hashes.preparation_hash,
+                expected_runner_hash=hashes.runner_hash,
+                per_component_override=lambda case_id, native_id: {
+                    "perimeter_old_status": "unsupported",
+                    "perimeter_old_error": "MATLAB:images:regionprops:invalidProperty",
+                }
+                if case_id == "isolated_pixel_final" and native_id == 1
+                else None,
+            )
+            run_a = import_reference_run(
+                run_a_dir,
+                FIXTURE_PATH,
+                expected_case_catalog_hash=hashes.catalog_hash,
+                expected_preparation_hash=hashes.preparation_hash,
+                expected_runner_hash=hashes.runner_hash,
+            )
+
+            report = compare_perimeter_and_old(run_a)
+            self.assertTrue(any(note.startswith("skipped[") for note in report.notes))
+
+            run_b_dir = root / "run_b"
+            _build_valid_transport_run(
+                run_b_dir,
+                prepared,
+                expected_catalog_hash=hashes.catalog_hash,
+                expected_preparation_hash=hashes.preparation_hash,
+                expected_runner_hash=hashes.runner_hash,
+                per_component_override=lambda case_id, native_id: {
+                    "perimeter_status": "error_nonfinite",
+                    "perimeter_px": "",
+                    "perimeter_error": "Perimeter_nonfinite",
+                }
+                if case_id == "opposing_order_distinguishable_final" and native_id == 1
+                else None,
+            )
+            run_b = import_reference_run(
+                run_b_dir,
+                FIXTURE_PATH,
+                expected_case_catalog_hash=hashes.catalog_hash,
+                expected_preparation_hash=hashes.preparation_hash,
+                expected_runner_hash=hashes.runner_hash,
+            )
+
+            run_report = compare_runs(run_a, run_b)
+            self.assertTrue(any(note.startswith("skipped[") for note in run_report.notes))
 
 
 if __name__ == "__main__":

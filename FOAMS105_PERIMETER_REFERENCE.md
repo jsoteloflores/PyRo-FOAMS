@@ -67,10 +67,16 @@ Expected output directory files:
 
 Notes:
 
+- Raw-phase cases are replayed in MATLAB via the pinned sequence:
+  phase selection -> `imclearborder(...,8)` -> `imfill(...,'holes')` ->
+  `bwlabel(...,4)`.
+- Final-label cases are used directly as provided in the prepared constructor.
 - Runner preserves native labels and exports both native and canonical IDs.
 - Canonical IDs are defined by ascending first pixel in MATLAB column-major
   order.
 - `Perimeter` and `PerimeterOld` statuses are independent and explicit.
+- `PerimeterOld` unsupported detection is probed independently from per-case
+  runtime failures.
 - No synthetic replacement values are emitted for unsupported or error states.
 
 ## Import validation
@@ -84,7 +90,7 @@ python reference-tools/perimeter/import_perimeter_reference.py reference-tools/m
 Importer checks include:
 
 - schema/source/hash compatibility
-- complete case coverage and unique identities
+- complete case coverage, stage/shape/scale consistency, and unique identities
 - full label matrix reconstruction and exact topology match
 - finite nonnegative perimeter values for successful rows
 - explicit property statuses and completion marker
@@ -113,6 +119,12 @@ Relative difference zero-reference rule:
 - both zero -> relative difference `0`
 - zero reference, nonzero candidate -> relative difference undefined (reported as
   absent), absolute difference still reported
+
+Run comparison coverage contract:
+
+- requires identical case coverage, stage, dimensions, and scale
+- requires full per-case label matrix equality before numerical comparison
+- reports skipped/error row reasons explicitly when statuses are not comparable
 
 ## Reviewer handoff checklist
 

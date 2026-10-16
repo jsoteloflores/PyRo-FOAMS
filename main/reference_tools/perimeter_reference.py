@@ -58,6 +58,8 @@ class PreparedCase:
     shape: Tuple[int, int]
     scale_px_per_mm: float
     labels: np.ndarray
+    raw_phase_image: Optional[np.ndarray]
+    raw_phase_value: Optional[int]
     foreground_pixel_count: int
     component_count: int
     topology: Tuple[ComponentTopology, ...]
@@ -91,9 +93,22 @@ class CapturedComponent:
     area_px: int
     perimeter_px: Optional[float]
     perimeter_status: str
+    perimeter_error: str
     perimeter_old_px: Optional[float]
     perimeter_old_status: str
-    property_error: str
+    perimeter_old_error: str
+
+
+@dataclass(frozen=True)
+class CapturedCase:
+    case_id: str
+    stage: str
+    height: int
+    width: int
+    scale_px_per_mm: float
+    foreground_pixel_count: int
+    component_count: int
+    outcome: str
 
 
 @dataclass(frozen=True)
@@ -101,6 +116,8 @@ class ImportedReferenceRun:
     run_dir: Path
     metadata: Mapping[str, str]
     cases: Tuple[PreparedCase, ...]
+    captured_cases: Mapping[str, CapturedCase]
+    label_matrices: Mapping[str, np.ndarray]
     components: Tuple[CapturedComponent, ...]
 
 
@@ -182,13 +199,13 @@ def _literal_matlab_string(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _matrix_to_matlab_literal(labels: np.ndarray) -> str:
-    if labels.size == 0:
-        return "int32([])"
+def _matrix_to_matlab_literal(values: np.ndarray, matlab_type: str = "int32") -> str:
+    if values.size == 0:
+        return matlab_type + "([])"
     rows = []
-    for row in labels:
+    for row in values:
         rows.append(" ".join(str(int(item)) for item in row))
-    return "int32([" + "; ".join(rows) + "])"
+    return matlab_type + "([" + "; ".join(rows) + "])"
 
 
 def _topology_from_labels(case_id: str, labels: np.ndarray) -> Tuple[ComponentTopology, ...]:
@@ -257,7 +274,9 @@ def _topology_from_labels(case_id: str, labels: np.ndarray) -> Tuple[ComponentTo
     return tuple(output)
 
 
-def _labels_from_case(case: Mapping[str, object]) -> np.ndarray:
+def _prepared_labels_from_case(
+    case: Mapping[str, object],
+) -> Tuple[np.ndarray, Optional[np.ndarray], Optional[int]]:
     case_id = _require_str(case.get("id"), "case.id")
     stage = _require_str(case.get("stage"), "case.stage", case_id=case_id)
     shape_raw = case.get("shape")
@@ -271,6 +290,8 @@ def _labels_from_case(case: Mapping[str, object]) -> np.ndarray:
     width = _require_int(shape_raw[1], "shape[1]", case_id=case_id, minimum=1)
 
     labels = np.zeros((height, width), dtype=np.int32)
+    raw_phase_image: Optional[np.ndarray] = None
+    raw_phase_value: Optional[int] = None
     if stage == "raw_phase_mask":
         phase_value = _require_int(case.get("phase_value", 1), "phase_value", case_id=case_id)
         pixels = case.get("foreground_pixels")
@@ -299,6 +320,8 @@ def _labels_from_case(case: Mapping[str, object]) -> np.ndarray:
             image[row, col] = phase_value
         measured = measure_foams105_phase(image, phase_value, 1.0)
         labels = np.asarray(measured.label_image, dtype=np.int32)
+        raw_phase_image = np.asarray(image, dtype=np.uint8)
+        raw_phase_value = phase_value
     elif stage == "final_label_matrix":
         entries = case.get("label_entries")
         if not isinstance(entries, list):
@@ -336,7 +359,7 @@ def _labels_from_case(case: Mapping[str, object]) -> np.ndarray:
             code="invalid_catalog",
             context={"case_id": case_id, "stage": stage},
         )
-    return labels
+    return labels, raw_phase_image, raw_phase_value
 
 
 def _assert_topology(case: Mapping[str, object], topology: Sequence[ComponentTopology]) -> None:
@@ -457,7 +480,7 @@ def prepare_catalog(catalog_path: Path | str) -> PreparedCatalog:
         width = _require_int(shape_raw[1], "shape[1]", case_id=case_id, minimum=1)
         scale = _require_positive_float(case.get("scale_px_per_mm"), "scale_px_per_mm", case_id=case_id)
 
-        labels = _labels_from_case(case)
+        labels, raw_phase_image, raw_phase_value = _prepared_labels_from_case(case)
         if labels.shape != (height, width):
             raise PerimeterReferenceValidationError(
                 "prepared labels shape does not match case shape",
@@ -474,6 +497,8 @@ def prepare_catalog(catalog_path: Path | str) -> PreparedCatalog:
                 shape=(height, width),
                 scale_px_per_mm=scale,
                 labels=np.asarray(labels, dtype=np.int32),
+                raw_phase_image=raw_phase_image,
+                raw_phase_value=raw_phase_value,
                 foreground_pixel_count=int(np.count_nonzero(labels > 0)),
                 component_count=len(topology),
                 topology=tuple(topology),
@@ -503,7 +528,7 @@ def _write_constructor(
     lines.append(f"bundle.preparation_hash = {_literal_matlab_string(preparation_hash)};")
     lines.append(f"bundle.runner_hash = {_literal_matlab_string(runner_hash)};")
     lines.append(f"bundle.case_count = {len(prepared.cases)};")
-    lines.append("cases = struct('id', {}, 'stage', {}, 'purpose', {}, 'height', {}, 'width', {}, 'scale_px_per_mm', {}, 'labels', {}, 'foreground_pixel_count', {}, 'component_count', {}, 'expected_first_rows', {}, 'expected_first_cols', {}, 'expected_areas', {});")
+    lines.append("cases = struct('id', {}, 'stage', {}, 'purpose', {}, 'height', {}, 'width', {}, 'scale_px_per_mm', {}, 'labels', {}, 'raw_phase_image', {}, 'raw_phase_value', {}, 'foreground_pixel_count', {}, 'component_count', {}, 'expected_first_rows', {}, 'expected_first_cols', {}, 'expected_areas', {});")
     for index, case in enumerate(prepared.cases, start=1):
         ordered = sorted(case.topology, key=lambda item: item.canonical_component_id)
         first_rows = " ".join(str(item.first_row + 1) for item in ordered)
@@ -516,6 +541,15 @@ def _write_constructor(
         lines.append(f"cases({index}).width = {case.shape[1]};")
         lines.append(f"cases({index}).scale_px_per_mm = {case.scale_px_per_mm:.17g};")
         lines.append(f"cases({index}).labels = {_matrix_to_matlab_literal(case.labels)};")
+        if case.raw_phase_image is None:
+            lines.append(f"cases({index}).raw_phase_image = uint8([]);")
+            lines.append(f"cases({index}).raw_phase_value = 0;")
+        else:
+            lines.append(
+                f"cases({index}).raw_phase_image = {_matrix_to_matlab_literal(case.raw_phase_image, matlab_type='uint8')};"
+            )
+            assert case.raw_phase_value is not None
+            lines.append(f"cases({index}).raw_phase_value = {case.raw_phase_value};")
         lines.append(f"cases({index}).foreground_pixel_count = {case.foreground_pixel_count};")
         lines.append(f"cases({index}).component_count = {case.component_count};")
         if ordered:
@@ -614,6 +648,24 @@ def _parse_optional_float(value: str) -> Optional[float]:
     parsed = float(value)
     if not math.isfinite(parsed):
         return parsed
+    return parsed
+
+
+def _parse_required_float(value: str, *, field: str, context: Mapping[str, object]) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise PerimeterReferenceValidationError(
+            f"{field} must be a finite float",
+            code="invalid_export",
+            context=dict(context),
+        ) from exc
+    if not math.isfinite(parsed):
+        raise PerimeterReferenceValidationError(
+            f"{field} must be finite",
+            code="invalid_export",
+            context=dict(context),
+        )
     return parsed
 
 
@@ -740,6 +792,95 @@ def import_reference_run(
         )
 
     case_lookup = {case.case_id: case for case in prepared.cases}
+    parsed_cases: Dict[str, CapturedCase] = {}
+    for row in cases_rows:
+        case_id = row.get("case_id", "")
+        if case_id not in case_lookup:
+            raise PerimeterReferenceValidationError(
+                "cases.tsv contains unknown case",
+                code="invalid_export",
+                context={"case_id": case_id},
+            )
+        if case_id in parsed_cases:
+            raise PerimeterReferenceValidationError(
+                "cases.tsv contains duplicate case rows",
+                code="invalid_export",
+                context={"case_id": case_id},
+            )
+        expected_case = case_lookup[case_id]
+        stage = row.get("stage", "")
+        if stage != expected_case.stage:
+            raise PerimeterReferenceValidationError(
+                "cases.tsv stage does not match prepared case",
+                code="invalid_export",
+                context={"case_id": case_id, "expected": expected_case.stage, "actual": stage},
+            )
+        height = _parse_required_int(row.get("height", ""), field="height", context={"case_id": case_id})
+        width = _parse_required_int(row.get("width", ""), field="width", context={"case_id": case_id})
+        if (height, width) != expected_case.shape:
+            raise PerimeterReferenceValidationError(
+                "cases.tsv dimensions do not match prepared case",
+                code="invalid_export",
+                context={"case_id": case_id, "expected": expected_case.shape, "actual": (height, width)},
+            )
+        scale = _parse_required_float(
+            row.get("scale_px_per_mm", ""),
+            field="scale_px_per_mm",
+            context={"case_id": case_id},
+        )
+        if not math.isclose(scale, expected_case.scale_px_per_mm, rel_tol=0.0, abs_tol=0.0):
+            raise PerimeterReferenceValidationError(
+                "cases.tsv scale does not match prepared case",
+                code="invalid_export",
+                context={"case_id": case_id, "expected": expected_case.scale_px_per_mm, "actual": scale},
+            )
+        foreground = _parse_required_int(
+            row.get("foreground_pixel_count", ""),
+            field="foreground_pixel_count",
+            context={"case_id": case_id},
+        )
+        component_count = _parse_required_int(
+            row.get("component_count", ""),
+            field="component_count",
+            context={"case_id": case_id},
+        )
+        outcome = row.get("outcome", "")
+        if not outcome:
+            raise PerimeterReferenceValidationError(
+                "cases.tsv outcome must be explicit",
+                code="invalid_export",
+                context={"case_id": case_id},
+            )
+        if foreground != expected_case.foreground_pixel_count or component_count != expected_case.component_count:
+            raise PerimeterReferenceValidationError(
+                "cases.tsv topology summary does not match prepared case",
+                code="invalid_export",
+                context={
+                    "case_id": case_id,
+                    "expected_foreground": expected_case.foreground_pixel_count,
+                    "actual_foreground": foreground,
+                    "expected_components": expected_case.component_count,
+                    "actual_components": component_count,
+                },
+            )
+        parsed_cases[case_id] = CapturedCase(
+            case_id=case_id,
+            stage=stage,
+            height=height,
+            width=width,
+            scale_px_per_mm=scale,
+            foreground_pixel_count=foreground,
+            component_count=component_count,
+            outcome=outcome,
+        )
+    expected_case_ids = {case.case_id for case in prepared.cases}
+    if set(parsed_cases) != expected_case_ids:
+        raise PerimeterReferenceValidationError(
+            "cases.tsv case coverage mismatch",
+            code="invalid_export",
+            context={"expected": sorted(expected_case_ids), "actual": sorted(parsed_cases)},
+        )
+
     labels_by_case: Dict[str, np.ndarray] = {}
     for case in prepared.cases:
         labels_by_case[case.case_id] = np.full(case.shape, -1, dtype=np.int64)
@@ -818,7 +959,9 @@ def import_reference_run(
         first_col = _parse_required_int(row.get("first_column", ""), field="first_column", context={"case_id": case_id})
         area_px = _parse_required_int(row.get("area_px", ""), field="area_px", context={"case_id": case_id})
         perimeter_status = row.get("perimeter_status", "")
+        perimeter_error = row.get("perimeter_error", "")
         perimeter_old_status = row.get("perimeter_old_status", "")
+        perimeter_old_error = row.get("perimeter_old_error", "")
         if not perimeter_status or not perimeter_old_status:
             raise PerimeterReferenceValidationError(
                 "component perimeter statuses must be explicit",
@@ -865,9 +1008,10 @@ def import_reference_run(
                 area_px=area_px,
                 perimeter_px=perimeter_px,
                 perimeter_status=perimeter_status,
+                perimeter_error=perimeter_error,
                 perimeter_old_px=perimeter_old_px,
                 perimeter_old_status=perimeter_old_status,
-                property_error=row.get("property_error", ""),
+                perimeter_old_error=perimeter_old_error,
             )
         )
 
@@ -906,6 +1050,8 @@ def import_reference_run(
         run_dir=run_path,
         metadata=metadata,
         cases=prepared.cases,
+        captured_cases=parsed_cases,
+        label_matrices={key: np.asarray(value, dtype=np.int32) for key, value in labels_by_case.items()},
         components=tuple(parsed_components),
     )
 
@@ -922,6 +1068,7 @@ def compare_perimeter_and_old(run: ImportedReferenceRun) -> ComparisonReport:
     rows: List[ComparisonRow] = []
     notes: List[str] = []
     mismatches = 0
+    skipped: Dict[str, int] = {}
     for component in run.components:
         if component.perimeter_status == "success" and component.perimeter_old_status == "success":
             assert component.perimeter_px is not None
@@ -950,9 +1097,20 @@ def compare_perimeter_and_old(run: ImportedReferenceRun) -> ComparisonReport:
                 )
             )
         elif component.perimeter_old_status != "success":
-            notes.append(
-                f"{component.case_id}:{component.native_component_id} perimeter_old_status={component.perimeter_old_status}"
+            reason = (
+                f"case={component.case_id} id={component.native_component_id} "
+                f"perimeter_status={component.perimeter_status} perimeter_old_status={component.perimeter_old_status}"
             )
+            skipped[reason] = skipped.get(reason, 0) + 1
+        else:
+            reason = (
+                f"case={component.case_id} id={component.native_component_id} "
+                f"perimeter_status={component.perimeter_status} perimeter_old_status={component.perimeter_old_status}"
+            )
+            skipped[reason] = skipped.get(reason, 0) + 1
+
+    for reason, count in sorted(skipped.items()):
+        notes.append(f"skipped[{count}]: {reason}")
 
     compared_rows = len(rows)
     numerical_valid = mismatches == 0
@@ -973,6 +1131,41 @@ def compare_perimeter_and_old(run: ImportedReferenceRun) -> ComparisonReport:
 
 
 def compare_runs(run_a: ImportedReferenceRun, run_b: ImportedReferenceRun) -> ComparisonReport:
+    if set(run_a.captured_cases) != set(run_b.captured_cases):
+        raise PerimeterReferenceValidationError(
+            "run case coverage differs",
+            code="run_mismatch",
+            context={"left": sorted(run_a.captured_cases), "right": sorted(run_b.captured_cases)},
+        )
+    for case_id in sorted(run_a.captured_cases):
+        case_a = run_a.captured_cases[case_id]
+        case_b = run_b.captured_cases[case_id]
+        if (
+            case_a.stage != case_b.stage
+            or case_a.height != case_b.height
+            or case_a.width != case_b.width
+            or not math.isclose(case_a.scale_px_per_mm, case_b.scale_px_per_mm, rel_tol=0.0, abs_tol=0.0)
+        ):
+            raise PerimeterReferenceValidationError(
+                "run case metadata mismatch",
+                code="run_mismatch",
+                context={"case_id": case_id},
+            )
+        if case_id not in run_a.label_matrices or case_id not in run_b.label_matrices:
+            raise PerimeterReferenceValidationError(
+                "run label coverage differs",
+                code="run_mismatch",
+                context={"case_id": case_id},
+            )
+        labels_a = run_a.label_matrices[case_id]
+        labels_b = run_b.label_matrices[case_id]
+        if not np.array_equal(labels_a, labels_b):
+            raise PerimeterReferenceValidationError(
+                "run label matrix mismatch",
+                code="run_mismatch",
+                context={"case_id": case_id},
+            )
+
     index_a = {(item.case_id, item.native_component_id): item for item in run_a.components}
     index_b = {(item.case_id, item.native_component_id): item for item in run_b.components}
     if set(index_a) != set(index_b):
@@ -983,6 +1176,8 @@ def compare_runs(run_a: ImportedReferenceRun, run_b: ImportedReferenceRun) -> Co
         )
 
     rows: List[ComparisonRow] = []
+    notes: List[str] = []
+    skipped: Dict[str, int] = {}
     mismatches = 0
     for identity in sorted(index_a):
         left = index_a[identity]
@@ -1024,6 +1219,15 @@ def compare_runs(run_a: ImportedReferenceRun, run_b: ImportedReferenceRun) -> Co
                     within_tolerance=within,
                 )
             )
+        else:
+            reason = (
+                f"case={left.case_id} id={left.native_component_id} "
+                f"left_status={left.perimeter_status} right_status={right.perimeter_status}"
+            )
+            skipped[reason] = skipped.get(reason, 0) + 1
+
+    for reason, count in sorted(skipped.items()):
+        notes.append(f"skipped[{count}]: {reason}")
 
     compared_rows = len(rows)
     numerical_valid = compared_rows > 0 and mismatches == 0
@@ -1035,5 +1239,5 @@ def compare_runs(run_a: ImportedReferenceRun, run_b: ImportedReferenceRun) -> Co
         compared_rows=compared_rows,
         mismatch_rows=mismatches,
         rows=tuple(rows),
-        notes=() if compared_rows > 0 else ("no overlapping successful perimeter rows",),
+        notes=tuple(notes) if compared_rows > 0 else tuple(notes + ["no overlapping successful perimeter rows"]),
     )

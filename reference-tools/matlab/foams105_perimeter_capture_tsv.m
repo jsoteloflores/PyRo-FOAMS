@@ -68,11 +68,23 @@ fprintf(metadataFid, 'timestamp_description\t%s\n', datestr(now, 31));
 fprintf(casesFid, 'case_id\tstage\theight\twidth\tscale_px_per_mm\tforeground_pixel_count\tcomponent_count\toutcome\n');
 fprintf(labelsFid, 'case_id\trow\tcolumn\tlabel\n');
 fprintf(componentsFid, ['case_id\tnative_component_id\tcanonical_component_id\tfirst_row\tfirst_column\tarea_px' ...
-    '\tperimeter_px\tperimeter_status\tperimeter_old_px\tperimeter_old_status\tproperty_error\n']);
+    '\tperimeter_px\tperimeter_status\tperimeter_error\tperimeter_old_px\tperimeter_old_status\tperimeter_old_error\n']);
+
+perimeterOldProbeState = 'unprobed';
+perimeterOldProbeError = '';
 
 for caseIndex = 1:numel(cases)
     caseRecord = cases(caseIndex);
-    labels = int32(caseRecord.labels);
+    if strcmp(caseRecord.stage, 'raw_phase_mask')
+        rawImage = uint8(caseRecord.raw_phase_image);
+        phaseValue = uint8(caseRecord.raw_phase_value);
+        selected = rawImage == phaseValue;
+        retained = imclearborder(selected, 8);
+        filled = imfill(retained, 'holes');
+        labels = int32(bwlabel(filled, 4));
+    else
+        labels = int32(caseRecord.labels);
+    end
     [height, width] = size(labels);
 
     if height ~= caseRecord.height || width ~= caseRecord.width
@@ -101,13 +113,32 @@ for caseIndex = 1:numel(cases)
     end
 
     props = regionprops(labels, 'Area', 'Perimeter');
+
+    if strcmp(perimeterOldProbeState, 'unprobed') && nnz(labels > 0) > 0
+        try
+            regionprops(labels, 'PerimeterOld');
+            perimeterOldProbeState = 'supported';
+            perimeterOldProbeError = '';
+        catch probeException
+            if is_perimeter_old_unsupported(probeException)
+                perimeterOldProbeState = 'unsupported';
+            else
+                perimeterOldProbeState = 'error';
+            end
+            perimeterOldProbeError = probeException.identifier;
+        end
+    end
+
     oldProps = [];
-    oldSupported = true;
-    try
-        oldProps = regionprops(labels, 'PerimeterOld');
-    catch oldException
-        oldSupported = false;
-        oldError = oldException.identifier;
+    oldRunState = perimeterOldProbeState;
+    oldRunError = perimeterOldProbeError;
+    if strcmp(perimeterOldProbeState, 'supported')
+        try
+            oldProps = regionprops(labels, 'PerimeterOld');
+        catch oldException
+            oldRunState = 'error';
+            oldRunError = oldException.identifier;
+        end
     end
 
     for componentIndex = 1:numel(topology.native_id)
@@ -119,17 +150,17 @@ for caseIndex = 1:numel(cases)
 
         perimeterStatus = 'missing';
         perimeterValue = '';
-        propertyError = '';
+        perimeterError = '';
         if nativeId <= numel(props)
             perimeterCandidate = props(nativeId).Perimeter;
             if isempty(perimeterCandidate)
                 perimeterStatus = 'missing';
             elseif ~isfinite(perimeterCandidate)
                 perimeterStatus = 'error_nonfinite';
-                propertyError = 'Perimeter_nonfinite';
+                perimeterError = 'Perimeter_nonfinite';
             elseif perimeterCandidate < 0
                 perimeterStatus = 'error_negative';
-                propertyError = 'Perimeter_negative';
+                perimeterError = 'Perimeter_negative';
             else
                 perimeterStatus = 'success';
                 perimeterValue = sprintf('%.17g', perimeterCandidate);
@@ -138,21 +169,18 @@ for caseIndex = 1:numel(cases)
 
         perimeterOldStatus = 'unsupported';
         perimeterOldValue = '';
-        if oldSupported
+        perimeterOldError = '';
+        if strcmp(oldRunState, 'supported')
             if nativeId <= numel(oldProps)
                 oldCandidate = oldProps(nativeId).PerimeterOld;
                 if isempty(oldCandidate)
                     perimeterOldStatus = 'missing';
                 elseif ~isfinite(oldCandidate)
                     perimeterOldStatus = 'error_nonfinite';
-                    if isempty(propertyError)
-                        propertyError = 'PerimeterOld_nonfinite';
-                    end
+                    perimeterOldError = 'PerimeterOld_nonfinite';
                 elseif oldCandidate < 0
                     perimeterOldStatus = 'error_negative';
-                    if isempty(propertyError)
-                        propertyError = 'PerimeterOld_negative';
-                    end
+                    perimeterOldError = 'PerimeterOld_negative';
                 else
                     perimeterOldStatus = 'success';
                     perimeterOldValue = sprintf('%.17g', oldCandidate);
@@ -160,19 +188,21 @@ for caseIndex = 1:numel(cases)
             else
                 perimeterOldStatus = 'missing';
             end
-        else
+        elseif strcmp(oldRunState, 'unsupported')
             perimeterOldStatus = 'unsupported';
-            propertyError = oldError;
+            perimeterOldError = oldRunError;
+        else
+            perimeterOldStatus = 'error_runtime';
+            perimeterOldError = oldRunError;
         end
 
-        fprintf(componentsFid, '%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n', ...
+        fprintf(componentsFid, '%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n', ...
             caseRecord.id, nativeId, canonicalId, firstRow, firstCol, areaPx, ...
-            perimeterValue, perimeterStatus, perimeterOldValue, perimeterOldStatus, propertyError);
+            perimeterValue, perimeterStatus, perimeterError, perimeterOldValue, perimeterOldStatus, perimeterOldError);
     end
 end
 
 clear cleanupFiles;
-fclose(metadataFid); fclose(casesFid); fclose(labelsFid); fclose(componentsFid);
 
 if exist(outputDir, 'dir')
     rmdir(outputDir, 's');
@@ -191,6 +221,21 @@ fclose(markerFid);
 rmdir(tempDir, 's');
 
 fprintf('Wrote perimeter reference TSV capture: %s\n', outputDir);
+end
+
+function supported = is_perimeter_old_unsupported(exception)
+identifier = lower(exception.identifier);
+messageText = lower(exception.message);
+supported = false;
+if contains(identifier, 'unknown') || contains(identifier, 'invalid')
+    if contains(identifier, 'regionprops') || contains(messageText, 'perimeterold')
+        supported = true;
+        return
+    end
+end
+if contains(messageText, 'perimeterold') && contains(messageText, 'not') && contains(messageText, 'supported')
+    supported = true;
+end
 end
 
 function [topology, ascending] = compute_topology(labels, caseId)
