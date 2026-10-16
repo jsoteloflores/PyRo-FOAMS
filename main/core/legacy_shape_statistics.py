@@ -8,7 +8,6 @@ from collections import Counter
 from collections.abc import Mapping as MappingABC
 from collections.abc import Set as SetABC
 from dataclasses import dataclass, fields, is_dataclass
-from decimal import ROUND_HALF_UP, Decimal, localcontext
 from hashlib import sha256
 from types import MappingProxyType
 from typing import Mapping, Optional, Sequence, Tuple
@@ -694,16 +693,40 @@ def _configured_scales(values: object) -> Tuple[float, ...]:
 
 
 def _round_half_away_4(value: float, *, metric: str) -> float:
-    exact = Decimal.from_float(value)
-    with localcontext() as context:
-        context.prec = max(32, len(exact.as_tuple().digits) + abs(exact.as_tuple().exponent) + 8)
-        rounded = exact.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    result = float(rounded)
+    scaled = value * 10000.0
+    if not math.isfinite(scaled):
+        raise Foams105ShapeStatisticsNumericalError(
+            "four-decimal presentation scaling produced a nonfinite value",
+            code="nonfinite_rounding",
+            context={"metric": metric, "value": value, "stage": "scale", "scale_factor": 10000.0},
+        )
+    if scaled == 0.0:
+        return 0.0
+
+    negative = scaled < 0.0
+    absolute_scaled = abs(scaled)
+    lower = math.floor(absolute_scaled)
+    fraction = absolute_scaled - lower
+    rounded_integer = lower + (1 if fraction >= 0.5 else 0)
+    try:
+        rounded_magnitude = rounded_integer / 10000.0
+    except OverflowError as exc:
+        raise Foams105ShapeStatisticsNumericalError(
+            "four-decimal presentation division could not be represented",
+            code="nonfinite_rounding",
+            context={
+                "metric": metric,
+                "value": value,
+                "stage": "divide",
+                "rounded_integer": rounded_integer,
+            },
+        ) from exc
+    result = -rounded_magnitude if negative else rounded_magnitude
     if not math.isfinite(result):
         raise Foams105ShapeStatisticsNumericalError(
-            "four-decimal presentation rounding produced a nonfinite value",
+            "four-decimal presentation division produced a nonfinite value",
             code="nonfinite_rounding",
-            context={"metric": metric, "value": value},
+            context={"metric": metric, "value": value, "stage": "divide"},
         )
     return result
 
@@ -926,6 +949,18 @@ def summarize_foams105_shapes(
 
 
 def _validate_cached_shape_result(shape_result: Foams105ShapeResult) -> None:
+    for field, expected in (
+        ("length_unit", "mm"),
+        ("area_unit", "mm^2"),
+        ("angle_unit", "degree"),
+    ):
+        actual = getattr(shape_result, field)
+        if not isinstance(actual, str) or actual != expected:
+            raise Foams105ShapeStatisticsValidationError(
+                f"shape_result {field} is incompatible",
+                code="incompatible_shape_result_unit",
+                context={"field": field, "expected": expected, "actual": actual},
+            )
     if (
         shape_result.method != FOAMS105_SHAPE_METHOD
         or shape_result.source_repository != FOAMS105_SHAPE_SOURCE_REPOSITORY

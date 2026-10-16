@@ -64,14 +64,25 @@ independently filtered. Form factor is not a statistics row; area and diameter
 statistics are not presented as original outputs.
 
 The rows provide exact integer `N`, unrounded six numeric statistics, and
-four-decimal display values rounded half away from zero. Reduction is
-sequential float64 in raw-selection row order; bitwise MATLAB summation parity
-is not claimed. Modes are counted on full-precision values, with the smallest
-value selected for frequency ties. Empty populations return `N=0`, unavailable
-status, reason `empty_population`, and `None` for the other six values. This is
-an explicit API behavior, not a claim about `basicstats.m` empty-input output.
-The formula/statistics checks are analytic and source-derived; no MATLAB
-`basicstats.m` or `roundn` execution is claimed for this handoff.
+four-decimal display values. Presentation rounding follows the observed
+R2025b `roundn(x,-4)` operation order: multiply the binary64 value by
+`10000.0`, round the scaled absolute value to nearest integer with ties away
+from zero, restore the sign, then divide by `10000.0`. The implementation uses
+`floor` plus the fractional remainder, not Python's ties-to-even `round` and
+not Decimal quantization of the original binary value. Literal MATLAB checks
+give `0.00035 -> 0.0004`, `-0.00035 -> -0.0004`, and `0.03125 -> 0.0313`; the
+adjacent binary64 values around `0.00035` produce `0.0003` below and `0.0004`
+above. The independent MATLAB commands executed `roundn.m` from the installed
+R2025b environment and both exited successfully. This narrowly validates the
+rounding primitive only; no MATLAB `basicstats.m` execution, full historical
+statistics parity, or original workflow parity is claimed.
+
+Reduction is sequential float64 in raw-selection row order; bitwise MATLAB
+summation parity is not claimed. Modes are counted on full-precision values,
+with the smallest value selected for frequency ties. Empty populations return
+`N=0`, unavailable status, reason `empty_population`, and `None` for the other
+six values. This is an explicit API behavior, not a claim about `basicstats.m`
+empty-input output.
 
 ## Verification Boundary
 
@@ -80,7 +91,11 @@ Moment geometry retains its analytical verification level and unchanged
 moment and perimeter provenance separately; it does not upgrade moment or
 orientation verification. MATLAB R2025b perimeter-profile reference evidence
 does not establish the historical runtime used for original workbooks or
-full-workflow parity. Floating-point reductions are ordinary source-order
+full-workflow parity. Cached shape results require `mm`, `mm^2`, and `degree`
+units; summary validation rejects metadata changes without rescanning image
+pixels or replaying geometry. Each unit mismatch raises a contextual
+`incompatible_shape_result_unit` validation error with field, expected, and
+actual values. Floating-point reductions are ordinary source-order
 calculations, not bitwise MATLAB comparisons.
 
 Run the executable sample with:

@@ -151,6 +151,48 @@ class TestFoams105ShapeStatistics(unittest.TestCase):
         self.assertEqual(_round_half_away_4(0.03125, metric="test"), 0.0313)
         self.assertEqual(_round_half_away_4(-0.03125, metric="test"), -0.0313)
 
+    def test_matlab_roundn_binary_scale_boundary_values(self):
+        boundary = 0.00035
+        below = math.nextafter(boundary, -math.inf)
+        above = math.nextafter(boundary, math.inf)
+        expected = (
+            (below, 0.0003),
+            (boundary, 0.0004),
+            (above, 0.0004),
+            (-below, -0.0003),
+            (-boundary, -0.0004),
+            (-above, -0.0004),
+            (0.00015, 0.0001),
+            (-0.00015, -0.0001),
+        )
+        for value, rounded in expected:
+            with self.subTest(value=value):
+                self.assertEqual(_round_half_away_4(value, metric="roundn_boundary"), rounded)
+
+        with self.assertRaises(Foams105ShapeStatisticsNumericalError) as caught:
+            _round_half_away_4(1e308, metric="roundn_overflow")
+        self.assertEqual(caught.exception.code, "nonfinite_rounding")
+        self.assertEqual(caught.exception.context["stage"], "scale")
+
+    def test_statistics_preserve_00035_raw_and_round_display_values(self):
+        base, _, _, _ = _build_pipeline((
+            ("base", (8, 8), ((2, 2),), 1.0),
+        ))
+        row = _statistics_row("regularity", (_row_with_regularity(base.rows[0], 0, 0.00035),))
+        self.assertEqual(row.n, 1)
+        self.assertEqual(row.minimum, 0.00035)
+        self.assertEqual(row.maximum, 0.00035)
+        self.assertEqual(row.mean, 0.00035)
+        self.assertEqual(row.median, 0.00035)
+        self.assertEqual(row.mode, 0.00035)
+        self.assertEqual(row.standard_deviation, 0.0)
+        self.assertEqual(row.display_minimum, 0.0004)
+        self.assertEqual(row.display_maximum, 0.0004)
+        self.assertEqual(row.display_mean, 0.0004)
+        self.assertEqual(row.display_median, 0.0004)
+        self.assertEqual(row.display_mode, 0.0004)
+        self.assertEqual(row.display_standard_deviation, 0.0)
+
     def test_statistics_empty_singleton_distinct_ties_and_unrounded_mode(self):
         empty = _statistics_row("regularity", ())
         self.assertEqual(empty.status, "unavailable")
@@ -472,6 +514,43 @@ class TestFoams105ShapePipeline(unittest.TestCase):
                 configured_scales_px_per_mm=(1.0,),
                 minimum_diameter_px=0.0,
             )  # type: ignore[call-arg]
+
+    def test_summary_rejects_each_incompatible_cached_unit(self):
+        empty_raw = select_foams105_raw_objects(
+            (0.1, 1.0, 2.0),
+            (Foams105RawGroupInput("empty", 1, ()),),
+            (Foams105BinnedRange("empty", 1.0, 2.0),),
+        )
+        empty_shapes = derive_foams105_shapes(empty_raw, (), ())
+        invalid_units = (
+            ("length_unit", "inch", "mm"),
+            ("area_unit", "inch^2", "mm^2"),
+            ("angle_unit", "radian", "degree"),
+        )
+        for valid_result in (self.shape_result, empty_shapes):
+            for mode in ("initial_analysis", "updated_minimum"):
+                with self.subTest(result_count=valid_result.selected_count, mode=mode):
+                    accepted = summarize_foams105_shapes(
+                        valid_result,
+                        configured_scales_px_per_mm=(1.0,),
+                        minimum_diameter_px=0.0,
+                        mode=mode,
+                    )
+                    self.assertEqual(accepted.shape_result, valid_result)
+                    for field, actual, expected in invalid_units:
+                        altered = replace(valid_result, **{field: actual})
+                        with self.subTest(field=field):
+                            with self.assertRaises(Foams105ShapeStatisticsValidationError) as caught:
+                                summarize_foams105_shapes(
+                                    altered,
+                                    configured_scales_px_per_mm=(1.0,),
+                                    minimum_diameter_px=0.0,
+                                    mode=mode,
+                                )
+                            self.assertEqual(caught.exception.code, "incompatible_shape_result_unit")
+                            self.assertEqual(caught.exception.context["field"], field)
+                            self.assertEqual(caught.exception.context["expected"], expected)
+                            self.assertEqual(caught.exception.context["actual"], actual)
 
     def test_positive_threshold_underflow_is_contextual(self):
         with self.assertRaises(Foams105ShapeStatisticsNumericalError) as caught:
