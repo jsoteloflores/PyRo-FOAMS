@@ -227,15 +227,21 @@ function supported = is_perimeter_old_unsupported(exception)
 identifier = lower(exception.identifier);
 messageText = lower(exception.message);
 supported = false;
-if contains(identifier, 'unknown') || contains(identifier, 'invalid')
-    if contains(identifier, 'regionprops') || contains(messageText, 'perimeterold')
-        supported = true;
-        return
-    end
+if has_token(identifier, 'regionprops') && has_token(identifier, 'unknown') && has_token(messageText, 'perimeterold')
+    supported = true;
+    return
 end
-if contains(messageText, 'perimeterold') && contains(messageText, 'not') && contains(messageText, 'supported')
+if has_token(messageText, 'perimeterold') && has_token(messageText, 'unknown') && has_token(messageText, 'property')
+    supported = true;
+    return
+end
+if has_token(messageText, 'perimeterold') && has_token(messageText, 'not') && has_token(messageText, 'supported')
     supported = true;
 end
+end
+
+function present = has_token(textValue, token)
+present = ~isempty(strfind(textValue, token)); %#ok<STREMP>
 end
 
 function [topology, ascending] = compute_topology(labels, caseId)

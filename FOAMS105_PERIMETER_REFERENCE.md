@@ -100,14 +100,26 @@ Importer checks include:
 Perimeter vs PerimeterOld within one run:
 
 ```bash
-python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run
+python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run --mode within-run --output-json reference-tools/perimeter/report-within-run.json
 ```
 
 Run-to-run perimeter comparison:
 
 ```bash
-python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run --other-run-dir path/to/other/run
+python reference-tools/perimeter/compare_perimeter_reference.py reference-tools/matlab/perimeter-run --mode run-to-run --other-run-dir path/to/other/run --output-json reference-tools/perimeter/report-run-to-run.json
 ```
+
+Console summary includes mode, schema/topology/numerical/historical states,
+expected/comparable/skipped/mismatch counts, and explicit skipped/error reasons.
+
+JSON output includes compared rows with identities, pixel and calibrated values,
+absolute and relative differences, tolerance verdicts, and skipped/error reasons.
+
+CLI exit status:
+
+- `0`: complete numerical agreement for selected mode
+- `1`: numerical disagreement
+- `2`: invalid input/evidence or incomplete/no-comparable comparison
 
 Comparison tolerances:
 
@@ -137,10 +149,13 @@ Provide these files from a runtime capture:
 5. `completed.marker`
 6. command string used to invoke MATLAB capture
 7. constructor and manifest hashes used for the run
+8. comparison command(s) executed
+9. generated JSON report file(s)
 
 ## Current evidence status
 
 - Tooling and CI-safe synthetic transport tests are implemented.
 - No MATLAB runtime evidence is bundled by default in this repository.
+- MATLAB availability is an external dependency for runtime evidence capture.
 - Historical perimeter equivalence remains pending Brief 16b review and method
   acceptance.
