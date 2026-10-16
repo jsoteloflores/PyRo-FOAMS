@@ -6,6 +6,7 @@ import unittest
 from dataclasses import FrozenInstanceError, replace
 from hashlib import sha256
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -374,9 +375,16 @@ class TestFoams105MomentSelectionAdapter(unittest.TestCase):
         missing = replace(geometry_a, components=geometry_a.components[1:])
         with self.assertRaises(Foams105MomentValidationError) as caught:
             select_foams105_moment_geometry(raw, (missing, geometry_b))
-        self.assertEqual(caught.exception.code, "missing_geometry_identity")
+        self.assertEqual(caught.exception.code, "inconsistent_geometry_result")
 
-        duplicate_image = replace(geometry_b, image_id="image-a")
+        duplicate_image = replace(
+            geometry_b,
+            image_id="image-a",
+            components=tuple(
+                replace(component, image_id="image-a")
+                for component in geometry_b.components
+            ),
+        )
         with self.assertRaises(Foams105MomentValidationError) as caught:
             select_foams105_moment_geometry(raw, (geometry_a, duplicate_image))
         self.assertEqual(caught.exception.code, "duplicate_image_id")
@@ -391,7 +399,219 @@ class TestFoams105MomentSelectionAdapter(unittest.TestCase):
         )
         with self.assertRaises(Foams105MomentValidationError) as caught:
             select_foams105_moment_geometry(raw, (changed, geometry_b))
-        self.assertEqual(caught.exception.code, "changed_geometry_identity")
+        self.assertEqual(caught.exception.code, "inconsistent_geometry_result")
+
+    def test_reproduced_five_geometry_validation_failures_are_rejected(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+        mutations = (
+            (
+                "wrong_source_commit",
+                replace(geometry_a, source_commit="wrong"),
+                "incompatible_geometry_result",
+            ),
+            (
+                "wrong_length_unit",
+                replace(geometry_a, length_unit="metres"),
+                "incompatible_geometry_result",
+            ),
+            (
+                "wrong_component_count",
+                replace(geometry_a, component_count=999),
+                "inconsistent_geometry_result",
+            ),
+            (
+                "forged_component_axes_and_nan_eccentricity",
+                replace(
+                    geometry_a,
+                    components=tuple(
+                        replace(
+                            component,
+                            major_axis_mm=999.0,
+                            eccentricity=float("nan"),
+                        )
+                        for component in geometry_a.components
+                    ),
+                ),
+                "inconsistent_geometry_result",
+            ),
+            (
+                "parent_image_id_unrelated_child_unchanged",
+                replace(geometry_a, image_id="unrelated"),
+                "inconsistent_geometry_result",
+            ),
+        )
+        for label, mutated, expected_code in mutations:
+            with self.subTest(mutation=label), self.assertRaises(
+                Foams105MomentValidationError
+            ) as caught:
+                select_foams105_moment_geometry(raw, (mutated, geometry_b))
+            self.assertEqual(caught.exception.code, expected_code)
+
+    def test_axes_tensor_orientation_and_scalar_contracts_are_rejected(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+        base = geometry_a.components[0]
+        invalids = (
+            (
+                "major_axis_lt_minor_axis",
+                replace(base, major_axis_px=base.minor_axis_px * 0.5),
+                "inconsistent_geometry_result",
+            ),
+            (
+                "lambda_minor_gt_lambda_major",
+                replace(base, lambda_minor=base.lambda_major + 1.0),
+                "inconsistent_geometry_result",
+            ),
+            (
+                "eccentricity_out_of_range",
+                replace(base, eccentricity=1.1),
+                "inconsistent_geometry_result",
+            ),
+            (
+                "component_id_float",
+                replace(base, component_id=1.5),
+                "inconsistent_geometry_result",
+            ),
+            (
+                "orientation_defined_without_tie_reason",
+                replace(base, orientation_defined=False, orientation_tie_reason=None),
+                "incompatible_geometry_result",
+            ),
+            (
+                "project_orientation_offset_mismatch",
+                replace(
+                    base,
+                    orientation_project_deg=base.orientation_project_deg + 1.0,
+                ),
+                "inconsistent_geometry_result",
+            ),
+        )
+        for label, bad_component, expected_code in invalids:
+            mutated = replace(
+                geometry_a,
+                components=(bad_component,) + geometry_a.components[1:],
+            )
+            with self.subTest(case=label), self.assertRaises(
+                Foams105MomentValidationError
+            ) as caught:
+                select_foams105_moment_geometry(raw, (mutated, geometry_b))
+            self.assertEqual(caught.exception.code, expected_code)
+
+    def test_wrong_nested_types_and_extra_invalid_image_are_rejected(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+
+        with self.assertRaises(Foams105MomentValidationError) as caught:
+            select_foams105_moment_geometry(
+                raw,
+                (replace(geometry_a, components=list(geometry_a.components)), geometry_b),
+            )
+        self.assertEqual(caught.exception.code, "inconsistent_geometry_result")
+
+        with self.assertRaises(Foams105MomentValidationError) as caught:
+            select_foams105_moment_geometry(
+                raw,
+                (
+                    replace(
+                        geometry_a,
+                        components=(
+                            replace(geometry_a.components[0], image_id="other-image"),
+                        )
+                        + geometry_a.components[1:],
+                    ),
+                    geometry_b,
+                ),
+            )
+        self.assertEqual(caught.exception.code, "inconsistent_geometry_result")
+
+        image = np.zeros((8, 8), dtype=np.uint8)
+        image[3:5, 3:5] = 1
+        extra = measure_foams105_moment_geometry(
+            "extra-image", measure_foams105_phase(image, 1, 1.0)
+        )
+        with self.assertRaises(Foams105MomentValidationError) as caught:
+            select_foams105_moment_geometry(
+                raw,
+                (geometry_a, geometry_b, replace(extra, component_count=True)),
+            )
+        self.assertEqual(caught.exception.code, "inconsistent_geometry_result")
+
+    def test_unselected_component_mutation_and_valid_extra_geometry_behavior(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+        mutated_unselected = replace(
+            geometry_a,
+            components=geometry_a.components[:-1]
+            + (
+                replace(
+                    geometry_a.components[-1],
+                    major_axis_mm=geometry_a.components[-1].major_axis_mm + 0.1,
+                ),
+            ),
+        )
+        with self.assertRaises(Foams105MomentValidationError) as caught:
+            select_foams105_moment_geometry(raw, (mutated_unselected, geometry_b))
+        self.assertEqual(caught.exception.code, "inconsistent_geometry_result")
+
+        image = np.zeros((8, 8), dtype=np.uint8)
+        image[2:6, 4] = 1
+        valid_extra = measure_foams105_moment_geometry(
+            "extra-image", measure_foams105_phase(image, 1, 1.0)
+        )
+        result = select_foams105_moment_geometry(raw, (geometry_a, geometry_b, valid_extra))
+        self.assertEqual(result.selected_count, len(raw.rows))
+        self.assertEqual(
+            result.selected_identities,
+            tuple((row.image_id, row.component_id) for row in raw.rows),
+        )
+
+    def test_result_owns_canonical_measurement_buffers(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+        phase = geometry_a.phase_measurement_result
+        mutable_phase = replace(
+            phase,
+            removed_border_mask=np.array(phase.removed_border_mask, dtype=np.bool_, copy=True),
+            filled_mask=np.array(phase.filled_mask, dtype=np.bool_, copy=True),
+            label_image=np.array(phase.label_image, dtype=np.int32, copy=True),
+        )
+        self.assertTrue(mutable_phase.filled_mask.flags.writeable)
+        self.assertTrue(mutable_phase.label_image.flags.writeable)
+
+        result = select_foams105_moment_geometry(
+            raw,
+            (replace(geometry_a, phase_measurement_result=mutable_phase), geometry_b),
+        )
+        retained = next(
+            item for item in result.image_geometry_results if item.image_id == "image-a"
+        )
+        self.assertFalse(retained.phase_measurement_result.filled_mask.flags.writeable)
+        self.assertFalse(retained.phase_measurement_result.label_image.flags.writeable)
+        self.assertEqual(retained.foreground_pixel_count, geometry_a.foreground_pixel_count)
+
+        mutable_phase.filled_mask[:, :] = False
+        mutable_phase.label_image[:, :] = 0
+        self.assertEqual(retained.foreground_pixel_count, geometry_a.foreground_pixel_count)
+        self.assertEqual(
+            result.selected_identities,
+            tuple((row.image_id, row.component_id) for row in result.rows),
+        )
+
+    def test_canonical_replay_runs_once_per_supplied_image(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+        wide_raw = select_foams105_raw_objects(
+            raw.bin_labels_mm,
+            raw.groups,
+            (
+                Foams105BinnedRange("group-a", 2.0, 4.0),
+                Foams105BinnedRange("group-b", 2.0, 4.0),
+            ),
+        )
+        with patch(
+            "main.core.legacy_shapes.measure_foams105_moment_geometry",
+            wraps=measure_foams105_moment_geometry,
+        ) as wrapped:
+            select_foams105_moment_geometry(raw, (geometry_a, geometry_b))
+            self.assertEqual(wrapped.call_count, 2)
+            wrapped.reset_mock()
+            select_foams105_moment_geometry(wide_raw, (geometry_a, geometry_b))
+            self.assertEqual(wrapped.call_count, 2)
 
     def test_forged_raw_selection_result_is_rejected(self):
         raw, geometry_a, geometry_b = self._geometry_inputs()

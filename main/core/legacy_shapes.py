@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Mapping, Optional, Sequence, Tuple
 
@@ -37,6 +37,8 @@ FOAMS105_PROJECT_ORIENTATION_OFFSET_DEG = 90.0
 FOAMS105_SELECTION_RELATIONSHIP_POLICY = (
     "raw_selection_objects_must_match_geometry_identity_and_metadata"
 )
+_FLOAT_REL_TOL = 1e-12
+_FLOAT_ABS_TOL = 1e-12
 
 
 class Foams105MomentValidationError(ValueError):
@@ -204,6 +206,707 @@ def _validate_image_id(image_id: object) -> str:
             context={"field": "image_id"},
         )
     return image_id
+
+
+def _strict_int(
+    value: object,
+    field: str,
+    *,
+    image_id: str,
+    component_id: Optional[int] = None,
+    minimum: int = 0,
+) -> int:
+    if (
+        not isinstance(value, (int, np.integer))
+        or isinstance(value, (bool, np.bool_))
+    ):
+        raise Foams105MomentValidationError(
+            f"{field} must be an integer scalar",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "field": field,
+            },
+        )
+    normalized = int(value)
+    if normalized < minimum:
+        raise Foams105MomentValidationError(
+            f"{field} must be >= {minimum}",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "field": field,
+                "value": normalized,
+            },
+        )
+    return normalized
+
+
+def _strict_finite_real(
+    value: object,
+    field: str,
+    *,
+    image_id: str,
+    component_id: Optional[int] = None,
+) -> float:
+    if (
+        not isinstance(value, (int, float, np.integer, np.floating))
+        or isinstance(value, (bool, np.bool_))
+    ):
+        raise Foams105MomentValidationError(
+            f"{field} must be a finite real scalar",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "field": field,
+            },
+        )
+    try:
+        normalized = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise Foams105MomentValidationError(
+            f"{field} must be representable as finite float64",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "field": field,
+            },
+        ) from exc
+    if not math.isfinite(normalized):
+        raise Foams105MomentValidationError(
+            f"{field} must be finite",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "field": field,
+                "value": normalized,
+            },
+        )
+    return normalized
+
+
+def _compare_finite_close(
+    candidate: object,
+    expected: float,
+    field: str,
+    *,
+    image_id: str,
+    component_id: Optional[int] = None,
+) -> None:
+    normalized = _strict_finite_real(
+        candidate,
+        field,
+        image_id=image_id,
+        component_id=component_id,
+    )
+    if not math.isclose(
+        normalized,
+        expected,
+        rel_tol=_FLOAT_REL_TOL,
+        abs_tol=_FLOAT_ABS_TOL,
+    ):
+        raise Foams105MomentValidationError(
+            f"{field} does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "field": field,
+                "expected": expected,
+                "actual": normalized,
+            },
+        )
+
+
+def _owned_immutable_array(
+    values: object,
+    dtype: np.dtype,
+    field: str,
+    *,
+    image_id: str,
+) -> np.ndarray:
+    if not isinstance(values, np.ndarray):
+        raise Foams105MomentValidationError(
+            f"{field} must be a two-dimensional NumPy array",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "field": field},
+        )
+    if values.ndim != 2 or values.size == 0:
+        raise Foams105MomentValidationError(
+            f"{field} must be a nonempty two-dimensional array",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "field": field},
+        )
+    contiguous = np.ascontiguousarray(values, dtype=dtype)
+    immutable = np.frombuffer(contiguous.tobytes(), dtype=dtype)
+    return immutable.reshape(contiguous.shape)
+
+
+def _owned_phase_measurement_result(
+    measurement: object,
+    *,
+    image_id: str,
+) -> Foams105PhaseMeasurementResult:
+    if not isinstance(measurement, Foams105PhaseMeasurementResult):
+        raise Foams105MomentValidationError(
+            "phase_measurement_result must be a Foams105PhaseMeasurementResult",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id},
+        )
+    if not isinstance(measurement.components, tuple):
+        raise Foams105MomentValidationError(
+            "phase_measurement_result components must be a tuple",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id},
+        )
+    for index, component in enumerate(measurement.components):
+        if not isinstance(component, Foams105ComponentMeasurement):
+            raise Foams105MomentValidationError(
+                "phase_measurement_result components contain an invalid record",
+                code="inconsistent_geometry_result",
+                context={"image_id": image_id, "component_index": index},
+            )
+    return replace(
+        measurement,
+        components=tuple(measurement.components),
+        removed_border_mask=_owned_immutable_array(
+            measurement.removed_border_mask,
+            np.dtype(np.bool_),
+            "phase_measurement_result.removed_border_mask",
+            image_id=image_id,
+        ),
+        filled_mask=_owned_immutable_array(
+            measurement.filled_mask,
+            np.dtype(np.bool_),
+            "phase_measurement_result.filled_mask",
+            image_id=image_id,
+        ),
+        label_image=_owned_immutable_array(
+            measurement.label_image,
+            np.dtype(np.int32),
+            "phase_measurement_result.label_image",
+            image_id=image_id,
+        ),
+    )
+
+
+def _validate_component_contract(
+    component: object,
+    *,
+    image_id: str,
+    component_index: int,
+) -> Foams105MomentComponentGeometry:
+    if not isinstance(component, Foams105MomentComponentGeometry):
+        raise Foams105MomentValidationError(
+            "image_geometry_results contains an invalid component record",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_index": component_index},
+        )
+    component_id = _strict_int(
+        component.component_id,
+        "component_id",
+        image_id=image_id,
+        minimum=1,
+    )
+    if component.image_id != image_id:
+        raise Foams105MomentValidationError(
+            "component image_id must match parent image_id",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "component_image_id": component.image_id,
+            },
+        )
+    if (
+        not isinstance(component.first_pixel_rc, tuple)
+        or len(component.first_pixel_rc) != 2
+    ):
+        raise Foams105MomentValidationError(
+            "first_pixel_rc must be a (row, column) tuple",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    _strict_int(
+        component.first_pixel_rc[0],
+        "first_pixel_rc.row",
+        image_id=image_id,
+        component_id=component_id,
+        minimum=0,
+    )
+    _strict_int(
+        component.first_pixel_rc[1],
+        "first_pixel_rc.column",
+        image_id=image_id,
+        component_id=component_id,
+        minimum=0,
+    )
+    pixel_count = _strict_int(
+        component.pixel_count,
+        "pixel_count",
+        image_id=image_id,
+        component_id=component_id,
+        minimum=1,
+    )
+    area_px = _strict_int(
+        component.area_px,
+        "area_px",
+        image_id=image_id,
+        component_id=component_id,
+        minimum=1,
+    )
+    if area_px != pixel_count:
+        raise Foams105MomentValidationError(
+            "component area_px must equal pixel_count",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+
+    area_mm2 = _strict_finite_real(
+        component.area_mm2,
+        "area_mm2",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    diameter_mm = _strict_finite_real(
+        component.equivalent_diameter_mm,
+        "equivalent_diameter_mm",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    lambda_major = _strict_finite_real(
+        component.lambda_major,
+        "lambda_major",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    lambda_minor = _strict_finite_real(
+        component.lambda_minor,
+        "lambda_minor",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    major_axis_px = _strict_finite_real(
+        component.major_axis_px,
+        "major_axis_px",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    minor_axis_px = _strict_finite_real(
+        component.minor_axis_px,
+        "minor_axis_px",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    major_axis_mm = _strict_finite_real(
+        component.major_axis_mm,
+        "major_axis_mm",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    minor_axis_mm = _strict_finite_real(
+        component.minor_axis_mm,
+        "minor_axis_mm",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    eccentricity = _strict_finite_real(
+        component.eccentricity,
+        "eccentricity",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    if (
+        area_mm2 <= 0.0
+        or diameter_mm <= 0.0
+        or lambda_major <= 0.0
+        or lambda_minor <= 0.0
+        or major_axis_px <= 0.0
+        or minor_axis_px <= 0.0
+        or major_axis_mm <= 0.0
+        or minor_axis_mm <= 0.0
+    ):
+        raise Foams105MomentValidationError(
+            "component geometric lengths and areas must be positive",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    if lambda_minor > lambda_major:
+        raise Foams105MomentValidationError(
+            "lambda_minor must be <= lambda_major",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    if minor_axis_px > major_axis_px or minor_axis_mm > major_axis_mm:
+        raise Foams105MomentValidationError(
+            "minor axis must be <= major axis",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    if eccentricity < 0.0 or eccentricity > 1.0:
+        raise Foams105MomentValidationError(
+            "eccentricity must be within [0, 1]",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+
+    _strict_finite_real(
+        component.centroid_x_px,
+        "centroid_x_px",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    _strict_finite_real(
+        component.centroid_y_px,
+        "centroid_y_px",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    _strict_finite_real(
+        component.central_cxx,
+        "central_cxx",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    _strict_finite_real(
+        component.central_cxy,
+        "central_cxy",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    _strict_finite_real(
+        component.central_cyy,
+        "central_cyy",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    orientation = _strict_finite_real(
+        component.orientation_regionprops_profile_deg,
+        "orientation_regionprops_profile_deg",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    orientation_project = _strict_finite_real(
+        component.orientation_project_deg,
+        "orientation_project_deg",
+        image_id=image_id,
+        component_id=component_id,
+    )
+    if not isinstance(component.orientation_defined, bool):
+        raise Foams105MomentValidationError(
+            "orientation_defined must be a bool",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    if component.orientation_defined:
+        if component.orientation_tie_reason is not None:
+            raise Foams105MomentValidationError(
+                "orientation_tie_reason must be None when orientation is defined",
+                code="inconsistent_geometry_result",
+                context={"image_id": image_id, "component_id": component_id},
+            )
+    elif component.orientation_tie_reason != FOAMS105_ORIENTATION_TIE_REASON:
+        raise Foams105MomentValidationError(
+            "orientation_tie_reason is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    if component.perimeter_status != FOAMS105_PERIMETER_STATUS_PENDING:
+        raise Foams105MomentValidationError(
+            "component perimeter status is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    if not math.isclose(
+        orientation_project,
+        orientation + FOAMS105_PROJECT_ORIENTATION_OFFSET_DEG,
+        rel_tol=_FLOAT_REL_TOL,
+        abs_tol=_FLOAT_ABS_TOL,
+    ):
+        raise Foams105MomentValidationError(
+            "orientation_project_deg must equal source orientation plus project offset",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id, "component_id": component_id},
+        )
+    return component
+
+
+def _assert_component_matches_canonical(
+    candidate: Foams105MomentComponentGeometry,
+    canonical: Foams105MomentComponentGeometry,
+    *,
+    image_id: str,
+    component_index: int,
+) -> None:
+    component_id = canonical.component_id
+    if candidate.image_id != canonical.image_id:
+        raise Foams105MomentValidationError(
+            "component image_id does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "component_index": component_index,
+            },
+        )
+    if candidate.component_id != canonical.component_id:
+        raise Foams105MomentValidationError(
+            "component_id does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "component_index": component_index,
+            },
+        )
+    if candidate.first_pixel_rc != canonical.first_pixel_rc:
+        raise Foams105MomentValidationError(
+            "first_pixel_rc does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "component_index": component_index,
+            },
+        )
+    for field in ("pixel_count", "area_px"):
+        if getattr(candidate, field) != getattr(canonical, field):
+            raise Foams105MomentValidationError(
+                f"{field} does not match canonical geometry",
+                code="inconsistent_geometry_result",
+                context={
+                    "image_id": image_id,
+                    "component_id": component_id,
+                    "component_index": component_index,
+                    "field": field,
+                },
+            )
+    for field in (
+        "area_mm2",
+        "equivalent_diameter_mm",
+        "centroid_x_px",
+        "centroid_y_px",
+        "central_cxx",
+        "central_cxy",
+        "central_cyy",
+        "lambda_major",
+        "lambda_minor",
+        "major_axis_px",
+        "minor_axis_px",
+        "major_axis_mm",
+        "minor_axis_mm",
+        "eccentricity",
+        "orientation_regionprops_profile_deg",
+        "orientation_project_deg",
+    ):
+        _compare_finite_close(
+            getattr(candidate, field),
+            getattr(canonical, field),
+            field,
+            image_id=image_id,
+            component_id=component_id,
+        )
+    if candidate.orientation_defined != canonical.orientation_defined:
+        raise Foams105MomentValidationError(
+            "orientation_defined does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "component_index": component_index,
+            },
+        )
+    if candidate.orientation_tie_reason != canonical.orientation_tie_reason:
+        raise Foams105MomentValidationError(
+            "orientation_tie_reason does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "component_index": component_index,
+            },
+        )
+    if candidate.perimeter_status != canonical.perimeter_status:
+        raise Foams105MomentValidationError(
+            "component perimeter status does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "component_id": component_id,
+                "component_index": component_index,
+            },
+        )
+
+
+def _canonical_owned_geometry_result(
+    supplied: object,
+    *,
+    index: int,
+) -> Foams105ImageMomentGeometryResult:
+    if not isinstance(supplied, Foams105ImageMomentGeometryResult):
+        raise Foams105MomentValidationError(
+            "image_geometry_results contains an invalid record",
+            context={"index": index},
+        )
+    image_id = _validate_image_id(supplied.image_id)
+    if supplied.method != FOAMS105_MOMENT_METHOD:
+        raise Foams105MomentValidationError(
+            "image_geometry_results method is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.source_repository != FOAMS105_MOMENT_SOURCE_REPOSITORY:
+        raise Foams105MomentValidationError(
+            "image_geometry_results source repository is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.source_commit != FOAMS105_MOMENT_SOURCE_COMMIT:
+        raise Foams105MomentValidationError(
+            "image_geometry_results source commit is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.source_files != FOAMS105_MOMENT_SOURCE_FILES:
+        raise Foams105MomentValidationError(
+            "image_geometry_results source files are incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.scope != FOAMS105_MOMENT_SCOPE:
+        raise Foams105MomentValidationError(
+            "image_geometry_results scope is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.connectivity != FOAMS105_COMPONENT_CONNECTIVITY:
+        raise Foams105MomentValidationError(
+            "image_geometry_results connectivity is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.verification_level != FOAMS105_MOMENT_VERIFICATION_LEVEL:
+        raise Foams105MomentValidationError(
+            "image_geometry_results verification level is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.perimeter_status != FOAMS105_PERIMETER_STATUS_PENDING:
+        raise Foams105MomentValidationError(
+            "image_geometry_results perimeter status is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    if supplied.orientation_tie_reason != FOAMS105_ORIENTATION_TIE_REASON:
+        raise Foams105MomentValidationError(
+            "image_geometry_results orientation tie reason is incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    _compare_finite_close(
+        supplied.orientation_project_offset_deg,
+        FOAMS105_PROJECT_ORIENTATION_OFFSET_DEG,
+        "orientation_project_offset_deg",
+        image_id=image_id,
+    )
+    if (
+        supplied.length_unit != "mm"
+        or supplied.pixel_length_unit != "pixel"
+        or supplied.area_unit != "mm^2"
+        or supplied.pixel_area_unit != "pixel-area"
+        or supplied.angle_unit != "degree"
+    ):
+        raise Foams105MomentValidationError(
+            "image_geometry_results units are incompatible",
+            code="incompatible_geometry_result",
+            context={"image_id": image_id},
+        )
+    _strict_int(
+        supplied.component_count,
+        "component_count",
+        image_id=image_id,
+        minimum=0,
+    )
+    _strict_int(
+        supplied.foreground_pixel_count,
+        "foreground_pixel_count",
+        image_id=image_id,
+        minimum=0,
+    )
+    _finite_positive_real(supplied.scale_px_per_mm, "scale_px_per_mm")
+    if not isinstance(supplied.components, tuple):
+        raise Foams105MomentValidationError(
+            "image_geometry_results components must be an immutable tuple",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id},
+        )
+    for component_index, component in enumerate(supplied.components):
+        _validate_component_contract(
+            component,
+            image_id=image_id,
+            component_index=component_index,
+        )
+
+    canonical = measure_foams105_moment_geometry(image_id, supplied.phase_measurement_result)
+    owned_measurement = _owned_phase_measurement_result(
+        canonical.phase_measurement_result,
+        image_id=image_id,
+    )
+    canonical = replace(canonical, phase_measurement_result=owned_measurement)
+
+    if supplied.component_count != canonical.component_count:
+        raise Foams105MomentValidationError(
+            "component_count does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "expected": canonical.component_count,
+                "actual": supplied.component_count,
+            },
+        )
+    if supplied.foreground_pixel_count != canonical.foreground_pixel_count:
+        raise Foams105MomentValidationError(
+            "foreground_pixel_count does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={
+                "image_id": image_id,
+                "expected": canonical.foreground_pixel_count,
+                "actual": supplied.foreground_pixel_count,
+            },
+        )
+    if supplied.foreground_pixel_count != canonical.phase_measurement_result.final_foreground_pixel_count:
+        raise Foams105MomentValidationError(
+            "foreground_pixel_count must match retained label foreground",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id},
+        )
+    _compare_finite_close(
+        supplied.scale_px_per_mm,
+        canonical.scale_px_per_mm,
+        "scale_px_per_mm",
+        image_id=image_id,
+    )
+    if len(supplied.components) != len(canonical.components):
+        raise Foams105MomentValidationError(
+            "components length does not match canonical geometry",
+            code="inconsistent_geometry_result",
+            context={"image_id": image_id},
+        )
+    for component_index, (candidate, expected) in enumerate(
+        zip(supplied.components, canonical.components)
+    ):
+        _assert_component_matches_canonical(
+            candidate,
+            expected,
+            image_id=image_id,
+            component_index=component_index,
+        )
+    return canonical
 
 
 def _numerical_error(
@@ -794,38 +1497,16 @@ def _validated_geometry_results(
     image_ids = set()
     identity_map = {}
     normalized = []
-    for index, result in enumerate(raw_results):
-        if not isinstance(result, Foams105ImageMomentGeometryResult):
-            raise Foams105MomentValidationError(
-                "image_geometry_results contains an invalid record",
-                context={"index": index},
-            )
-        if result.method != FOAMS105_MOMENT_METHOD:
-            raise Foams105MomentValidationError(
-                "image_geometry_results method is incompatible",
-                code="incompatible_geometry_result",
-                context={"image_id": result.image_id},
-            )
-        if result.verification_level != FOAMS105_MOMENT_VERIFICATION_LEVEL:
-            raise Foams105MomentValidationError(
-                "image_geometry_results verification level is incompatible",
-                code="incompatible_geometry_result",
-                context={"image_id": result.image_id},
-            )
-        if result.perimeter_status != FOAMS105_PERIMETER_STATUS_PENDING:
-            raise Foams105MomentValidationError(
-                "image_geometry_results perimeter status is incompatible",
-                code="incompatible_geometry_result",
-                context={"image_id": result.image_id},
-            )
-        if result.image_id in image_ids:
+    for index, supplied in enumerate(raw_results):
+        canonical = _canonical_owned_geometry_result(supplied, index=index)
+        if canonical.image_id in image_ids:
             raise Foams105MomentValidationError(
                 "duplicate image_id in image_geometry_results",
                 code="duplicate_image_id",
-                context={"image_id": result.image_id},
+                context={"image_id": canonical.image_id},
             )
-        image_ids.add(result.image_id)
-        for component in result.components:
+        image_ids.add(canonical.image_id)
+        for component in canonical.components:
             identity = (component.image_id, component.component_id)
             if identity in identity_map:
                 raise Foams105MomentValidationError(
@@ -834,7 +1515,7 @@ def _validated_geometry_results(
                     context={"identity": identity},
                 )
             identity_map[identity] = component
-        normalized.append(result)
+        normalized.append(canonical)
     return tuple(normalized), MappingProxyType(identity_map)
 
 

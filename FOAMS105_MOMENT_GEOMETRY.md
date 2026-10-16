@@ -85,9 +85,23 @@ profile stores `theta=0`, `orientation_defined=False`, and
 ## Identity, perimeter, and verification boundaries
 
 - Selection requires a canonical replay of raw selection.
+- Selection validates each supplied image geometry record against one canonical
+  moment replay from its retained phase-measurement result and declared image
+  ID before any row joins.
+- Parent and component records must have compatible method/source metadata,
+  units, connectivity, verification level, orientation conventions, and
+  `perimeter_status`.
+- Numeric identifiers and counts must be strict integers (booleans and floats
+  are rejected); finite nonphysical shape values are rejected even if close.
+- The complete ordered component sequence is checked against canonical values
+  with `1e-12` absolute/relative tolerance for finite calculated floats and
+  exact comparisons for identities, counts, booleans, and categorical fields.
 - Every raw object identity `(image_id, component_id)` must resolve to geometry
   with unchanged calibrated area and equivalent diameter.
-- Extra geometry rows are allowed; missing or changed identities are errors.
+- Extra geometry rows are allowed but must themselves pass canonical
+  validation; missing or changed identities are errors.
+- Returned selection results use canonical owned records; writable caller-owned
+  measurement buffers cannot mutate returned geometry after selection.
 - Perimeter is intentionally not part of the verified moment API.
   `perimeter_status` is always `"pending_historical_profile"`.
 
