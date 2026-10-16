@@ -175,7 +175,8 @@ statuses. The example exercises a real singleton and threshold exclusion.
 Local verification: 558 tests pass (the 539-test baseline plus 19), Ruff
 passes, and all 16 scientific examples pass under `python -O`. Hosted CI for
 Brief 17 and independent review remain pending. Moment/orientation parity and
-full original-run reconciliation remain unresolved.
+full original-run reconciliation remain unresolved. Implementation commit:
+`84cf642`.
 
 Brief 18 remains responsible for integrated pipeline/export behavior,
 including source shape-histogram semantics and actual Shape/Stats writers.
