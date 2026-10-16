@@ -17,9 +17,9 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened; Brief 16b profiles implemented and matched to supplied R2025b evidence locally | Unit-square central moments and strict identity/validation joins remain separate; perimeter profiles match 30 valid primary-capture components plus all 526 supplementary components; the primary 31st object is retained as invalid-topology diagnostic; local Ruff passes, all 539 tests pass, and all 15 example modules run successfully; hosted CI, historical runtime selection, shape statistics, and full workflow parity remain pending |
-| 8. Analysis interface | Pending | Original analyses available through the application |
-| 9. Original-equivalent exports | Pending | Calc/Area/Ves/Misc/Shape-equivalent outputs verified |
+| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened; Brief 16b accepted for explicit R2025b profiles; Brief 17 implemented locally, pending independent review and hosted CI | Moment orientation remains analytical; perimeter profiles match supplied MATLAB evidence; derived shape values and initial/updated statistics have independent analytic and public-pipeline tests; local Ruff passes, all 558 tests pass, and all 16 examples pass under `python -O`; actual shape histograms and Shape/Stats writers remain Brief 18 work; full original-run reconciliation remains pending |
+| 8. Analysis interface | Pending in Briefs 20-21 | Original analyses available through the application |
+| 9. Original-equivalent exports | Pending in Brief 18 | Calc/Area/Ves/Misc plus shape histogram semantics and Shape/Stats writers verified |
 | 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
 
 ## Current verified boundary
@@ -152,13 +152,38 @@ profile `matlab_perimeter_r2025b_verified_v1` matches MATLAB `Perimeter`.
 Regression checks match the 30 valid primary-capture objects and all 526
 supplementary objects within relative/absolute `1e-12` pixel tolerance. The
 captured `narrow_neck_final` values remain diagnostic because its same-ID
-region is not four-connected. Local perimeter tests, full test suite, lint,
-and examples pass; configured hosted CI remains a gate. This establishes
-R2025b property equivalence on the supplied evidence, not the historical
-runtime for original workbooks or full original-workflow parity. Moment-only
-verification metadata and its pending-perimeter marker remain unchanged. The
-implementation commit is `47c075d`, created after the 539-test, Ruff, and
-15-example verification. Hosted CI remains pending.
+region is not four-connected. Brief 16b is accepted within this evidence
+boundary: configured CI run `38908191207` passes lint and all four
+Linux/Windows Python 3.11/3.12 jobs, including 539 tests on Linux 3.12. This
+establishes R2025b property equivalence on the supplied evidence, not the
+historical runtime for original workbooks or full original-workflow parity.
+Moment-only verification metadata and its pending-perimeter marker remain
+unchanged. The implementation commit is `47c075d`; its tracker follow-up is
+`62147c1`.
+
+Brief 17 adds immutable combined shape results from canonical raw-selection,
+moment, and perimeter inputs. It verifies that both geometry families retain
+the same complete phase measurement, including label/mask arrays, and joins
+selected rows by stable image/component identity. Derived measures preserve
+the original regularity, form-factor, elongation, aspect-ratio, and fitted-
+ellipse-perimeter expressions. Initial analysis keeps all post-nesting rows
+for statistics while using a strict size threshold for plot membership;
+updated-minimum mode uses inclusive membership for both. Statistics retain
+unrounded values and four-decimal half-away-from-zero display values, sample
+standard deviation, smallest-value mode ties, and explicit empty-population
+statuses. The example exercises a real singleton and threshold exclusion.
+Local verification: 558 tests pass (the 539-test baseline plus 19), Ruff
+passes, and all 16 scientific examples pass under `python -O`. Hosted CI for
+Brief 17 and independent review remain pending. Moment/orientation parity and
+full original-run reconciliation remain unresolved.
+
+Brief 18 remains responsible for integrated pipeline/export behavior,
+including source shape-histogram semantics and actual Shape/Stats writers.
+Brief 19 covers original-run reconciliation and core performance; Brief 20
+covers GUI integration; Brief 21 covers GUI improvements/release and the final
+same-real-image comparison after GUI tests. The original FOAMS implementation
+must remain NOT COMPLETE until those later gates and intentional deviations are
+resolved.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
