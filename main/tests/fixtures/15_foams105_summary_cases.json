@@ -1,0 +1,445 @@
+{
+  "schema_version": 1,
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "verification": "Hand-derived numerical-kernel cases; not MATLAB output. None/null denotes the explicit undefined real-valued API representation described in Brief 15.",
+  "distribution_cases": [
+    {
+      "id": "predecessor_signed",
+      "global_labels": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "labels": [
+        2,
+        4,
+        8
+      ],
+      "nv": [
+        2,
+        -3,
+        4
+      ],
+      "adjusted": [
+        0.1,
+        -0.2,
+        0.3
+      ],
+      "correction_percent": 40,
+      "lower_edges": [
+        1,
+        2,
+        4
+      ],
+      "widths": [
+        1,
+        2,
+        4
+      ],
+      "midsizes": [
+        1.5,
+        3,
+        6
+      ],
+      "cumulative_nv": [
+        3,
+        1,
+        4
+      ],
+      "per_width": [
+        2,
+        -1.5,
+        1
+      ],
+      "ln_per_width": [
+        0.6931471805599453,
+        null,
+        0
+      ],
+      "ln_reasons": [
+        null,
+        "log_of_negative",
+        null
+      ],
+      "log10_cumulative": [
+        0.47712125471966244,
+        0,
+        0.6020599913279624
+      ],
+      "total_nv": 3,
+      "corrected_nv": 5,
+      "paired_labels": [
+        4,
+        8
+      ],
+      "paired_fractions": [
+        -0.1,
+        0.3
+      ]
+    },
+    {
+      "id": "duplicate_zero_width",
+      "global_labels": [
+        1,
+        2,
+        4
+      ],
+      "labels": [
+        1,
+        2,
+        2,
+        4
+      ],
+      "nv": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "adjusted": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "correction_percent": 0,
+      "lower_edges": [
+        0.7943282347242815,
+        1,
+        2,
+        2
+      ],
+      "widths": [
+        0.2056717652757185,
+        1,
+        0,
+        2
+      ],
+      "midsizes": [
+        0.8971641173621407,
+        1.5,
+        2,
+        3
+      ],
+      "cumulative_nv": [
+        10,
+        9,
+        7,
+        4
+      ],
+      "per_width": [
+        4.8621160938616175,
+        2,
+        null,
+        2
+      ],
+      "ln_reasons": [
+        null,
+        null,
+        "zero_bin_width",
+        null
+      ],
+      "total_nv": 10,
+      "corrected_nv": 10,
+      "paired_labels": [
+        2,
+        4
+      ],
+      "paired_fractions": [
+        0.3,
+        0.7
+      ]
+    },
+    {
+      "id": "zero_log_and_zero_correction",
+      "global_labels": [
+        1,
+        2,
+        4
+      ],
+      "labels": [
+        2,
+        4
+      ],
+      "nv": [
+        1,
+        -1
+      ],
+      "adjusted": [
+        0.2,
+        -0.2
+      ],
+      "correction_percent": 100,
+      "lower_edges": [
+        1,
+        2
+      ],
+      "widths": [
+        1,
+        2
+      ],
+      "midsizes": [
+        1.5,
+        3
+      ],
+      "cumulative_nv": [
+        0,
+        -1
+      ],
+      "log10_cumulative": [
+        null,
+        null
+      ],
+      "log10_cumulative_reasons": [
+        "log_of_zero",
+        "log_of_negative"
+      ],
+      "per_width": [
+        1,
+        -0.5
+      ],
+      "ln_per_width": [
+        0,
+        null
+      ],
+      "ln_reasons": [
+        null,
+        "log_of_negative"
+      ],
+      "total_nv": 0,
+      "corrected_nv": null,
+      "corrected_reason": "zero_solid_fraction",
+      "paired_labels": [
+        4
+      ],
+      "paired_fractions": [
+        0
+      ]
+    },
+    {
+      "id": "single_signed_correction",
+      "global_labels": [
+        1,
+        2
+      ],
+      "labels": [
+        2
+      ],
+      "nv": [
+        2
+      ],
+      "adjusted": [
+        0.4
+      ],
+      "correction_percent": 120,
+      "lower_edges": [
+        1
+      ],
+      "widths": [
+        1
+      ],
+      "midsizes": [
+        1.5
+      ],
+      "cumulative_nv": [
+        2
+      ],
+      "per_width": [
+        2
+      ],
+      "ln_per_width": [
+        0.6931471805599453
+      ],
+      "total_nv": 2,
+      "corrected_nv": -10,
+      "paired_labels": [
+        2
+      ],
+      "paired_fractions": [
+        0.4
+      ]
+    },
+    {
+      "id": "all_zero_density",
+      "global_labels": [
+        1,
+        2
+      ],
+      "labels": [
+        2
+      ],
+      "nv": [
+        0
+      ],
+      "adjusted": [
+        0
+      ],
+      "correction_percent": 50,
+      "lower_edges": [
+        1
+      ],
+      "widths": [
+        1
+      ],
+      "midsizes": [
+        1.5
+      ],
+      "cumulative_nv": [
+        0
+      ],
+      "per_width": [
+        0
+      ],
+      "ln_per_width": [
+        null
+      ],
+      "ln_reasons": [
+        "log_of_zero"
+      ],
+      "log10_cumulative": [
+        null
+      ],
+      "log10_cumulative_reasons": [
+        "log_of_zero"
+      ],
+      "total_nv": 0,
+      "corrected_nv": 0,
+      "paired_labels": [
+        2
+      ],
+      "paired_fractions": [
+        0
+      ]
+    }
+  ],
+  "category_cases": [
+    {
+      "id": "strict_boundaries",
+      "global_labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "counts": [
+        [
+          1,
+          2,
+          3,
+          4
+        ],
+        [
+          4,
+          3,
+          2,
+          1
+        ]
+      ],
+      "lower": 2,
+      "upper": 3,
+      "total": 20,
+      "category_counts": [
+        5,
+        0,
+        5
+      ],
+      "boundary_count": 10,
+      "percentages": [
+        25,
+        0,
+        25
+      ]
+    },
+    {
+      "id": "equal_cutoffs",
+      "global_labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "counts": [
+        [
+          5,
+          5,
+          5,
+          5
+        ]
+      ],
+      "lower": 2,
+      "upper": 2,
+      "total": 20,
+      "category_counts": [
+        5,
+        0,
+        10
+      ],
+      "boundary_count": 5,
+      "percentages": [
+        25,
+        0,
+        50
+      ]
+    },
+    {
+      "id": "off_grid_cutoffs",
+      "global_labels": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "counts": [
+        [
+          1,
+          2,
+          3,
+          4
+        ]
+      ],
+      "lower": 1.5,
+      "upper": 3.5,
+      "total": 10,
+      "category_counts": [
+        1,
+        5,
+        4
+      ],
+      "boundary_count": 0,
+      "percentages": [
+        10,
+        50,
+        40
+      ]
+    },
+    {
+      "id": "no_objects",
+      "global_labels": [
+        1,
+        2
+      ],
+      "counts": [
+        [
+          0,
+          0
+        ]
+      ],
+      "lower": 1,
+      "upper": 2,
+      "total": 0,
+      "category_counts": [
+        0,
+        0,
+        0
+      ],
+      "boundary_count": 0,
+      "percentages": [
+        null,
+        null,
+        null
+      ],
+      "reason": "zero_total_count"
+    }
+  ]
+}

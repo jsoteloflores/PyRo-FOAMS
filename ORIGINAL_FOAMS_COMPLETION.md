@@ -1,6 +1,6 @@
 # Original FOAMS completion tracker
 
-Last updated: 2026-10-05.
+Last updated: 2026-10-15.
 
 **Original FOAMS implementation: NOT COMPLETE.**
 
@@ -15,8 +15,8 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 2. Measurement, area, and histogram conventions | Briefs 07, 08, and 09 accepted; shape measurements pending | 45-label preparation, all 180 histogram cells, exact mask topology, calibrated component geometry, six weighted-area cases, strict four-slot exclusion thresholds, signed per-image denominators, and explicit compatible-group sums tested |
 | 3. Automatic magnification cutoffs | Briefs 10-12 accepted in configured CI with Brief 13 commit `ffc59f5` | Signed log-density transitions, exact binned source slices, LF/CRLF fixture pins, raw predecessor bounds, stable component identities, inclusive unrounded filtering, and ascending raw-slot provenance tested |
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
-| 5. Volume distributions and normalization | Brief 14 implemented and locally validated; configured CI pending | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
-| 6. Density summaries and plotting quantities | Pending | NV/NVcorr, per-width density, cumulative counts, and logarithms |
+| 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
+| 6. Density summaries and plotting quantities | Brief 15 implemented and locally validated; configured CI pending | NV/NVcorr, exact-grid widths, reverse cumulative counts, logarithms, paired volume bins, and strict size-category percentages tested |
 | 7. Shape outputs and statistics | Pending | Original conventions and ellipse-algorithm differences resolved |
 | 8. Analysis interface | Pending | Original analyses available through the application |
 | 9. Original-equivalent exports | Pending | Calc/Area/Ves/Misc/Shape-equivalent outputs verified |
@@ -72,6 +72,17 @@ zero targets, zero and cancellation denominators, and signed integrated
 targets. The expectations are not original workbook references. Plotting
 reductions, cumulative counts, NV/NVcorr summaries, shape, exports, GUI, and
 complete original-image parity remain pending.
+
+Brief 15 adds immutable distribution summaries from canonical volume results
+and size-category percentages from complete histogram vectors. Exact global
+grid membership preserves duplicate selected rows and explicit zero widths;
+reverse cumulative N_V and forward total N_V remain independent signed sums.
+Expected zero, negative-log, and zero-denominator domains are represented as
+typed undefined real values instead of NaN, infinity, or complex payloads.
+Five distribution and four category cases are calculated analytical evidence,
+not MATLAB output or workbook references. The unchanged 29-row workbook
+selection demonstrates only converter parity and duplicate-width handling.
+Shape, GUI plots, exports, and full-workflow reconciliation remain pending.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
