@@ -22,14 +22,17 @@ jobs:
         run: ruff check main/
 
   test:
-    name: Unit Tests
+    name: Unit Tests (Linux, Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     needs: lint
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install dependencies
         run: |
@@ -40,14 +43,17 @@ jobs:
 
   # Optional: test on Windows to match dev environment
   test-windows:
-    name: Unit Tests (Windows)
+    name: Unit Tests (Windows, Python ${{ matrix.python-version }})
     runs-on: windows-latest
     needs: lint
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install dependencies
         run: |

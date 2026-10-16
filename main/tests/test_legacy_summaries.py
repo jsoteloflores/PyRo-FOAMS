@@ -272,6 +272,30 @@ class TestFoams105SummaryFixture(unittest.TestCase):
 
 
 class TestFoams105SummaryNumericalFailures(unittest.TestCase):
+    def test_forward_total_does_not_use_compensated_sum(self):
+        result = _calculate_foams105_distribution_numerical(
+            (1.0, 2.0, 4.0),
+            (1.0, 2.0, 4.0),
+            (1e16, 1.0, -1e16),
+            (0.0, 0.0, 0.0),
+            0.0,
+        )
+        self.assertEqual(result.total_nv_per_mm3, 0.0)
+
+    def test_forward_total_and_reverse_cumulative_use_distinct_orders(self):
+        result = _calculate_foams105_distribution_numerical(
+            (1.0, 2.0, 4.0),
+            (1.0, 2.0, 4.0),
+            (1e16, -1e16, 1.0),
+            (0.0, 0.0, 0.0),
+            0.0,
+        )
+        self.assertEqual(result.total_nv_per_mm3, 1.0)
+        self.assertEqual(
+            result.cumulative_nv_per_mm3,
+            (0.0, -1e16, 1.0),
+        )
+
     def test_reverse_and_forward_sum_overflow_have_distinct_stages(self):
         with self.assertRaises(Foams105SummaryNumericalError) as reverse:
             _calculate_foams105_distribution_numerical(
@@ -366,9 +390,12 @@ class TestFoams105DistributionPublicAPI(unittest.TestCase):
         _assert_close(self, unnormalized.correction_percent, 4.0)
         _assert_close(self, integrated.correction_percent, 4.0)
         self.assertEqual(known.correction_percent, 40.0)
+        expected_forward_total = 0.0
+        for value in self.conversion.signed_nv_per_mm3:
+            expected_forward_total += value
         self.assertEqual(
             unnormalized.total_nv_per_mm3,
-            sum(self.conversion.signed_nv_per_mm3),
+            expected_forward_total,
         )
         self.assertEqual(
             tuple(row.signed_nv_per_mm3 for row in known.rows),
