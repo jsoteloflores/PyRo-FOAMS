@@ -200,11 +200,16 @@ fresh-directory bundle writing. `Shape_out.txt` contains one row per
 post-nesting selected raw object; shape histograms remain plot/sidecar data.
 The unchanged histogram fixture and three runtime logs are tracked with
 byte-preserving Git attributes and raw SHA-256 pins. Local verification before
-Brief 18a corrections was 586 tests. With the corrections, 592 tests pass with
-no local skips, Ruff passes, and all 17 examples pass under `python -O`.
+Brief 18a corrections was 586 tests. With the corrections, 594 tests pass with
+no local skips, Ruff passes, and all 17 examples pass under `python -O`. A
+clean checkout with `core.autocrlf=true` passes all 594 tests and reproduces
+the four pinned raw SHA-256 values. Hosted CI run `38926177590` passes Ruff and
+the Linux/Windows Python 3.11/3.12 matrix on acceptance commit `015b1c9`.
 Prepared/final results carry builder-issued private cache-validation records,
 cached reanalysis avoids image-array scans, and raw table rows use checked
-indexed lookup. Clean-checkout and hosted CI verification remain pending.
+indexed lookup. The only repository-defined conditional skip remains the
+existing Tk integration test when a display is unavailable; Brief 18a adds no
+skip behavior.
 `Area_out.txt` is
 explicitly unavailable when zero-area removal misaligns source image indices;
 `Ves_out.txt` is partial if caller-supplied density-derived vesicularity is
