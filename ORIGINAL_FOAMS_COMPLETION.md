@@ -16,7 +16,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 3. Automatic magnification cutoffs | Briefs 10-12 accepted in configured CI with Brief 13 commit `ffc59f5` | Signed log-density transitions, exact binned source slices, LF/CRLF fixture pins, raw predecessor bounds, stable component identities, inclusive unrounded filtering, and ascending raw-slot provenance tested |
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
-| 6. Density summaries and plotting quantities | Brief 15 implemented and locally validated; configured CI pending | NV/NVcorr, exact-grid widths, reverse cumulative counts, logarithms, paired volume bins, and strict size-category percentages tested |
+| 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
 | 7. Shape outputs and statistics | Pending | Original conventions and ellipse-algorithm differences resolved |
 | 8. Analysis interface | Pending | Original analyses available through the application |
 | 9. Original-equivalent exports | Pending | Calc/Area/Ves/Misc/Shape-equivalent outputs verified |
@@ -83,6 +83,15 @@ Five distribution and four category cases are calculated analytical evidence,
 not MATLAB output or workbook references. The unchanged 29-row workbook
 selection demonstrates only converter parity and duplicate-width handling.
 Shape, GUI plots, exports, and full-workflow reconciliation remain pending.
+
+Brief 15a replaces one Python-version-dependent built-in `sum` test oracle
+with an explicit source-order loop and adds two literal cancellation cases that
+distinguish forward order, reverse order, and compensated summation. Production
+scientific arithmetic and all fixtures are unchanged. Commit `82033e0` passes
+485 tests with zero skips on Python 3.11 and 3.12 on both Linux and Windows in
+configured CI run `38846116435`; Ruff also passes. All 13 repository examples
+pass locally under `python -O`. Original shape geometry remains pending for
+Brief 16.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
