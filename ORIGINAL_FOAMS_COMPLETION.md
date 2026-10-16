@@ -157,8 +157,8 @@ and examples pass; configured hosted CI remains a gate. This establishes
 R2025b property equivalence on the supplied evidence, not the historical
 runtime for original workbooks or full original-workflow parity. Moment-only
 verification metadata and its pending-perimeter marker remain unchanged. The
-implementation was committed locally after the 539-test, Ruff, and 15-example
-verification; the commit is recorded in the accompanying change history.
+implementation commit is `47c075d`, created after the 539-test, Ruff, and
+15-example verification. Hosted CI remains pending.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
