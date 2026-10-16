@@ -112,5 +112,13 @@ context. Returned selection rows now reference canonical owned records so
 caller-owned writable measurement buffers cannot mutate post-selection results.
 Historical MATLAB moment/perimeter equivalence is still not established.
 
+Brief 16 final validation fix extends strict scalar contracts to retained
+phase-measurement components before canonical replay uses nested IDs,
+coordinates, counts, and calibrated fields. Fractional/Boolean/nonfinite and
+nonscalar payloads now fail with typed contextual validation errors instead of
+incidental conversion/arithmetic exceptions. Valid NumPy integer scalar inputs
+remain supported. This remains a boundary correction only: perimeter,
+historical MATLAB equivalence, and derived shape statistics are still pending.
+
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.

@@ -215,6 +215,7 @@ def _strict_int(
     image_id: str,
     component_id: Optional[int] = None,
     minimum: int = 0,
+    code: str = "inconsistent_geometry_result",
 ) -> int:
     if (
         not isinstance(value, (int, np.integer))
@@ -222,7 +223,7 @@ def _strict_int(
     ):
         raise Foams105MomentValidationError(
             f"{field} must be an integer scalar",
-            code="inconsistent_geometry_result",
+            code=code,
             context={
                 "image_id": image_id,
                 "component_id": component_id,
@@ -233,7 +234,7 @@ def _strict_int(
     if normalized < minimum:
         raise Foams105MomentValidationError(
             f"{field} must be >= {minimum}",
-            code="inconsistent_geometry_result",
+            code=code,
             context={
                 "image_id": image_id,
                 "component_id": component_id,
@@ -250,6 +251,7 @@ def _strict_finite_real(
     *,
     image_id: str,
     component_id: Optional[int] = None,
+    code: str = "inconsistent_geometry_result",
 ) -> float:
     if (
         not isinstance(value, (int, float, np.integer, np.floating))
@@ -257,7 +259,7 @@ def _strict_finite_real(
     ):
         raise Foams105MomentValidationError(
             f"{field} must be a finite real scalar",
-            code="inconsistent_geometry_result",
+            code=code,
             context={
                 "image_id": image_id,
                 "component_id": component_id,
@@ -269,7 +271,7 @@ def _strict_finite_real(
     except (OverflowError, ValueError) as exc:
         raise Foams105MomentValidationError(
             f"{field} must be representable as finite float64",
-            code="inconsistent_geometry_result",
+            code=code,
             context={
                 "image_id": image_id,
                 "component_id": component_id,
@@ -279,7 +281,7 @@ def _strict_finite_real(
     if not math.isfinite(normalized):
         raise Foams105MomentValidationError(
             f"{field} must be finite",
-            code="inconsistent_geometry_result",
+            code=code,
             context={
                 "image_id": image_id,
                 "component_id": component_id,
@@ -1035,6 +1037,30 @@ def _validate_labels_and_masks(
     image_id: str,
     measurement: Foams105PhaseMeasurementResult,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    if (
+        not isinstance(measurement.image_shape, tuple)
+        or len(measurement.image_shape) != 2
+    ):
+        raise Foams105MomentValidationError(
+            "measurement image_shape must be a (height, width) tuple",
+            code="inconsistent_measurement_result",
+            context={"image_id": image_id},
+        )
+    expected_height = _strict_int(
+        measurement.image_shape[0],
+        "phase_measurement_result.image_shape[0]",
+        image_id=image_id,
+        minimum=1,
+        code="inconsistent_measurement_result",
+    )
+    expected_width = _strict_int(
+        measurement.image_shape[1],
+        "phase_measurement_result.image_shape[1]",
+        image_id=image_id,
+        minimum=1,
+        code="inconsistent_measurement_result",
+    )
+
     filled = measurement.filled_mask
     labels = measurement.label_image
     if not isinstance(filled, np.ndarray) or filled.ndim != 2:
@@ -1052,9 +1078,10 @@ def _validate_labels_and_masks(
             "filled_mask and label_image must have equal nonempty shapes",
             context={"image_id": image_id},
         )
-    if filled.shape != measurement.image_shape:
+    if filled.shape != (expected_height, expected_width):
         raise Foams105MomentValidationError(
             "measurement image_shape and array shapes are inconsistent",
+            code="inconsistent_measurement_result",
             context={"image_id": image_id},
         )
     if labels.dtype.kind not in "iu":
@@ -1077,14 +1104,21 @@ def _validate_labels_and_masks(
             context={"image_id": image_id},
         )
     foreground_count = int(np.count_nonzero(foreground))
-    if foreground_count != measurement.final_foreground_pixel_count:
+    reported_foreground_count = _strict_int(
+        measurement.final_foreground_pixel_count,
+        "phase_measurement_result.final_foreground_pixel_count",
+        image_id=image_id,
+        minimum=0,
+        code="inconsistent_measurement_result",
+    )
+    if foreground_count != reported_foreground_count:
         raise Foams105MomentValidationError(
             "measurement foreground count is inconsistent",
             code="inconsistent_measurement_result",
             context={
                 "image_id": image_id,
                 "label_foreground_count": foreground_count,
-                "reported_foreground_count": measurement.final_foreground_pixel_count,
+                "reported_foreground_count": reported_foreground_count,
             },
         )
     return filled_bool, labels_int, foreground, foreground_count
@@ -1143,18 +1177,24 @@ def _validate_components(
                 code="inconsistent_measurement_result",
                 context={"image_id": image_id, "component_index": index},
             )
-        if component.component_id in seen_ids:
+        component_id = _strict_int(
+            component.component_id,
+            "phase_measurement_result.components.component_id",
+            image_id=image_id,
+            minimum=1,
+            code="inconsistent_measurement_result",
+        )
+        if component_id in seen_ids:
             raise Foams105MomentValidationError(
                 "measurement components contain duplicate IDs",
                 code="inconsistent_measurement_result",
                 context={
                     "image_id": image_id,
-                    "component_id": component.component_id,
+                    "component_id": component_id,
                 },
             )
-        seen_ids.add(component.component_id)
-        component_id = int(component.component_id)
-        if component_id <= 0 or component_id > component_count:
+        seen_ids.add(component_id)
+        if component_id > component_count:
             raise Foams105MomentValidationError(
                 "measurement component IDs must be contiguous positive indices",
                 code="inconsistent_measurement_result",
@@ -1167,29 +1207,79 @@ def _validate_components(
                 code="inconsistent_measurement_result",
                 context={"image_id": image_id, "component_id": component_id},
             )
-        if component.area_px != pixel_count:
+        declared_area_px = _strict_int(
+            component.area_px,
+            "phase_measurement_result.components.area_px",
+            image_id=image_id,
+            component_id=component_id,
+            minimum=1,
+            code="inconsistent_measurement_result",
+        )
+        if declared_area_px != pixel_count:
             raise Foams105MomentValidationError(
                 "measurement component area_px is inconsistent",
                 code="inconsistent_measurement_result",
                 context={
                     "image_id": image_id,
                     "component_id": component_id,
-                    "declared_area_px": component.area_px,
+                    "declared_area_px": declared_area_px,
                     "label_area_px": pixel_count,
                 },
             )
+
+        first_pixel = component.first_pixel_rc
+        if not isinstance(first_pixel, tuple) or len(first_pixel) != 2:
+            raise Foams105MomentValidationError(
+                "measurement first_pixel_rc must be a (row, column) tuple",
+                code="inconsistent_measurement_result",
+                context={
+                    "image_id": image_id,
+                    "component_index": index,
+                    "component_id": component_id,
+                },
+            )
+        first_row = _strict_int(
+            first_pixel[0],
+            "phase_measurement_result.components.first_pixel_rc[0]",
+            image_id=image_id,
+            component_id=component_id,
+            minimum=0,
+            code="inconsistent_measurement_result",
+        )
+        first_column = _strict_int(
+            first_pixel[1],
+            "phase_measurement_result.components.first_pixel_rc[1]",
+            image_id=image_id,
+            component_id=component_id,
+            minimum=0,
+            code="inconsistent_measurement_result",
+        )
+
         minimum = int(minima[component_id])
-        first_pixel = (minimum % height, minimum // height)
-        if component.first_pixel_rc != first_pixel:
+        first_pixel_from_labels = (minimum % height, minimum // height)
+        if (first_row, first_column) != first_pixel_from_labels:
             raise Foams105MomentValidationError(
                 "measurement first-pixel identity is inconsistent",
                 code="inconsistent_measurement_result",
                 context={
                     "image_id": image_id,
                     "component_id": component_id,
-                    "declared_first_pixel_rc": component.first_pixel_rc,
-                    "label_first_pixel_rc": first_pixel,
+                    "declared_first_pixel_rc": (first_row, first_column),
+                    "label_first_pixel_rc": first_pixel_from_labels,
                 },
+            )
+        area_mm2 = _strict_finite_real(
+            component.area_mm2,
+            "phase_measurement_result.components.area_mm2",
+            image_id=image_id,
+            component_id=component_id,
+            code="inconsistent_measurement_result",
+        )
+        if area_mm2 <= 0.0:
+            raise Foams105MomentValidationError(
+                "measurement component area_mm2 must be positive",
+                code="inconsistent_measurement_result",
+                context={"image_id": image_id, "component_id": component_id},
             )
         expected_area_mm2 = _checked_divide(
             _checked_divide(
@@ -1204,15 +1294,28 @@ def _validate_components(
             image_id=image_id,
             component_id=component_id,
         )
-        if not math.isclose(component.area_mm2, expected_area_mm2, rel_tol=1e-12, abs_tol=0.0):
+        if not math.isclose(area_mm2, expected_area_mm2, rel_tol=1e-12, abs_tol=0.0):
             raise Foams105MomentValidationError(
                 "measurement area_mm2 is inconsistent with label area",
                 code="inconsistent_measurement_result",
                 context={"image_id": image_id, "component_id": component_id},
             )
-        expected_diameter = 2.0 * math.sqrt(component.area_mm2 / math.pi)
-        if not math.isclose(
+        equivalent_diameter_mm = _strict_finite_real(
             component.equivalent_diameter_mm,
+            "phase_measurement_result.components.equivalent_diameter_mm",
+            image_id=image_id,
+            component_id=component_id,
+            code="inconsistent_measurement_result",
+        )
+        if equivalent_diameter_mm <= 0.0:
+            raise Foams105MomentValidationError(
+                "measurement equivalent diameter must be positive",
+                code="inconsistent_measurement_result",
+                context={"image_id": image_id, "component_id": component_id},
+            )
+        expected_diameter = 2.0 * math.sqrt(area_mm2 / math.pi)
+        if not math.isclose(
+            equivalent_diameter_mm,
             expected_diameter,
             rel_tol=1e-12,
             abs_tol=0.0,

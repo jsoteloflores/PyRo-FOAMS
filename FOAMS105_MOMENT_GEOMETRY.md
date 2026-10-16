@@ -88,6 +88,11 @@ profile stores `theta=0`, `orientation_defined=False`, and
 - Selection validates each supplied image geometry record against one canonical
   moment replay from its retained phase-measurement result and declared image
   ID before any row joins.
+- Retained phase-measurement components are strictly validated before canonical
+  replay arithmetic or indexing: IDs/counts and first-pixel coordinates must
+  be integer scalars (Boolean and fractional values rejected), and calibrated
+  area/diameter fields must be finite positive real scalars (numeric strings
+  and nonfinite payloads rejected).
 - Parent and component records must have compatible method/source metadata,
   units, connectivity, verification level, orientation conventions, and
   `perimeter_status`.

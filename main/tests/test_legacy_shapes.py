@@ -314,6 +314,91 @@ class TestFoams105MomentValidationAndImmutability(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             result.components[0].major_axis_px = 0.0
 
+    def test_nested_measurement_scalar_contracts_are_rejected_by_measurement_api(self):
+        image = np.zeros((8, 8), dtype=np.uint8)
+        image[2:4, 2:4] = 1
+        measurement = measure_foams105_phase(image, 1, 1.0)
+        base = measurement.components[0]
+        mutations = (
+            ("component_id_fractional", {"component_id": 1.5}, "component_id"),
+            ("component_id_bool", {"component_id": True}, "component_id"),
+            ("component_id_nan", {"component_id": float("nan")}, "component_id"),
+            (
+                "component_id_nonscalar",
+                {"component_id": np.array(1)},
+                "component_id",
+            ),
+            ("area_px_fractional", {"area_px": 1.5}, "area_px"),
+            ("area_px_bool", {"area_px": False}, "area_px"),
+            ("first_pixel_row_bool", {"first_pixel_rc": (True, 2)}, "first_pixel_rc[0]"),
+            (
+                "first_pixel_col_fractional",
+                {"first_pixel_rc": (2, 2.5)},
+                "first_pixel_rc[1]",
+            ),
+            (
+                "first_pixel_not_tuple",
+                {"first_pixel_rc": [2, 2]},
+                "first_pixel_rc",
+            ),
+            ("area_mm2_string", {"area_mm2": "1.0"}, "area_mm2"),
+            ("area_mm2_nonfinite", {"area_mm2": float("inf")}, "area_mm2"),
+            (
+                "diameter_string",
+                {"equivalent_diameter_mm": "1.0"},
+                "equivalent_diameter_mm",
+            ),
+            (
+                "diameter_nonfinite",
+                {"equivalent_diameter_mm": float("nan")},
+                "equivalent_diameter_mm",
+            ),
+        )
+        for label, updates, expected_field in mutations:
+            bad_component = replace(base, **updates)
+            bad_measurement = replace(
+                measurement,
+                components=(bad_component,) + measurement.components[1:],
+            )
+            with self.subTest(case=label), self.assertRaises(
+                Foams105MomentValidationError
+            ) as caught:
+                measure_foams105_moment_geometry("bad-measurement", bad_measurement)
+            self.assertEqual(caught.exception.code, "inconsistent_measurement_result")
+            self.assertEqual(caught.exception.context.get("image_id"), "bad-measurement")
+            field = caught.exception.context.get("field")
+            self.assertTrue(
+                field is None or expected_field in str(field),
+                f"unexpected field context: {field!r}",
+            )
+
+    def test_numpy_integer_scalars_are_accepted(self):
+        image = np.zeros((8, 8), dtype=np.uint8)
+        image[2:4, 2:4] = 1
+        measurement = measure_foams105_phase(image, 1, 1.0)
+        base = measurement.components[0]
+        numpy_component = replace(
+            base,
+            component_id=np.int64(base.component_id),
+            area_px=np.int64(base.area_px),
+            first_pixel_rc=(
+                np.int64(base.first_pixel_rc[0]),
+                np.int64(base.first_pixel_rc[1]),
+            ),
+        )
+        numpy_measurement = replace(
+            measurement,
+            components=(numpy_component,) + measurement.components[1:],
+            final_foreground_pixel_count=np.int64(measurement.final_foreground_pixel_count),
+            image_shape=(
+                np.int64(measurement.image_shape[0]),
+                np.int64(measurement.image_shape[1]),
+            ),
+        )
+        result = measure_foams105_moment_geometry("numpy-scalars", numpy_measurement)
+        self.assertEqual(result.component_count, len(measurement.components))
+        self.assertEqual(result.components[0].component_id, 1)
+
 
 class TestFoams105MomentSelectionAdapter(unittest.TestCase):
     def _geometry_inputs(self):
@@ -446,6 +531,35 @@ class TestFoams105MomentSelectionAdapter(unittest.TestCase):
             ) as caught:
                 select_foams105_moment_geometry(raw, (mutated, geometry_b))
             self.assertEqual(caught.exception.code, expected_code)
+
+    def test_nested_measurement_mutations_are_rejected_by_selector(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+        measurement = geometry_a.phase_measurement_result
+        first_component = measurement.components[0]
+        mutations = (
+            ("component_id_fractional", {"component_id": 1.5}, "component_id"),
+            ("component_id_bool", {"component_id": True}, "component_id"),
+            ("component_id_nan", {"component_id": float("nan")}, "component_id"),
+            ("area_mm2_string", {"area_mm2": "1.0"}, "area_mm2"),
+        )
+        for label, updates, expected_field in mutations:
+            bad_component = replace(first_component, **updates)
+            bad_measurement = replace(
+                measurement,
+                components=(bad_component,) + measurement.components[1:],
+            )
+            bad_geometry = replace(geometry_a, phase_measurement_result=bad_measurement)
+            with self.subTest(case=label), self.assertRaises(
+                Foams105MomentValidationError
+            ) as caught:
+                select_foams105_moment_geometry(raw, (bad_geometry, geometry_b))
+            self.assertEqual(caught.exception.code, "inconsistent_measurement_result")
+            self.assertEqual(caught.exception.context.get("image_id"), "image-a")
+            field = caught.exception.context.get("field")
+            self.assertTrue(
+                field is None or expected_field in str(field),
+                f"unexpected field context: {field!r}",
+            )
 
     def test_axes_tensor_orientation_and_scalar_contracts_are_rejected(self):
         raw, geometry_a, geometry_b = self._geometry_inputs()
@@ -592,6 +706,17 @@ class TestFoams105MomentSelectionAdapter(unittest.TestCase):
             result.selected_identities,
             tuple((row.image_id, row.component_id) for row in result.rows),
         )
+
+    def test_validated_measurement_component_identities_match_geometry(self):
+        raw, geometry_a, geometry_b = self._geometry_inputs()
+        result = select_foams105_moment_geometry(raw, (geometry_a, geometry_b))
+        for image_result in result.image_geometry_results:
+            measurement_ids = tuple(
+                component.component_id
+                for component in image_result.phase_measurement_result.components
+            )
+            geometry_ids = tuple(component.component_id for component in image_result.components)
+            self.assertEqual(measurement_ids, geometry_ids)
 
     def test_canonical_replay_runs_once_per_supplied_image(self):
         raw, geometry_a, geometry_b = self._geometry_inputs()
