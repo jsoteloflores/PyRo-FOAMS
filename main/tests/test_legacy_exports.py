@@ -21,6 +21,9 @@ from main.core.legacy_exports import (
     STATS_HEADERS,
     VES_HEADERS,
     Foams105ExportError,
+    _area_out_projection,
+    _format_cell,
+    _project_foams105_export_tables,
     build_foams105_export_tables,
     write_foams105_export_bundle,
 )
@@ -113,7 +116,20 @@ class TestFoams105ExportProjections(unittest.TestCase):
         self.assertEqual(len(tables["Rawcutoffs_data.txt"].rows), result.raw_selection_result.selected_count)
         self.assertEqual(len(tables["Calc_out.txt"].rows), len(result.conversion_result.bin_labels_mm))
         self.assertEqual(len(tables["Area_out.txt"].rows), 2)
-        self.assertEqual(len(tables["Shape_out.txt"].rows), 21)
+        shape_rows = tables["Shape_out.txt"].rows
+        self.assertEqual(len(shape_rows), result.raw_selection_result.selected_count)
+        self.assertEqual(
+            tuple((row.image_id, row.component_id) for row in result.shape_result.rows),
+            tuple((row.image_id, row.component_id) for row in result.rawcutoffs_data_rows),
+        )
+        self.assertEqual(
+            shape_rows,
+            (
+                (0.0, 0.0, 1.0, 0.9549296585513721),
+                (0.0, 0.0, 1.0, 0.9549296585513721),
+                (0.0, 0.0, 1.0, 0.9549296585513721),
+            ),
+        )
         self.assertEqual(tuple(row[0] for row in tables["Stats_out.txt"].rows), ("asp_rat", "elong", "regularity", "eccent"))
         self.assertEqual(result.shape_statistics_result.statistic_rows[2].display_mean, 0.9549)
         self.assertEqual(tables["Area_out.txt"].rows[0][0], 1)
@@ -128,6 +144,23 @@ class TestFoams105ExportProjections(unittest.TestCase):
         )
         self.assertEqual(tables["Area_out.txt"].rows[0][1], image_a_area)
         self.assertEqual(tables["Raw_data.txt"].rows[0][-1], 1)
+
+    def test_shape_minimum_changes_plot_population_not_shape_table(self):
+        result = _build_result()
+        lower_minimum = analyze_foams105_prepared(
+            result.prepared_result,
+            replace(result.analysis_settings, shape_minimum_diameter_px=0.0),
+        )
+        self.assertNotEqual(
+            result.shape_histogram_result.population_identities,
+            lower_minimum.shape_histogram_result.population_identities,
+        )
+        self.assertEqual(result.shape_statistics_result.statistic_rows[0].n, 2)
+        self.assertEqual(lower_minimum.shape_statistics_result.statistic_rows[0].n, 3)
+        self.assertEqual(
+            _tables_by_name(result)["Shape_out.txt"].rows,
+            _tables_by_name(lower_minimum)["Shape_out.txt"].rows,
+        )
 
     def test_missing_density_vesicularity_is_explicit_partial_cell(self):
         result = _build_result(density_setting=False)
@@ -149,15 +182,15 @@ class TestFoams105ExportProjections(unittest.TestCase):
         modified_group = replace(group, images=(modified_image,) + group.images[1:])
         altered_prepared = replace(result.prepared_result, groups=(modified_group,))
         altered_result = replace(result, prepared_result=altered_prepared)
-        tables = _tables_by_name(altered_result)
-        self.assertEqual(tables["Area_out.txt"].status, "unavailable")
-        self.assertEqual(tables["Area_out.txt"].unavailable_reason, "area_count_does_not_match_source_image_indices")
+        area_table = _area_out_projection(altered_result, [])
+        self.assertEqual(area_table.status, "unavailable")
+        self.assertEqual(area_table.unavailable_reason, "area_count_does_not_match_source_image_indices")
 
         negative_area = replace(first_image.image_area_result, phase_corrected_area_mm2=-2.0)
         negative_image = replace(first_image, image_area_result=negative_area)
         negative_group = replace(group, images=(negative_image,) + group.images[1:])
         negative_result = replace(result, prepared_result=replace(result.prepared_result, groups=(negative_group,)))
-        negative_table = _tables_by_name(negative_result)["Area_out.txt"]
+        negative_table = _area_out_projection(negative_result, [])
         self.assertEqual(negative_table.status, "available")
         self.assertEqual(negative_table.rows[1][1], -2.0)
 
@@ -169,6 +202,37 @@ class TestFoams105ExportProjections(unittest.TestCase):
             build_foams105_export_tables(result)
         measure.assert_not_called()
         histogram.assert_not_called()
+
+    def test_mixed_binned_density_is_rejected_before_bundle_directory_creation(self):
+        result = _build_result()
+        original = result.binned_selection_result.na_per_mm2
+        mixed_binned = replace(
+            result.binned_selection_result,
+            na_per_mm2=(123456.0,) + original[1:],
+        )
+        altered_result = replace(result, binned_selection_result=mixed_binned)
+        with tempfile.TemporaryDirectory() as root:
+            destination = Path(root) / "must-not-exist"
+            with self.assertRaises(Foams105ExportError) as caught:
+                write_foams105_export_bundle(altered_result, destination)
+            self.assertEqual(caught.exception.code, "invalid_analysis_result_cache")
+            self.assertFalse(destination.exists())
+
+    def test_replaced_final_settings_are_rejected_by_public_export(self):
+        result = _build_result()
+        altered_result = replace(
+            result,
+            analysis_settings=replace(result.analysis_settings, shape_minimum_diameter_px=0.0),
+        )
+        with self.assertRaises(Foams105ExportError) as caught:
+            build_foams105_export_tables(altered_result)
+        self.assertEqual(caught.exception.code, "invalid_analysis_result_cache")
+
+    def test_final_result_without_builder_record_is_rejected(self):
+        result = replace(_build_result(), _validation_record=None)
+        with self.assertRaises(Foams105ExportError) as caught:
+            build_foams105_export_tables(result)
+        self.assertEqual(caught.exception.code, "invalid_analysis_result_cache")
 
 
 class TestFoams105ExportBundle(unittest.TestCase):
@@ -201,6 +265,15 @@ class TestFoams105ExportBundle(unittest.TestCase):
             identities = json.loads((root_path / "one" / "input_identity.json").read_text(encoding="utf-8"))
             self.assertEqual(tuple(item["source_image_key"] for item in identities["images"]), ("second", "first"))
             self.assertTrue(all("area1_phase_corrected_mm2" in item and "area2_border_corrected_mm2" in item for item in identities["images"]))
+            shape_identity = json.loads((root_path / "one" / "Shape_out.identity.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                tuple((item["image_id"], item["component_id"]) for item in shape_identity["rows"]),
+                tuple((row.image_id, row.component_id) for row in result.rawcutoffs_data_rows),
+            )
+            self.assertEqual(
+                tuple(tuple(item) for item in shape_identity["plot_population_identities"]),
+                result.shape_histogram_result.population_identities,
+            )
             with self.assertRaises(Foams105ExportError) as caught:
                 write_foams105_export_bundle(result, root_path / "one")
             self.assertEqual(caught.exception.code, "output_directory_exists")
@@ -219,45 +292,36 @@ class TestFoams105ExportBundle(unittest.TestCase):
     def test_unavailable_area_projection_does_not_block_other_tables(self):
         result = _build_result()
         group = result.prepared_result.groups[0]
-        first_image = group.images[0]
-        zero_area = replace(first_image.image_area_result, phase_corrected_area_mm2=0.0)
-        modified_image = replace(first_image, image_area_result=zero_area)
-        modified_group = replace(group, images=(modified_image,) + group.images[1:])
+        image = group.images[0]
+        zero_area = replace(image.image_area_result, phase_corrected_area_mm2=0.0)
+        altered_image = replace(image, image_area_result=zero_area)
+        altered_group = replace(group, images=(altered_image,) + group.images[1:])
         altered_result = replace(
             result,
-            prepared_result=replace(result.prepared_result, groups=(modified_group,)),
+            prepared_result=replace(result.prepared_result, groups=(altered_group,)),
         )
-        with tempfile.TemporaryDirectory() as root:
-            destination = Path(root) / "partial"
-            bundle = write_foams105_export_bundle(altered_result, destination)
-            self.assertFalse(bundle.complete)
-            self.assertNotIn("Area_out.txt", bundle.table_filenames)
-            self.assertIn("Calc_out.txt", bundle.table_filenames)
-            manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
-            area_status = next(item for item in manifest["table_statuses"] if item["filename"] == "Area_out.txt")
-            self.assertEqual(area_status["status"], "unavailable")
+        projections = _project_foams105_export_tables(altered_result)
+        tables = {table.filename: table for table in projections.tables}
+        self.assertFalse(projections.complete)
+        self.assertEqual(tables["Area_out.txt"].status, "unavailable")
+        self.assertEqual(tables["Calc_out.txt"].status, "available")
 
     def test_undefined_numeric_cells_serialize_as_na_with_classification(self):
-        result = _build_result()
-        summary = replace(
-            result.distribution_summary_result,
-            corrected_nv_per_mm3=Foams105RealValue(
+        diagnostics = []
+        formatted = _format_cell(
+            Foams105RealValue(
                 value=None,
                 reason="zero_solid_fraction",
                 legacy_classification="positive_infinity",
             ),
+            table="Misc_out.txt",
+            row_index=0,
+            column="NVcorr",
+            diagnostics=diagnostics,
         )
-        result = replace(result, distribution_summary_result=summary)
-        with tempfile.TemporaryDirectory() as root:
-            destination = Path(root) / "bundle"
-            write_foams105_export_bundle(result, destination)
-            with (destination / "Misc_out.txt").open("r", encoding="utf-8", newline="") as handle:
-                misc_rows = tuple(csv.reader(handle, delimiter="\t"))
-            self.assertEqual(misc_rows[1][3], "NA")
-            diagnostics = json.loads((destination / "diagnostics.json").read_text(encoding="utf-8"))
-            diagnostic = next(item for item in diagnostics["diagnostics"] if item["column"] == "NVcorr")
-            self.assertEqual(diagnostic["reason"], "zero_solid_fraction")
-            self.assertEqual(diagnostic["legacy_classification"], "positive_infinity")
+        self.assertEqual(formatted, "NA")
+        self.assertEqual(diagnostics[0].reason, "zero_solid_fraction")
+        self.assertEqual(diagnostics[0].legacy_classification, "positive_infinity")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Mapping, Optional, Sequence, Tuple
 
@@ -55,7 +55,8 @@ from .legacy_shape_statistics import (
     Foams105ComponentShapeMeasures,
     Foams105ShapeResult,
     Foams105ShapeStatisticsResult,
-    assemble_foams105_shapes_from_cached_components,
+    _assemble_foams105_shapes_from_cached_components,
+    _phase_measurements_match,
     calculate_foams105_component_shape_measures,
     summarize_foams105_shapes,
 )
@@ -233,6 +234,20 @@ class Foams105PreparedGroup:
 
 
 @dataclass(frozen=True)
+class _PreparedValidationRecord:
+    root_references: Tuple[object, ...]
+    child_references: Tuple[object, ...]
+    scalar_snapshot: Tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class _AnalysisValidationRecord:
+    root_references: Tuple[object, ...]
+    child_references: Tuple[object, ...]
+    scalar_snapshot: Tuple[object, ...]
+
+
+@dataclass(frozen=True)
 class Foams105PreparedAnalysisResult:
     preparation_settings: Foams105PreparationSettings
     source_metadata: Foams105SourceMetadata
@@ -246,6 +261,7 @@ class Foams105PreparedAnalysisResult:
     source_commit: str = FOAMS105_PIPELINE_SOURCE_COMMIT
     scope: str = FOAMS105_PIPELINE_SCOPE
     diagnostics: Tuple[Foams105PipelineDiagnostic, ...] = ()
+    _validation_record: Optional[_PreparedValidationRecord] = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -280,7 +296,6 @@ class Foams105AnalysisResult:
     shape_result: Foams105ShapeResult
     shape_statistics_result: Foams105ShapeStatisticsResult
     shape_histogram_result: Foams105ShapeHistogramResult
-    shape_export_histogram_result: Foams105ShapeHistogramResult
     bulk_na_plot_data_result: Foams105BulkNaPlotDataResult
     raw_data_rows: Tuple[Foams105RawTableRow, ...]
     rawcutoffs_data_rows: Tuple[Foams105RawTableRow, ...]
@@ -290,6 +305,7 @@ class Foams105AnalysisResult:
     source_commit: str = FOAMS105_PIPELINE_SOURCE_COMMIT
     scope: str = FOAMS105_PIPELINE_SCOPE
     diagnostics: Tuple[Foams105PipelineDiagnostic, ...] = ()
+    _validation_record: Optional[_AnalysisValidationRecord] = field(default=None, repr=False, compare=False)
 
 
 def _stage(stage: str, function, *args, **kwargs):
@@ -345,6 +361,13 @@ def _snapshot_image(image: object, image_id: str) -> np.ndarray:
     return owned
 
 
+def _has_immutable_bytes_backing(array: np.ndarray) -> bool:
+    base = array
+    while isinstance(base, np.ndarray):
+        base = base.base
+    return not array.flags.writeable and isinstance(base, bytes)
+
+
 def _image_checksum(image: np.ndarray) -> str:
     digest = hashlib.sha256()
     digest.update(image.dtype.str.encode("ascii"))
@@ -353,6 +376,120 @@ def _image_checksum(image: np.ndarray) -> str:
     digest.update(b"\0")
     digest.update(image.tobytes(order="C"))
     return digest.hexdigest()
+
+
+def _prepared_record_parts(prepared: Foams105PreparedAnalysisResult):
+    root_references = (
+        prepared.preparation_settings,
+        prepared.source_metadata,
+        prepared.groups,
+        prepared.label_preparation_result,
+        prepared.source_image_mapping,
+        prepared.diagnostics,
+    )
+    children = []
+    for group in prepared.groups:
+        children.extend(
+            (
+                group,
+                group.images,
+                group.group_area_result,
+                group.unfiltered_pore_objects,
+                group.diameter_filter_result,
+                group.diameter_filtered_objects,
+                group.histogram_result,
+                group.normalization_result,
+                group.count_group_input,
+                group.diagnostics,
+            )
+        )
+        children.extend(group.unfiltered_pore_objects)
+        children.extend(group.diameter_filtered_objects)
+        for image in group.images:
+            children.extend(
+                (
+                    image,
+                    image.image_input,
+                    image.image_input.segmented_image,
+                    image.measurement_result,
+                    image.measurement_result.pore_result,
+                    image.image_area_result,
+                    image.moment_geometry_result,
+                    image.perimeter_result,
+                    image.component_shape_measures,
+                    image.unfiltered_pore_objects,
+                )
+            )
+            for phase in (
+                image.measurement_result.pore_result,
+                image.moment_geometry_result.phase_measurement_result,
+                image.perimeter_result.phase_measurement_result,
+            ):
+                children.extend(
+                    (phase, phase.removed_border_mask, phase.filled_mask, phase.label_image)
+                )
+            children.extend(image.unfiltered_pore_objects)
+            for cached in image.component_shape_measures:
+                children.extend(
+                    (
+                        cached,
+                        cached.moment_component,
+                        cached.perimeter_component,
+                        cached.regularity,
+                        cached.form_factor,
+                        cached.elongation,
+                        cached.aspect_ratio,
+                        cached.fitted_ellipse_perimeter_mm,
+                    )
+                )
+    scalar_snapshot = (
+        prepared.image_count,
+        prepared.perimeter_profile,
+        prepared.method,
+        prepared.source_repository,
+        prepared.source_commit,
+        prepared.scope,
+    )
+    return root_references, tuple(children), scalar_snapshot
+
+
+def _analysis_record_parts(analysis: Foams105AnalysisResult):
+    root_references = (
+        analysis.prepared_result,
+        analysis.analysis_settings,
+        analysis.cutoff_suggestion_result,
+        analysis.applied_ranges,
+        analysis.binned_selection_result,
+        analysis.raw_selection_result,
+        analysis.vesicularity_result,
+        analysis.conversion_result,
+        analysis.volume_result,
+        analysis.distribution_summary_result,
+        analysis.size_category_result,
+        analysis.shape_result,
+        analysis.shape_statistics_result,
+        analysis.shape_histogram_result,
+        analysis.bulk_na_plot_data_result,
+        analysis.raw_data_rows,
+        analysis.rawcutoffs_data_rows,
+        analysis.diagnostics,
+    )
+    children = []
+    for value in root_references[2:]:
+        if isinstance(value, tuple):
+            children.extend(value)
+    scalar_snapshot = (
+        analysis.image_count,
+        analysis.method,
+        analysis.source_repository,
+        analysis.source_commit,
+        analysis.scope,
+    )
+    return root_references, tuple(children), scalar_snapshot
+
+
+def _identity_sequence_matches(actual: Tuple[object, ...], expected: Tuple[object, ...]) -> bool:
+    return len(actual) == len(expected) and all(left is right for left, right in zip(actual, expected))
 
 
 def _object_from_component(image_id: str, component) -> Foams105RawObject:
@@ -603,7 +740,7 @@ def prepare_foams105_analysis(
             )
         )
     normalized_settings = replace(settings, minimum_diameter_px=minimum)
-    return Foams105PreparedAnalysisResult(
+    prepared = Foams105PreparedAnalysisResult(
         preparation_settings=normalized_settings,
         source_metadata=metadata,
         groups=tuple(prepared_groups),
@@ -613,11 +750,22 @@ def prepare_foams105_analysis(
         perimeter_profile=settings.perimeter_profile,
         diagnostics=tuple(diagnostic for group in prepared_groups for diagnostic in group.diagnostics),
     )
+    _validate_prepared_result(prepared, require_record=False, validate_shape_cache=True)
+    root_references, child_references, scalar_snapshot = _prepared_record_parts(prepared)
+    record = _PreparedValidationRecord(root_references, child_references, scalar_snapshot)
+    return replace(prepared, _validation_record=record)
 
 
-def _validate_prepared_result(prepared: object) -> Foams105PreparedAnalysisResult:
+def _validate_prepared_result(
+    prepared: object,
+    *,
+    require_record: bool = True,
+    validate_shape_cache: bool = False,
+) -> Foams105PreparedAnalysisResult:
     if not isinstance(prepared, Foams105PreparedAnalysisResult):
         raise _pipeline_validation("prepared_validation", "invalid_prepared_result", "prepared result has the wrong type")
+    if require_record and not isinstance(prepared._validation_record, _PreparedValidationRecord):
+        raise _pipeline_validation("prepared_validation", "missing_prepared_validation_record", "prepared result was not issued by the preparation builder")
     if (
         prepared.method != FOAMS105_PIPELINE_METHOD
         or prepared.source_repository != FOAMS105_PIPELINE_SOURCE_REPOSITORY
@@ -675,7 +823,7 @@ def _validate_prepared_result(prepared: object) -> Foams105PreparedAnalysisResul
         for image in group.images:
             if not isinstance(image, Foams105PreparedImage):
                 raise _pipeline_validation("prepared_validation", "invalid_prepared_image", "prepared image record has the wrong type", group_id=group.group_id)
-            if not isinstance(image.image_input, Foams105SegmentedImageInput) or image.image_input.segmented_image.flags.writeable:
+            if not isinstance(image.image_input, Foams105SegmentedImageInput) or not _has_immutable_bytes_backing(image.image_input.segmented_image):
                 raise _pipeline_validation("prepared_validation", "mutable_prepared_image", "prepared image snapshot is invalid or writable")
             if image.image_input.image_id in seen_images:
                 raise _pipeline_validation("prepared_validation", "duplicate_prepared_image", "prepared image IDs must be unique", image_id=image.image_input.image_id)
@@ -721,6 +869,39 @@ def _validate_prepared_result(prepared: object) -> Foams105PreparedAnalysisResul
                         "prepared_validation", "stale_component_shape_cache", "cached shape values differ from prepared geometry",
                         image_id=image.image_input.image_id, component_index=index,
                     )
+                if validate_shape_cache:
+                    expected_cached = _stage(
+                        "prepared_cache_validation",
+                        calculate_foams105_component_shape_measures,
+                        moment_component,
+                        perimeter_component,
+                    )
+                    if cached != expected_cached:
+                        raise _pipeline_validation(
+                            "prepared_validation", "stale_component_shape_cache", "cached shape formulas differ from canonical geometry",
+                            image_id=image.image_input.image_id, component_index=index,
+                        )
+            if validate_shape_cache and not _phase_measurements_match(
+                image.moment_geometry_result.phase_measurement_result,
+                image.perimeter_result.phase_measurement_result,
+            ):
+                raise _pipeline_validation(
+                    "prepared_validation", "phase_measurement_mismatch", "moment and perimeter snapshots differ at preparation",
+                    image_id=image.image_input.image_id,
+                )
+            if validate_shape_cache and any(
+                not _has_immutable_bytes_backing(array)
+                for phase in (
+                    image.measurement_result.pore_result,
+                    image.moment_geometry_result.phase_measurement_result,
+                    image.perimeter_result.phase_measurement_result,
+                )
+                for array in (phase.removed_border_mask, phase.filled_mask, phase.label_image)
+            ):
+                raise _pipeline_validation(
+                    "prepared_validation", "mutable_phase_snapshot", "cached phase arrays must have immutable byte backing",
+                    image_id=image.image_input.image_id,
+                )
             seen_images.add(image.image_input.image_id)
             seen_sources.add(image.image_input.source_image_key)
             image_ids_for_group.append(image.image_input.image_id)
@@ -761,6 +942,24 @@ def _validate_prepared_result(prepared: object) -> Foams105PreparedAnalysisResul
             or group.normalization_result.corrected_area_mm2 != group.group_area_result.phase_corrected_area_mm2
         ):
             raise _pipeline_validation("prepared_validation", "stale_normalization", "cached N_A normalization does not match histogram/area1", group_id=group.group_id)
+        if validate_shape_cache:
+            if group.group_area_result.phase_corrected_area_mm2 > 0.0:
+                expected_normalization = _stage(
+                    "prepared_cache_validation",
+                    normalize_foams105_counts,
+                    group.histogram_result,
+                    group.group_area_result.phase_corrected_area_mm2,
+                )
+                if group.normalization_result != expected_normalization:
+                    raise _pipeline_validation(
+                        "prepared_validation", "stale_normalization", "cached N_A values differ from canonical count/area normalization",
+                        group_id=group.group_id,
+                    )
+            elif group.normalization_result is not None:
+                raise _pipeline_validation(
+                    "prepared_validation", "unexpected_normalization", "nonpositive area1 must not carry normalized N_A",
+                    group_id=group.group_id,
+                )
     actual_mapping = tuple(
         (mapping.source_order, mapping.source_image_key, mapping.image_id, mapping.group_id, mapping.source_slot, mapping.area_output_selected)
         for mapping in prepared.source_image_mapping
@@ -780,6 +979,15 @@ def _validate_prepared_result(prepared: object) -> Foams105PreparedAnalysisResul
                     "prepared_validation", "inconsistent_prepared_image", "prepared stage records disagree on image/group identity",
                     image_id=image.image_input.image_id, group_id=group.group_id,
                 )
+        if require_record:
+            record = prepared._validation_record
+            current_root, current_children, current_scalars = _prepared_record_parts(prepared)
+            if (
+                not _identity_sequence_matches(current_root, record.root_references)
+                or not _identity_sequence_matches(current_children, record.child_references)
+                or current_scalars != record.scalar_snapshot
+            ):
+                raise _pipeline_validation("prepared_validation", "stale_prepared_snapshot", "prepared child stages or scalar metadata were replaced")
     return prepared
 
 
@@ -798,6 +1006,110 @@ def _raw_table_row(output_index: int, group: Foams105PreparedGroup, object_index
         minor_axis_mm=moment.minor_axis_mm,
         orientation_project_deg=moment.orientation_project_deg,
     )
+
+
+def _raw_selected_object(
+    group: Foams105PreparedGroup,
+    raw_row,
+) -> Tuple[Foams105RawObject, int]:
+    filtered_index = raw_row.source_object_index
+    if (
+        not isinstance(filtered_index, int)
+        or isinstance(filtered_index, bool)
+        or not 0 <= filtered_index < len(group.diameter_filtered_objects)
+        or raw_row.group_id != group.group_id
+        or raw_row.source_slot != group.source_slot
+    ):
+        raise _pipeline_validation(
+            "rawcutoffs_table", "invalid_raw_object_index", "raw selection does not reference a valid filtered-group object",
+            group_id=group.group_id, source_object_index=filtered_index,
+        )
+    object_ = group.diameter_filtered_objects[filtered_index]
+    if (
+        object_.image_id != raw_row.image_id
+        or object_.component_id != raw_row.component_id
+        or object_.area_mm2 != raw_row.area_mm2
+        or object_.equivalent_diameter_mm != raw_row.equivalent_diameter_mm
+    ):
+        raise _pipeline_validation(
+            "rawcutoffs_table", "raw_object_identity_mismatch", "indexed filtered object differs from its raw-selection row",
+            group_id=group.group_id, source_object_index=filtered_index,
+            identity=(raw_row.image_id, raw_row.component_id),
+        )
+    original_index = group.diameter_filter_result.retained_indices[filtered_index]
+    return object_, original_index
+
+
+def _validate_analysis_chain(analysis: Foams105AnalysisResult) -> None:
+    prepared = _validate_prepared_result(analysis.prepared_result)
+    binned = analysis.binned_selection_result
+    conversion = analysis.conversion_result
+    volume = analysis.volume_result
+    summary = analysis.distribution_summary_result
+    raw = analysis.raw_selection_result
+    shape = analysis.shape_result
+    links = {
+        "pipeline_provenance": (
+            analysis.method == FOAMS105_PIPELINE_METHOD
+            and analysis.source_repository == FOAMS105_PIPELINE_SOURCE_REPOSITORY
+            and analysis.source_commit == FOAMS105_PIPELINE_SOURCE_COMMIT
+            and analysis.scope == FOAMS105_PIPELINE_SCOPE
+        ),
+        "image_count": analysis.image_count == prepared.image_count,
+        "binned_input_labels": binned.input_bin_labels_mm == prepared.label_preparation_result.bin_labels_mm,
+        "binned_units": binned.length_unit == "mm" and binned.density_unit == "mm^-2",
+        "conversion_labels": binned.bin_labels_mm == conversion.bin_labels_mm,
+        "conversion_na": binned.na_per_mm2 == conversion.na_per_mm2,
+        "conversion_units": (
+            conversion.length_unit == "mm"
+            and conversion.input_density_unit == "mm^-2"
+            and conversion.output_density_unit == "mm^-3"
+        ),
+        "volume_conversion": volume.conversion_result == conversion,
+        "volume_units": (
+            volume.length_unit == "mm"
+            and volume.volume_unit == "mm^3"
+            and volume.number_density_unit == "mm^-3"
+            and volume.fraction_unit == "dimensionless"
+        ),
+        "summary_volume": summary.volume_result == volume,
+        "summary_units": summary.length_unit == "mm" and summary.number_density_unit == "mm^-3",
+        "vesicularity_raw": analysis.vesicularity_result.raw_selection == raw,
+        "raw_ranges": raw.requested_ranges == binned.requested_ranges,
+        "applied_ranges": analysis.applied_ranges == binned.requested_ranges,
+        "shape_raw": shape.raw_selection_result == raw,
+        "shape_identities": shape.selected_identities == raw.selected_identities,
+        "shape_units": shape.length_unit == "mm" and shape.area_unit == "mm^2" and shape.angle_unit == "degree",
+        "statistics_shape": analysis.shape_statistics_result.shape_result is shape,
+        "histogram_statistics": analysis.shape_histogram_result.shape_statistics_result is analysis.shape_statistics_result,
+        "bulk_na_selection": analysis.bulk_na_plot_data_result.selection_result == binned,
+        "shape_histogram_population": analysis.shape_histogram_result.population_identities == analysis.shape_statistics_result.threshold_identities,
+        "rawcutoffs_identities": tuple((row.image_id, row.component_id) for row in analysis.rawcutoffs_data_rows) == raw.selected_identities,
+    }
+    if not all(links.values()):
+        failed_links = tuple(key for key, matched in links.items() if not matched)
+        raise _pipeline_validation(
+            "analysis_validation", "mixed_analysis_stages",
+            f"final analysis stages do not share the same validated upstream results: {failed_links}",
+            failed_links=failed_links,
+        )
+
+
+def _validate_analysis_result(analysis: object) -> Foams105AnalysisResult:
+    if not isinstance(analysis, Foams105AnalysisResult):
+        raise _pipeline_validation("analysis_validation", "invalid_analysis_result", "analysis result has the wrong type")
+    record = analysis._validation_record
+    if not isinstance(record, _AnalysisValidationRecord):
+        raise _pipeline_validation("analysis_validation", "missing_analysis_validation_record", "analysis result was not issued by the analysis builder")
+    root_references, child_references, scalar_snapshot = _analysis_record_parts(analysis)
+    if (
+        not _identity_sequence_matches(root_references, record.root_references)
+        or not _identity_sequence_matches(child_references, record.child_references)
+        or scalar_snapshot != record.scalar_snapshot
+    ):
+        raise _pipeline_validation("analysis_validation", "stale_analysis_snapshot", "analysis settings, stage results, or ordered rows were replaced")
+    _validate_analysis_chain(analysis)
+    return analysis
 
 
 def analyze_foams105_prepared(
@@ -919,7 +1231,7 @@ def analyze_foams105_prepared(
     )
     shape_result = _stage(
         "shape_derivation",
-        assemble_foams105_shapes_from_cached_components,
+        _assemble_foams105_shapes_from_cached_components,
         raw_selection,
         moment_results,
         perimeter_results,
@@ -934,14 +1246,6 @@ def analyze_foams105_prepared(
         mode=settings.shape_statistics_mode,
     )
     shape_histograms = _stage("shape_histograms", build_foams105_shape_histograms, shape_statistics)
-    shape_all_statistics = _stage(
-        "shape_export_population", summarize_foams105_shapes,
-        shape_result,
-        configured_scales_px_per_mm=scales,
-        minimum_diameter_px=0.0,
-        mode="updated_minimum",
-    )
-    shape_export_histograms = _stage("shape_export_histograms", build_foams105_shape_histograms, shape_all_statistics)
     bulk_na = _stage(
         "bulk_na_plot_data",
         build_foams105_bulk_na_plot_data,
@@ -982,22 +1286,19 @@ def analyze_foams105_prepared(
     for raw_row in raw_selection.rows:
         identity = (raw_row.image_id, raw_row.component_id)
         group = prepared.groups[raw_row.source_slot - 1]
-        object_ = next(
-            item for item in group.diameter_filtered_objects
-            if (item.image_id, item.component_id) == identity
-        )
+        object_, original_object_index = _raw_selected_object(group, raw_row)
         rawcutoffs_rows.append(
             _raw_table_row(
                 raw_row.output_index,
                 group,
-                raw_row.source_object_index,
+                original_object_index,
                 object_,
                 moment_by_identity[identity],
                 perimeter_by_identity[identity],
             )
         )
 
-    return Foams105AnalysisResult(
+    analysis_result = Foams105AnalysisResult(
         prepared_result=prepared,
         analysis_settings=replace(settings, size_lower_cutoff_mm=lower_cutoff, size_upper_cutoff_mm=upper_cutoff, shape_minimum_diameter_px=shape_minimum),
         cutoff_suggestion_result=suggestion,
@@ -1012,12 +1313,15 @@ def analyze_foams105_prepared(
         shape_result=shape_result,
         shape_statistics_result=shape_statistics,
         shape_histogram_result=shape_histograms,
-        shape_export_histogram_result=shape_export_histograms,
         bulk_na_plot_data_result=bulk_na,
         raw_data_rows=tuple(raw_rows),
         rawcutoffs_data_rows=tuple(rawcutoffs_rows),
         image_count=prepared.image_count,
     )
+    _validate_analysis_chain(analysis_result)
+    root_references, child_references, scalar_snapshot = _analysis_record_parts(analysis_result)
+    record = _AnalysisValidationRecord(root_references, child_references, scalar_snapshot)
+    return replace(analysis_result, _validation_record=record)
 
 
 def run_foams105_analysis(

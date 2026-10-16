@@ -22,6 +22,8 @@ from .legacy_pipeline import (
     FOAMS105_PIPELINE_SOURCE_COMMIT,
     FOAMS105_PIPELINE_SOURCE_REPOSITORY,
     Foams105AnalysisResult,
+    Foams105PipelineStageError,
+    _validate_analysis_result,
 )
 from .legacy_summaries import Foams105RealValue
 
@@ -202,6 +204,16 @@ def _raw_row(row) -> Tuple[object, ...]:
     )
 
 
+def _shape_export_value(value) -> object:
+    if value.value is None:
+        return Foams105RealValue(
+            value=None,
+            reason=value.reason or "undefined_shape_value",
+            legacy_classification=value.legacy_class,
+        )
+    return value.value
+
+
 def _area_out_projection(result: Foams105AnalysisResult, diagnostics: list) -> Foams105ExportTableProjection:
     images = [
         image
@@ -244,8 +256,18 @@ def _area_out_projection(result: Foams105AnalysisResult, diagnostics: list) -> F
 def build_foams105_export_tables(analysis_result: Foams105AnalysisResult) -> Foams105ExportTablesResult:
     """Project stored stage results into the nine source table schemas."""
 
-    if not isinstance(analysis_result, Foams105AnalysisResult):
-        raise Foams105ExportError("analysis_result has the wrong type", code="invalid_analysis_result")
+    try:
+        analysis_result = _validate_analysis_result(analysis_result)
+    except Foams105PipelineStageError as exc:
+        raise Foams105ExportError(
+            "analysis result failed its builder-issued cache validation",
+            code="invalid_analysis_result_cache",
+            context={"cause_stage": exc.stage, "cause_code": exc.cause_code},
+        ) from exc
+    return _project_foams105_export_tables(analysis_result)
+
+
+def _project_foams105_export_tables(analysis_result: Foams105AnalysisResult) -> Foams105ExportTablesResult:
     diagnostics = []
     prepared = analysis_result.prepared_result
     groups_by_slot = {group.source_slot: group for group in prepared.groups}
@@ -357,19 +379,18 @@ def build_foams105_export_tables(analysis_result: Foams105AnalysisResult) -> Foa
     )
     misc_table = _table("Misc_out.txt", MISC_HEADERS, (misc_row,))
 
-    shape_hist = analysis_result.shape_export_histogram_result
-    shape_counts = (
-        shape_hist.eccentricity.counts,
-        shape_hist.elongation.counts,
-        shape_hist.aspect_ratio.counts,
-        shape_hist.regularity.counts,
-    )
-    if len({len(values) for values in shape_counts}) != 1:
-        raise Foams105ExportError("Shape_out histogram vectors differ in length", code="shape_out_length_mismatch")
     shape_table = _table(
         "Shape_out.txt",
         SHAPE_HEADERS,
-        tuple(tuple(values[index] for values in shape_counts) for index in range(len(shape_counts[0]))),
+        tuple(
+            (
+                row.eccentricity,
+                _shape_export_value(row.elongation),
+                _shape_export_value(row.aspect_ratio),
+                _shape_export_value(row.regularity),
+            )
+            for row in analysis_result.shape_result.rows
+        ),
     )
 
     stats_rows = []
@@ -527,12 +548,24 @@ def _identity_sidecars(analysis: Foams105AnalysisResult) -> Tuple[Tuple[str, obj
         (
             "Shape_out.identity.json",
             {
-                "population_identities": analysis.shape_export_histogram_result.population_identities,
-                "eccentricity_centers": analysis.shape_export_histogram_result.eccentricity.centers_or_edges,
-                "elongation_centers": analysis.shape_export_histogram_result.elongation.centers_or_edges,
-                "aspect_ratio_centers": analysis.shape_export_histogram_result.aspect_ratio.centers_or_edges,
-                "regularity_edges": analysis.shape_export_histogram_result.regularity.centers_or_edges,
-                "orientation_centers": analysis.shape_export_histogram_result.orientation_project_deg.centers_or_edges,
+                "rows": tuple(
+                    {
+                        "output_index": row.output_index,
+                        "raw_output_index": row.raw_output_index,
+                        "source_slot": row.source_slot,
+                        "group_id": row.group_id,
+                        "source_object_index": row.source_object_index,
+                        "image_id": row.image_id,
+                        "component_id": row.component_id,
+                    }
+                    for row in analysis.shape_result.rows
+                ),
+                "plot_population_identities": analysis.shape_histogram_result.population_identities,
+                "eccentricity_centers": analysis.shape_histogram_result.eccentricity.centers_or_edges,
+                "elongation_centers": analysis.shape_histogram_result.elongation.centers_or_edges,
+                "aspect_ratio_centers": analysis.shape_histogram_result.aspect_ratio.centers_or_edges,
+                "regularity_edges": analysis.shape_histogram_result.regularity.centers_or_edges,
+                "orientation_centers": analysis.shape_histogram_result.orientation_project_deg.centers_or_edges,
             },
         ),
         (

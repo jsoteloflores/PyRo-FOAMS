@@ -18,6 +18,7 @@ from main.core.legacy_pipeline import (
     prepare_foams105_analysis,
 )
 from main.core.legacy_selection import Foams105BinnedRange
+from main.core.legacy_shape_statistics import Foams105ShapeValue
 
 VOLUME_UNNORMALIZED = "unnormalized"
 VOLUME_KNOWN_VESICULARITY = "known_vesicularity"
@@ -92,6 +93,8 @@ class TestFoams105Pipeline(unittest.TestCase):
         self.first[:, :] = 9
         self.assertEqual(first_prepared.input_sha256, original_hash)
         self.assertFalse(first_prepared.image_input.segmented_image.flags.writeable)
+        with self.assertRaises(ValueError):
+            first_prepared.image_input.segmented_image.setflags(write=True)
         self.assertEqual(first_prepared.image_input.segmented_image[3, 16], 1)
         self.assertEqual(len(self.prepared.groups[0].images), 2)
         self.assertGreater(self.prepared.groups[0].histogram_result.input_count, 0)
@@ -120,10 +123,6 @@ class TestFoams105Pipeline(unittest.TestCase):
         self.assertGreater(len(result.raw_data_rows), len(selected))
         self.assertEqual(result.shape_statistics_result.shape_result.perimeter_profile, FOAMS105_PERIMETER_PROFILE_CURRENT)
         self.assertEqual(result.shape_histogram_result.population_identities, result.shape_statistics_result.threshold_identities)
-        self.assertEqual(
-            result.shape_export_histogram_result.population_identities,
-            result.shape_result.selected_identities,
-        )
         self.assertEqual(result.vesicularity_result.group_vesicularity_percent[0], result.vesicularity_result.mean_group_vesicularity_percent)
         self.assertEqual(len(result.distribution_summary_result.rows), len(result.volume_result.rows))
 
@@ -212,12 +211,16 @@ class TestFoams105Pipeline(unittest.TestCase):
             "main.core.legacy_pipeline.measure_foams105_moment_geometry"
         ) as moment_geometry, patch(
             "main.core.legacy_pipeline.measure_foams105_perimeter"
-        ) as perimeter:
+        ) as perimeter, patch(
+            "main.core.legacy_pipeline._phase_measurements_match",
+            side_effect=AssertionError("cached reanalysis must not scan phase arrays"),
+        ) as phase_measurement_match:
             result = analyze_foams105_prepared(self.prepared, _settings(VOLUME_KNOWN_VESICULARITY))
         measure.assert_not_called()
         histogram.assert_not_called()
         moment_geometry.assert_not_called()
         perimeter.assert_not_called()
+        phase_measurement_match.assert_not_called()
         self.assertEqual(result.volume_result.mode, VOLUME_KNOWN_VESICULARITY)
         self.assertEqual(result.volume_result.target_vesicularity_percent, 25.0)
 
@@ -240,8 +243,99 @@ class TestFoams105Pipeline(unittest.TestCase):
         histogram.assert_not_called()
         moment_geometry.assert_not_called()
         perimeter.assert_not_called()
-        self.assertEqual(shape_summary.call_count, 2)
+        self.assertEqual(shape_summary.call_count, 1)
         self.assertEqual(result.shape_statistics_result.threshold_count, len(result.shape_result.rows))
+
+    def test_raw_table_lookup_is_indexed_and_preserves_original_indices(self):
+        lower_label = self.prepared.label_preparation_result.bin_labels_mm[2]
+        settings = replace(
+            _settings(),
+            manual_ranges=(Foams105BinnedRange("coarse", lower_label, 4.0),),
+        )
+        from main.core.legacy_pipeline import _raw_selected_object
+
+        with patch(
+            "main.core.legacy_pipeline._raw_selected_object",
+            wraps=_raw_selected_object,
+        ) as indexed_lookup:
+            result = analyze_foams105_prepared(self.prepared, settings)
+        self.assertEqual(indexed_lookup.call_count, result.raw_selection_result.selected_count)
+        self.assertEqual(
+            tuple((row.image_id, row.component_id) for row in result.rawcutoffs_data_rows),
+            result.raw_selection_result.selected_identities,
+        )
+        self.assertEqual(
+            tuple(row.image_id for row in result.raw_selection_result.rows),
+            ("image-a", "image-b"),
+        )
+        self.assertEqual(
+            tuple(row.source_object_index for row in result.raw_selection_result.rows),
+            (1, 2),
+        )
+        self.assertEqual(
+            tuple(row.source_object_index for row in result.rawcutoffs_data_rows),
+            (1, 3),
+        )
+
+    def test_changed_area_count_normalization_and_settings_snapshots_are_rejected(self):
+        group = self.prepared.groups[0]
+        changed_group_area = replace(
+            group,
+            group_area_result=replace(
+                group.group_area_result,
+                phase_corrected_area_mm2=group.group_area_result.phase_corrected_area_mm2 + 1.0,
+            ),
+        )
+        altered_counts = (group.histogram_result.counts[0] + 1,) + group.histogram_result.counts[1:]
+        changed_histogram = replace(group, histogram_result=replace(group.histogram_result, counts=altered_counts))
+        changed_normalization = replace(
+            group,
+            normalization_result=replace(
+                group.normalization_result,
+                na_per_mm2=(group.normalization_result.na_per_mm2[0] + 123.0,)
+                + group.normalization_result.na_per_mm2[1:],
+            ),
+        )
+        for name, altered_group in (
+            ("area", changed_group_area),
+            ("counts", changed_histogram),
+            ("normalization", changed_normalization),
+        ):
+            with self.subTest(snapshot=name), self.assertRaises(Foams105PipelineStageError):
+                analyze_foams105_prepared(
+                    replace(self.prepared, groups=(altered_group,)),
+                    _settings(),
+                )
+        stale_settings = replace(
+            self.prepared,
+            preparation_settings=replace(
+                self.prepared.preparation_settings,
+                minimum_diameter_px=self.prepared.preparation_settings.minimum_diameter_px + 0.5,
+            ),
+        )
+        with self.assertRaises(Foams105PipelineStageError):
+            analyze_foams105_prepared(stale_settings, _settings())
+
+    def test_changed_cached_shape_value_is_rejected(self):
+        group = self.prepared.groups[0]
+        image = group.images[0]
+        cached = image.component_shape_measures[0]
+        altered_cached = replace(cached, regularity=Foams105ShapeValue(999.0, "defined"))
+        altered_image = replace(
+            image,
+            component_shape_measures=(altered_cached,) + image.component_shape_measures[1:],
+        )
+        altered_group = replace(group, images=(altered_image,) + group.images[1:])
+        altered_prepared = replace(self.prepared, groups=(altered_group,))
+        with self.assertRaises(Foams105PipelineStageError) as caught:
+            analyze_foams105_prepared(altered_prepared, _settings())
+        self.assertEqual(caught.exception.stage, "prepared_validation")
+
+    def test_prepared_result_without_builder_record_is_rejected(self):
+        unvalidated = replace(self.prepared, _validation_record=None)
+        with self.assertRaises(Foams105PipelineStageError) as caught:
+            analyze_foams105_prepared(unvalidated, _settings())
+        self.assertEqual(caught.exception.cause_code, "missing_prepared_validation_record")
 
     def test_changed_cached_identity_is_rejected(self):
         altered_group = replace(self.prepared.groups[0], group_id="renamed")

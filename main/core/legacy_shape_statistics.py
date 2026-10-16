@@ -576,7 +576,7 @@ def _shape_row_from_cached_measure(
     )
 
 
-def assemble_foams105_shapes_from_cached_components(
+def _assemble_foams105_shapes_from_cached_components(
     raw_selection: Foams105RawSelectionResult,
     image_geometry_results: Sequence[Foams105ImageMomentGeometryResult],
     image_perimeter_results: Sequence[Foams105ImagePerimeterResult],
@@ -634,10 +634,6 @@ def assemble_foams105_shapes_from_cached_components(
             moment_image.scale_px_per_mm != perimeter_image.scale_px_per_mm
             or moment_image.component_count != perimeter_image.component_count
             or moment_image.foreground_pixel_count != perimeter_image.foreground_pixel_count
-            or not _phase_measurements_match(
-                moment_image.phase_measurement_result,
-                perimeter_image.phase_measurement_result,
-            )
         ):
             raise Foams105ShapeStatisticsValidationError(
                 "moment and perimeter snapshots do not describe one phase measurement",

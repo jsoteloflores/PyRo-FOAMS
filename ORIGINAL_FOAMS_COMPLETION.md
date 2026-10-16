@@ -196,10 +196,16 @@ histograms, explicit manual/AutoSmart binned and independent raw selections,
 accepted area/vesicularity/conversion/volume/statistics stages, bulk N_A and
 MATLAB R2025b shape histogram arrays, and nine deterministic UTF-8 TSV table
 projections with identity sidecars, diagnostics, checksums, and atomic
-fresh-directory bundle writing. The unchanged histogram fixture and three
-runtime logs are bundled and SHA-256 pinned. Local verification: 586 tests
-pass (561 baseline plus 25), Ruff passes, and all 17 examples pass under
-`python -O`. Hosted CI and independent review remain pending. `Area_out.txt` is
+fresh-directory bundle writing. `Shape_out.txt` contains one row per
+post-nesting selected raw object; shape histograms remain plot/sidecar data.
+The unchanged histogram fixture and three runtime logs are tracked with
+byte-preserving Git attributes and raw SHA-256 pins. Local verification before
+Brief 18a corrections was 586 tests. With the corrections, 592 tests pass with
+no local skips, Ruff passes, and all 17 examples pass under `python -O`.
+Prepared/final results carry builder-issued private cache-validation records,
+cached reanalysis avoids image-array scans, and raw table rows use checked
+indexed lookup. Clean-checkout and hosted CI verification remain pending.
+`Area_out.txt` is
 explicitly unavailable when zero-area removal misaligns source image indices;
 `Ves_out.txt` is partial if caller-supplied density-derived vesicularity is
 missing. These cases are not filled with invented zeros. Binary `.xls`

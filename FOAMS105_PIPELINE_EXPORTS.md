@@ -23,9 +23,16 @@ mode. Manual and AutoSmart never fall back to one another. Raw-object
 selection is independently replayed from the same requested ranges and the
 diameter-filtered object identities; it is not derived from binned rows.
 Prepared phase arrays are owned and read-only, so caller mutation cannot alter
-the cached preparation. Reanalysis reuses measurements, areas, filtered
-objects, and complete histograms. Accepted result adapters may perform their
-required canonical replays.
+the cached preparation; their immutable backing also prevents changing the
+writeable flag. Preparation validates image-local stages, component formulas,
+normalization, and phase provenance before issuing its private validation
+record. Reanalysis checks that settings, ordered child records, stage snapshots,
+and scalar metadata still match that record, without rescanning image arrays or
+rebuilding histograms. Use the same prepared result with new explicit analysis
+settings for a threshold-only update; replacing fields in a completed result
+is rejected. Final analysis/export consumers likewise require the builder's
+private validation record and verify cross-stage links before projecting any
+stored values or creating an output directory.
 
 `run_foams105_analysis(...)` is a convenience wrapper around the two explicit
 stages. Table projection and writing are separate:
@@ -54,7 +61,7 @@ original-image parity.
 | `Area_out.txt` | Per-image phase-corrected area1 in the pinned source-key order: `mag1`, `first`, `second`, `third`, `fifteenth`, `fourth`, `fifth`, `sixth`, `seventh`, `eigth`, `ninth`, `tenth`, `eleventh`, `sixteenth`, `seventeenth`, `twelth`, `thirteenth`, `fourteenth`, `eighteenth`, `nineteenth`. Selected image rows use source-style one-based image numbers; the identity sidecar retains the source key. |
 | `Ves_out.txt` | Mean group percentage; per-slot percentages; N_V-derived percentage; volume normalization factor; caller-supplied density-derived vesicularity; and integrated 2D percentage. Absent slots are zero. Missing density-derived metadata is an explicit `NA`/partial table, never a guessed zero. |
 | `Misc_out.txt` | Post-nesting object count, included image count, total N_V, corrected N_V, supplied category cutoffs, then upper/middle/lower category percentages. |
-| `Shape_out.txt` | All post-nesting objects, summarized as captured MATLAB `hist`/`histc` counts for eccentricity, elongation, aspect ratio, and regularity. The additional shape-threshold population is not used here. |
+| `Shape_out.txt` | One row per post-nesting selected raw object, in raw-selection order and aligned with `Rawcutoffs_data.txt`: eccentricity, elongation, aspect ratio, and regularity. `Shape_out.identity.json` maps those rows and separately retains the shape-minimum histogram bins/population as plot metadata; histograms do not define this table. |
 | `Stats_out.txt` | Four source-order metric rows (`asp_rat`, `elong`, `regularity`, `eccent`) with exact integer N and the accepted four-decimal display values. The top-left header is empty. |
 
 The source slot-4 bulk-N_A quirk is preserved: its density indices select slot
@@ -79,6 +86,8 @@ sidecars. Input hashes include dtype and shape plus contiguous C-order bytes.
 Scientific floats use 17 significant digits; only the `Stats_out.txt` display
 statistics use four decimals. The manifest contains no timestamp or random ID.
 
+These private records are consistency guards for ordinary stale/replaced
+results, not cryptographic signatures or a security boundary.
 The MATLAB shape-histogram fixture validates only the captured R2025b `hist`
 and `histc` arrays. Moment orientation remains analytical, perimeter profiles
 remain R2025b-specific, and this handoff is not complete original-workflow or
@@ -86,7 +95,10 @@ original-image parity. Brief 19 remains responsible for original-run
 reconciliation and performance; GUI integration and improvements remain
 Briefs 20 and 21.
 
-The unchanged `main/tests/fixtures/18_foams105_histogram_reference.json` has
+The four pinned histogram/rounding artifacts use Git `-text` attributes so
+their raw bytes are preserved on Windows and Linux; the recorded SHA-256 values
+are raw-file hashes, not newline-normalized hashes. The unchanged
+`main/tests/fixtures/18_foams105_histogram_reference.json` has
 SHA-256 `6ee281b1a7be253e04b07d5c1d461b18fa9b2324e88af37127b49522c14c674f`.
 Its R2025b capture log is `18_matlab_histogram_review.log` with SHA-256
 `35c4a92bb07917db5cc436ebd64ee0bcc3336b21644070a359cabd6ddb0cb18f`. The

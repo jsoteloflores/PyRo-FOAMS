@@ -9,6 +9,9 @@ __pycache__/
 *.png
 *.tif
 *.jpg
+!tests/fixtures/18_matlab_histogram_review.log
+!tests/fixtures/17a_matlab_rounding_review.log
+!tests/fixtures/17a_matlab_rounding_boundaries.log
 
 # Coverage reports
 htmlcov/

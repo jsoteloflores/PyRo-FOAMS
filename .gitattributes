@@ -1,0 +1,4 @@
+main/tests/fixtures/18_matlab_histogram_review.log -text whitespace=-blank-at-eof
+main/tests/fixtures/17a_matlab_rounding_review.log -text whitespace=-blank-at-eof
+main/tests/fixtures/17a_matlab_rounding_boundaries.log -text whitespace=-blank-at-eof
+main/tests/fixtures/18_foams105_histogram_reference.json -text
