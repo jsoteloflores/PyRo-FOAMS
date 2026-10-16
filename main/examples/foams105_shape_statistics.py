@@ -89,7 +89,7 @@ def main():
         )
     print("initial aspect-ratio statistics:", initial.statistic_rows[0].display_mean)
     print("updated aspect-ratio statistics:", updated.statistic_rows[0].display_mean)
-    print("boundary: shape histograms and Shape/Stats writers are deferred to Brief 18")
+    print("boundary: Brief 18 pipeline adds shape histograms and Shape/Stats exports")
 
 
 if __name__ == "__main__":

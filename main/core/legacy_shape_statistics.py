@@ -117,6 +117,20 @@ class Foams105ShapeValue:
 
 
 @dataclass(frozen=True)
+class Foams105ComponentShapeMeasures:
+    """Cached image-local measures independent of later selected populations."""
+
+    moment_component: Foams105MomentComponentGeometry
+    perimeter_component: Foams105PerimeterComponent
+    ellipse_area_mm2: float
+    regularity: Foams105ShapeValue
+    form_factor: Foams105ShapeValue
+    elongation: Foams105ShapeValue
+    aspect_ratio: Foams105ShapeValue
+    fitted_ellipse_perimeter_mm: Foams105ShapeValue
+
+
+@dataclass(frozen=True)
 class Foams105ShapeRow:
     """One post-nesting object with source-derived shape measures."""
 
@@ -408,6 +422,58 @@ def _derive_measures(
     )
 
 
+def calculate_foams105_component_shape_measures(
+    moment_component: Foams105MomentComponentGeometry,
+    perimeter_component: Foams105PerimeterComponent,
+) -> Foams105ComponentShapeMeasures:
+    """Calculate one matched component once for reuse across later selections."""
+
+    if not isinstance(moment_component, Foams105MomentComponentGeometry):
+        raise Foams105ShapeStatisticsValidationError(
+            "moment_component has an invalid type",
+            code="invalid_moment_component",
+        )
+    if not isinstance(perimeter_component, Foams105PerimeterComponent):
+        raise Foams105ShapeStatisticsValidationError(
+            "perimeter_component has an invalid type",
+            code="invalid_perimeter_component",
+        )
+    identity = (moment_component.image_id, moment_component.component_id)
+    inferred_scale = moment_component.major_axis_px / moment_component.major_axis_mm
+    if (
+        perimeter_component.image_id != moment_component.image_id
+        or perimeter_component.component_id != moment_component.component_id
+        or perimeter_component.first_pixel_rc != moment_component.first_pixel_rc
+        or perimeter_component.area_px != moment_component.area_px
+        or perimeter_component.area_mm2 != moment_component.area_mm2
+        or perimeter_component.equivalent_diameter_mm != moment_component.equivalent_diameter_mm
+        or not math.isclose(perimeter_component.scale_px_per_mm, inferred_scale, rel_tol=1e-12, abs_tol=1e-12)
+    ):
+        raise Foams105ShapeStatisticsValidationError(
+            "moment and perimeter components do not share a measurement identity",
+            code="component_geometry_mismatch",
+            context={"identity": identity},
+        )
+    (
+        ellipse_area,
+        regularity,
+        form_factor,
+        elongation,
+        aspect_ratio,
+        fitted_perimeter,
+    ) = _derive_measures(moment_component, perimeter_component)
+    return Foams105ComponentShapeMeasures(
+        moment_component=moment_component,
+        perimeter_component=perimeter_component,
+        ellipse_area_mm2=ellipse_area,
+        regularity=regularity,
+        form_factor=form_factor,
+        elongation=elongation,
+        aspect_ratio=aspect_ratio,
+        fitted_ellipse_perimeter_mm=fitted_perimeter,
+    )
+
+
 def _phase_measurements_match(
     geometry_measurement: Foams105PhaseMeasurementResult,
     perimeter_measurement: Foams105PhaseMeasurementResult,
@@ -464,6 +530,204 @@ def _selection_rows_match(moment_rows: tuple, perimeter_rows: tuple) -> bool:
     return all(
         all(getattr(moment_row, field) == getattr(perimeter_row, field) for field in fields_to_match)
         for moment_row, perimeter_row in zip(moment_rows, perimeter_rows)
+    )
+
+
+def _shape_row_from_cached_measure(
+    raw_row: object,
+    cached: Foams105ComponentShapeMeasures,
+    scale_px_per_mm: float,
+) -> Foams105ShapeRow:
+    moment = cached.moment_component
+    perimeter = cached.perimeter_component
+    return Foams105ShapeRow(
+        output_index=raw_row.output_index,
+        raw_output_index=raw_row.output_index,
+        group_id=raw_row.group_id,
+        source_slot=raw_row.source_slot,
+        source_object_index=raw_row.source_object_index,
+        image_id=raw_row.image_id,
+        component_id=raw_row.component_id,
+        first_pixel_rc=moment.first_pixel_rc,
+        pixel_count=moment.pixel_count,
+        area_px=moment.area_px,
+        area_mm2=moment.area_mm2,
+        equivalent_diameter_mm=moment.equivalent_diameter_mm,
+        scale_px_per_mm=scale_px_per_mm,
+        major_axis_px=moment.major_axis_px,
+        minor_axis_px=moment.minor_axis_px,
+        major_axis_mm=moment.major_axis_mm,
+        minor_axis_mm=moment.minor_axis_mm,
+        perimeter_px=perimeter.perimeter_px,
+        perimeter_mm=perimeter.perimeter_mm,
+        ellipse_area_mm2=cached.ellipse_area_mm2,
+        regularity=cached.regularity,
+        form_factor=cached.form_factor,
+        elongation=cached.elongation,
+        aspect_ratio=cached.aspect_ratio,
+        fitted_ellipse_perimeter_mm=cached.fitted_ellipse_perimeter_mm,
+        eccentricity=moment.eccentricity,
+        orientation_regionprops_profile_deg=moment.orientation_regionprops_profile_deg,
+        orientation_project_deg=moment.orientation_project_deg,
+        orientation_defined=moment.orientation_defined,
+        orientation_tie_reason=moment.orientation_tie_reason,
+        moment_component=moment,
+        perimeter_component=perimeter,
+    )
+
+
+def assemble_foams105_shapes_from_cached_components(
+    raw_selection: Foams105RawSelectionResult,
+    image_geometry_results: Sequence[Foams105ImageMomentGeometryResult],
+    image_perimeter_results: Sequence[Foams105ImagePerimeterResult],
+    component_shape_measures: Sequence[Foams105ComponentShapeMeasures],
+) -> Foams105ShapeResult:
+    """Join prepared shape values to canonical raw identities without image replay."""
+
+    if not isinstance(raw_selection, Foams105RawSelectionResult):
+        raise Foams105ShapeStatisticsValidationError("raw_selection has an invalid type", code="invalid_raw_selection")
+    try:
+        canonical_raw = select_foams105_raw_objects(
+            raw_selection.bin_labels_mm,
+            raw_selection.groups,
+            raw_selection.requested_ranges,
+        )
+    except (Foams105RawSelectionValidationError, Foams105RawSelectionDomainError, Foams105RawSelectionNumericalError) as exc:
+        raise Foams105ShapeStatisticsValidationError(
+            "raw_selection cannot be replayed from its source inputs",
+            code="invalid_raw_selection",
+            context={"cause_code": getattr(exc, "code", None)},
+        ) from exc
+    if canonical_raw != raw_selection:
+        raise Foams105ShapeStatisticsValidationError(
+            "raw_selection differs from its canonical replay",
+            code="stale_raw_selection",
+        )
+
+    moments = tuple(image_geometry_results)
+    perimeters = tuple(image_perimeter_results)
+    cached_measures = tuple(component_shape_measures)
+    if any(not isinstance(item, Foams105ImageMomentGeometryResult) for item in moments):
+        raise Foams105ShapeStatisticsValidationError("image_geometry_results contain an invalid record", code="invalid_geometry_cache")
+    if any(not isinstance(item, Foams105ImagePerimeterResult) for item in perimeters):
+        raise Foams105ShapeStatisticsValidationError("image_perimeter_results contain an invalid record", code="invalid_perimeter_cache")
+    if any(not isinstance(item, Foams105ComponentShapeMeasures) for item in cached_measures):
+        raise Foams105ShapeStatisticsValidationError("component_shape_measures contain an invalid record", code="invalid_shape_cache")
+
+    moment_by_image = {item.image_id: item for item in moments}
+    perimeter_by_image = {item.image_id: item for item in perimeters}
+    if (
+        len(moment_by_image) != len(moments)
+        or len(perimeter_by_image) != len(perimeters)
+        or set(moment_by_image) != set(perimeter_by_image)
+    ):
+        raise Foams105ShapeStatisticsValidationError(
+            "geometry image snapshots are inconsistent",
+            code="geometry_image_set_mismatch",
+        )
+    profiles = {item.profile for item in perimeters}
+    if len(profiles) > 1:
+        raise Foams105ShapeStatisticsValidationError("perimeter cache mixes profiles", code="mixed_perimeter_profiles")
+    for image_id, moment_image in moment_by_image.items():
+        perimeter_image = perimeter_by_image[image_id]
+        if (
+            moment_image.scale_px_per_mm != perimeter_image.scale_px_per_mm
+            or moment_image.component_count != perimeter_image.component_count
+            or moment_image.foreground_pixel_count != perimeter_image.foreground_pixel_count
+            or not _phase_measurements_match(
+                moment_image.phase_measurement_result,
+                perimeter_image.phase_measurement_result,
+            )
+        ):
+            raise Foams105ShapeStatisticsValidationError(
+                "moment and perimeter snapshots do not describe one phase measurement",
+                code="phase_measurement_mismatch",
+                context={"image_id": image_id},
+            )
+
+    moment_components = {
+        (component.image_id, component.component_id): component
+        for image in moments
+        for component in image.components
+    }
+    perimeter_components = {
+        (component.image_id, component.component_id): component
+        for image in perimeters
+        for component in image.components
+    }
+    measures_by_identity = {}
+    for cached in cached_measures:
+        identity = (cached.moment_component.image_id, cached.moment_component.component_id)
+        if identity in measures_by_identity:
+            raise Foams105ShapeStatisticsValidationError(
+                "cached shape component identity is duplicated",
+                code="duplicate_shape_identity",
+                context={"identity": identity},
+            )
+        if (
+            moment_components.get(identity) != cached.moment_component
+            or perimeter_components.get(identity) != cached.perimeter_component
+        ):
+            raise Foams105ShapeStatisticsValidationError(
+                "cached shape values refer to altered geometry records",
+                code="stale_shape_cache",
+                context={"identity": identity},
+            )
+        measures_by_identity[identity] = cached
+
+    seen_raw_identities = set()
+    for group in canonical_raw.groups:
+        for object_index, object_ in enumerate(group.objects):
+            identity = (object_.image_id, object_.component_id)
+            if identity in seen_raw_identities:
+                raise Foams105ShapeStatisticsValidationError(
+                    "raw-selection contains a duplicate component identity",
+                    code="duplicate_raw_identity",
+                    context={"identity": identity, "group_id": group.group_id, "source_slot": group.source_slot},
+                )
+            seen_raw_identities.add(identity)
+            cached = measures_by_identity.get(identity)
+            if cached is None:
+                raise Foams105ShapeStatisticsValidationError(
+                    "raw object lacks cached component geometry",
+                    code="missing_geometry_identity",
+                    context={
+                        "identity": identity,
+                        "group_id": group.group_id,
+                        "source_slot": group.source_slot,
+                        "source_object_index": object_index,
+                    },
+                )
+            component = cached.moment_component
+            if component.area_mm2 != object_.area_mm2 or component.equivalent_diameter_mm != object_.equivalent_diameter_mm:
+                raise Foams105ShapeStatisticsValidationError(
+                    "raw object metadata differs from cached geometry",
+                    code="changed_geometry_identity",
+                    context={"identity": identity},
+                )
+
+    rows = tuple(
+        _shape_row_from_cached_measure(
+            row,
+            measures_by_identity[(row.image_id, row.component_id)],
+            moment_by_image[row.image_id].scale_px_per_mm,
+        )
+        for row in canonical_raw.rows
+    )
+    first_perimeter = perimeters[0] if perimeters else None
+    return Foams105ShapeResult(
+        raw_selection_result=canonical_raw,
+        image_geometry_results=moments,
+        image_perimeter_results=perimeters,
+        rows=rows,
+        selected_identities=tuple((row.image_id, row.component_id) for row in rows),
+        selected_count=len(rows),
+        perimeter_profile=(next(iter(profiles)) if profiles else None),
+        perimeter_reference_runtime=(first_perimeter.reference_runtime if first_perimeter else None),
+        perimeter_reference_toolbox=(first_perimeter.reference_toolbox if first_perimeter else None),
+        perimeter_evidence_version=(first_perimeter.evidence_version if first_perimeter else None),
+        perimeter_evidence_hash=(first_perimeter.evidence_hash if first_perimeter else None),
+        integrity_sha256=_rows_integrity_sha256(rows),
     )
 
 

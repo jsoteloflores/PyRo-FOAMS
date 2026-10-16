@@ -17,9 +17,9 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened; Brief 16b accepted for explicit R2025b profiles; Brief 17 not yet accepted; 17a corrections implemented and CI-green, pending independent review | Moment orientation remains analytical; perimeter profiles match supplied MATLAB evidence; derived shape values/statistics have analytic tests; the narrow R2025b `roundn` checks and strict cached-unit validation are covered; local Ruff passes, all 561 tests pass, all 16 examples pass under `python -O`, and hosted run `38913323389` passes all five jobs; actual shape histograms and Shape/Stats writers remain Brief 18 work; full original-run reconciliation remains pending |
-| 8. Analysis interface | Pending in Briefs 20-21 | Original analyses available through the application |
-| 9. Original-equivalent exports | Pending in Brief 18 | Calc/Area/Ves/Misc plus shape histogram semantics and Shape/Stats writers verified |
+| 7. Shape outputs and statistics | Briefs 16-17a accepted within bounded analytical/R2025b scopes; Brief 18 implementation in progress, pending independent review/CI | Moment orientation remains analytical; R2025b perimeter and roundn runtime checks are narrow reference tests; shape histograms and Shape/Stats TSVs are implemented in Brief 18; full original-run reconciliation and original-image parity remain pending |
+| 8. Analysis interface | Headless Brief 18 workflow implemented; GUI integration remains Brief 20 | Preparation/analysis APIs compose accepted stages and preserve source slots; GUI remains pending |
+| 9. Original-equivalent exports | Nine deterministic TSV projections implemented in Brief 18; pending independent review and CI | NA_mag, Raw_data, Rawcutoffs_data, Calc_out, Area_out, Ves_out, Misc_out, Shape_out, and Stats_out plus sidecars; Area_out/Ves_out unavailable/partial cases are explicit |
 | 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
 
 ## Current verified boundary
@@ -191,13 +191,25 @@ run for these corrections. Independent review remains pending.
 Moment/orientation parity and full original-run reconciliation remain
 unresolved. Brief 17a implementation commit: `f54657f`.
 
-Brief 18 remains responsible for integrated pipeline/export behavior,
-including source shape-histogram semantics and actual Shape/Stats writers.
-Brief 19 covers original-run reconciliation and core performance; Brief 20
-covers GUI integration; Brief 21 covers GUI improvements/release and the final
-same-real-image comparison after GUI tests. The original FOAMS implementation
-must remain NOT COMPLETE until those later gates and intentional deviations are
-resolved.
+Brief 18 adds the headless segmented-image workflow, complete pre-nesting
+histograms, explicit manual/AutoSmart binned and independent raw selections,
+accepted area/vesicularity/conversion/volume/statistics stages, bulk N_A and
+MATLAB R2025b shape histogram arrays, and nine deterministic UTF-8 TSV table
+projections with identity sidecars, diagnostics, checksums, and atomic
+fresh-directory bundle writing. The unchanged histogram fixture and three
+runtime logs are bundled and SHA-256 pinned. Local verification: 586 tests
+pass (561 baseline plus 25), Ruff passes, and all 17 examples pass under
+`python -O`. Hosted CI and independent review remain pending. `Area_out.txt` is
+explicitly unavailable when zero-area removal misaligns source image indices;
+`Ves_out.txt` is partial if caller-supplied density-derived vesicularity is
+missing. These cases are not filled with invented zeros. Binary `.xls`
+writing, rendered plots, original-image parity, and full original-workflow
+parity are not claimed by this handoff.
+
+Brief 19 remains original-run reconciliation/core performance; Brief 20 is GUI
+integration; Brief 21 is GUI improvements/release and the final same-real-image
+comparison after GUI tests. The original FOAMS implementation must remain NOT
+COMPLETE until those later gates and intentional deviations are resolved.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
