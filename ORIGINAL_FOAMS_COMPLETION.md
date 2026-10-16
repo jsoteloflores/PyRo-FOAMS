@@ -17,7 +17,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened; Brief 16b accepted for explicit R2025b profiles; Brief 17 not yet accepted; 17a fixes implemented locally, pending hosted CI and independent review | Moment orientation remains analytical; perimeter profiles match supplied MATLAB evidence; derived shape values/statistics have analytic tests; the narrow R2025b `roundn` checks and strict cached-unit validation are covered; local Ruff passes, all 561 tests pass, and all 16 examples pass under `python -O`; CI run `38911650997` predates the 17a corrections; actual shape histograms and Shape/Stats writers remain Brief 18 work; full original-run reconciliation remains pending |
+| 7. Shape outputs and statistics | Brief 16 accepted within analytical moment scope; Brief 16a tooling hardened; Brief 16b accepted for explicit R2025b profiles; Brief 17 not yet accepted; 17a corrections implemented and CI-green, pending independent review | Moment orientation remains analytical; perimeter profiles match supplied MATLAB evidence; derived shape values/statistics have analytic tests; the narrow R2025b `roundn` checks and strict cached-unit validation are covered; local Ruff passes, all 561 tests pass, all 16 examples pass under `python -O`, and hosted run `38913323389` passes all five jobs; actual shape histograms and Shape/Stats writers remain Brief 18 work; full original-run reconciliation remains pending |
 | 8. Analysis interface | Pending in Briefs 20-21 | Original analyses available through the application |
 | 9. Original-equivalent exports | Pending in Brief 18 | Calc/Area/Ves/Misc plus shape histogram semantics and Shape/Stats writers verified |
 | 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
@@ -185,9 +185,11 @@ errors before image or row replay.
 
 Local verification after 17a: 561 tests pass (the 539-test baseline plus 22),
 Ruff passes, and all 16 scientific examples pass under `python -O`. Hosted run
-`38911650997` passes the pre-17a commit but does not include these corrections;
-the 17a CI run and independent review remain pending. Moment/orientation parity
-and full original-run reconciliation remain unresolved.
+`38913323389` passes Ruff and all four Linux/Windows Python 3.11/3.12 test
+jobs. Earlier run `38911650997` was for pre-17a code and is not the acceptance
+run for these corrections. Independent review remains pending.
+Moment/orientation parity and full original-run reconciliation remain
+unresolved. Brief 17a implementation commit: `f54657f`.
 
 Brief 18 remains responsible for integrated pipeline/export behavior,
 including source shape-histogram semantics and actual Shape/Stats writers.
