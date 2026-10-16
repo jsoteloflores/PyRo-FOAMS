@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "verification": "Analytical continuous unit-square pixel moments; not MATLAB output. Perimeter unverified and excluded.",
+  "coordinates": "pixels are zero-based [row,column]; Cartesian moment coordinates x=column, y=-row",
+  "construction": "Construct a binary image of shape with listed foreground pixels, run accepted pore measurement at scale pixels/mm, then moment geometry. Expected components are in stable source ID order. theta+90 is the project angle; lengths in mm equal pixel lengths/scale; area_mm2=area/scale^2.",
+  "cases": [
+    {
+      "id": "singleton",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [
+        [
+          3,
+          3
+        ]
+      ],
+      "scale": 1,
+      "components": [
+        {
+          "id": 1,
+          "area": 1,
+          "cxx": 0.08333333333333333,
+          "cyy": 0.08333333333333333,
+          "cxy": 0,
+          "major_px": 1.1547005383792515,
+          "minor_px": 1.1547005383792515,
+          "eccentricity": 0,
+          "theta": 0,
+          "defined": false
+        }
+      ]
+    },
+    {
+      "id": "horizontal_three",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "scale": 2,
+      "components": [
+        {
+          "id": 1,
+          "area": 3,
+          "cxx": 0.75,
+          "cyy": 0.08333333333333333,
+          "cxy": 0,
+          "major_px": 3.4641016151377544,
+          "minor_px": 1.1547005383792517,
+          "eccentricity": 0.9428090415820634,
+          "theta": 0,
+          "defined": true
+        }
+      ]
+    },
+    {
+      "id": "vertical_three",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "scale": 1,
+      "components": [
+        {
+          "id": 1,
+          "area": 3,
+          "cxx": 0.08333333333333333,
+          "cyy": 0.75,
+          "cxy": 0,
+          "major_px": 3.4641016151377544,
+          "minor_px": 1.1547005383792517,
+          "eccentricity": 0.9428090415820634,
+          "theta": 90,
+          "defined": true
+        }
+      ]
+    },
+    {
+      "id": "square_two",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ]
+      ],
+      "scale": 1,
+      "components": [
+        {
+          "id": 1,
+          "area": 4,
+          "cxx": 0.3333333333333333,
+          "cyy": 0.3333333333333333,
+          "cxy": 0,
+          "major_px": 2.3094010767585034,
+          "minor_px": 2.3094010767585034,
+          "eccentricity": 0,
+          "theta": 0,
+          "defined": false
+        }
+      ]
+    },
+    {
+      "id": "L_positive_orientation",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          2
+        ]
+      ],
+      "scale": 1,
+      "components": [
+        {
+          "id": 1,
+          "area": 3,
+          "cxx": 0.3055555555555556,
+          "cyy": 0.3055555555555556,
+          "cxy": 0.1111111111111111,
+          "major_px": 2.581988897471611,
+          "minor_px": 1.7638342073763937,
+          "eccentricity": 0.7302967433402214,
+          "theta": 45,
+          "defined": true
+        }
+      ]
+    },
+    {
+      "id": "L_negative_orientation",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          3
+        ]
+      ],
+      "scale": 1,
+      "components": [
+        {
+          "id": 1,
+          "area": 3,
+          "cxx": 0.3055555555555556,
+          "cyy": 0.3055555555555556,
+          "cxy": -0.1111111111111111,
+          "major_px": 2.581988897471611,
+          "minor_px": 1.7638342073763937,
+          "eccentricity": 0.7302967433402214,
+          "theta": -45,
+          "defined": true
+        }
+      ]
+    },
+    {
+      "id": "diagonal_separate_components",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          3
+        ]
+      ],
+      "scale": 1,
+      "components": [
+        {
+          "id": 1,
+          "area": 1,
+          "cxx": 0.08333333333333333,
+          "cyy": 0.08333333333333333,
+          "cxy": 0,
+          "major_px": 1.1547005383792515,
+          "minor_px": 1.1547005383792515,
+          "eccentricity": 0,
+          "theta": 0,
+          "defined": false
+        },
+        {
+          "id": 2,
+          "area": 1,
+          "cxx": 0.08333333333333333,
+          "cyy": 0.08333333333333333,
+          "cxy": 0,
+          "major_px": 1.1547005383792515,
+          "minor_px": 1.1547005383792515,
+          "eccentricity": 0,
+          "theta": 0,
+          "defined": false
+        }
+      ]
+    },
+    {
+      "id": "empty",
+      "shape": [
+        7,
+        7
+      ],
+      "pixels": [],
+      "scale": 1,
+      "components": []
+    }
+  ]
+}

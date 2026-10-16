@@ -17,7 +17,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Pending | Original conventions and ellipse-algorithm differences resolved |
+| 7. Shape outputs and statistics | Brief 16 moment geometry implemented and locally validated; configured CI pending | Unit-square central moments, major/minor axes, eccentricity, source and project orientations, and raw-identity shape joins verified analytically; historical perimeter compatibility and derived statistics pending |
 | 8. Analysis interface | Pending | Original analyses available through the application |
 | 9. Original-equivalent exports | Pending | Calc/Area/Ves/Misc/Shape-equivalent outputs verified |
 | 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
@@ -92,6 +92,16 @@ scientific arithmetic and all fixtures are unchanged. Commit `82033e0` passes
 configured CI run `38846116435`; Ruff also passes. All 13 repository examples
 pass locally under `python -O`. Original shape geometry remains pending for
 Brief 16.
+
+Brief 16 adds component moment geometry on accepted filled four-connected
+labels: central second moments with the unit-square `1/12` contribution,
+ordered major/minor eigen-axes, eccentricity, source orientation, and the
+project's `+90` representation. Shape identity is preserved through a
+canonical raw-selection replay and explicit `(image_id, component_id)` joins.
+Perimeter is intentionally omitted from the verified API with
+`pending_historical_profile`; a guarded MATLAB reference-export harness is
+added for independent later comparison. This stage is analytically verified,
+not MATLAB parity, and derived shape statistics remain pending for Brief 17.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
