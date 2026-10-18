@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Dict, Mapping, Optional, Sequence, Tuple
 
+import cv2
 import numpy as np
 
 from .legacy_measurements import (
@@ -717,54 +718,38 @@ def _validate_connected_filled_component(
     component_id: int,
     points: Tuple[Tuple[int, int], ...],
 ) -> None:
-    point_set = set(points)
-    if not point_set:
+    if not points:
         raise Foams105PerimeterValidationError(
             "component has no pixels",
             code="inconsistent_measurement_result",
             context={"image_id": image_id, "component_id": component_id},
         )
 
-    # Four-connected foreground validation.
-    stack = [next(iter(point_set))]
-    visited = set()
-    neighbor4 = ((-1, 0), (0, 1), (1, 0), (0, -1))
-    while stack:
-        row, col = stack.pop()
-        if (row, col) in visited:
-            continue
-        visited.add((row, col))
-        for dr, dc in neighbor4:
-            nxt = (row + dr, col + dc)
-            if nxt in point_set and nxt not in visited:
-                stack.append(nxt)
-    if len(visited) != len(point_set):
+    point_array = np.asarray(points, dtype=np.int32)
+    row_min, col_min = np.min(point_array, axis=0)
+    row_max, col_max = np.max(point_array, axis=0)
+    component_mask = np.zeros(
+        (int(row_max - row_min + 1), int(col_max - col_min + 1)),
+        dtype=np.uint8,
+    )
+    local_points = point_array - np.array((row_min, col_min), dtype=np.int32)
+    component_mask[local_points[:, 0], local_points[:, 1]] = 1
+
+    component_count = cv2.connectedComponents(component_mask, connectivity=4)[0] - 1
+    if component_count != 1:
         raise Foams105PerimeterValidationError(
             "component foreground is not four-connected",
             code="invalid_component_topology",
             context={"image_id": image_id, "component_id": component_id},
         )
 
-    # For a connected union of pixel cells, Euler characteristic is 1 - holes.
-    vertices = set()
-    shared_edges = 0
-    for row, col in points:
-        vertices.update(((row, col), (row + 1, col), (row, col + 1), (row + 1, col + 1)))
-        if (row - 1, col) in point_set:
-            shared_edges += 1
-        if (row, col - 1) in point_set:
-            shared_edges += 1
-
-    euler_characteristic = len(vertices) - (3 * len(points)) + shared_edges
-    if euler_characteristic != 1:
+    padded_background = np.pad(component_mask, 1, mode="constant", constant_values=0)
+    cv2.floodFill(padded_background, None, (0, 0), 2, flags=4)
+    if np.any(padded_background[1:-1, 1:-1] == 0):
         raise Foams105PerimeterValidationError(
             "component foreground contains enclosed holes",
             code="invalid_component_topology",
-            context={
-                "image_id": image_id,
-                "component_id": component_id,
-                "euler_characteristic": euler_characteristic,
-            },
+            context={"image_id": image_id, "component_id": component_id},
         )
 
 

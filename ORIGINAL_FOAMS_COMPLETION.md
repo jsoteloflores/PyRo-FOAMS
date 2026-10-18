@@ -17,10 +17,10 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Briefs 16-17a accepted within bounded analytical/R2025b scopes; Brief 18 implementation in progress, pending independent review/CI | Moment orientation remains analytical; R2025b perimeter and roundn runtime checks are narrow reference tests; shape histograms and Shape/Stats TSVs are implemented in Brief 18; full original-run reconciliation and original-image parity remain pending |
-| 8. Analysis interface | Headless Brief 18 workflow implemented; GUI integration remains Brief 20 | Preparation/analysis APIs compose accepted stages and preserve source slots; GUI remains pending |
-| 9. Original-equivalent exports | Nine deterministic TSV projections implemented in Brief 18; pending independent review and CI | NA_mag, Raw_data, Rawcutoffs_data, Calc_out, Area_out, Ves_out, Misc_out, Shape_out, and Stats_out plus sidecars; Area_out/Ves_out unavailable/partial cases are explicit |
-| 10. Full workflow reconciliation | Pending | Pinned stage-by-stage and final output benchmarks |
+| 7. Shape outputs and statistics | Briefs 16-18a accepted within bounded analytical/R2025b scopes | Moment orientation remains analytical; R2025b perimeter and roundn checks are narrow reference tests; original-run reconciliation exposed strict-threshold identity and eccentricity-statistics convention mismatches |
+| 8. Analysis interface | Headless Brief 18 workflow accepted; GUI integration remains Brief 20 | Preparation/analysis APIs compose accepted stages and preserve source slots; GUI remains pending |
+| 9. Original-equivalent exports | Nine deterministic TSV projections accepted in Brief 18a | All nine table families and sidecars are produced; comparison found no differences outside Calc_out and Stats_out, subject to documented Area_out/Ves_out availability rules |
+| 10. Full workflow reconciliation | Brief 19 first MATLAB replay and benchmark complete; parity blocked on recorded deviations | Pinned source/runtime capture, 7-image/10-case catalog, 7,786 comparisons, mismatch report, and synthetic benchmarks are retained; hosted CI and original-image/GUI parity remain pending |
 
 ## Current verified boundary
 
@@ -224,3 +224,80 @@ COMPLETE until those later gates and intentional deviations are resolved.
 
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
+
+## Brief 19 First Replay And Benchmark
+
+The pinned MATLAB workflow was executed locally against the external checkout
+of `jsoteloflores/FOAMS-1.0.5` at
+`179663203f2d0f86b2863d5ea7f8f70dadca02f8`, using MATLAB
+`25.2.0.2998904 (R2025b)` and Image Processing Toolbox `25.2`. The source
+checkout remains outside this repository. This is an exact-fragment numerical
+replay, not an original GUI session or a real-image comparison.
+
+The complete external capture contains 10 catalog cases, 9 successful source
+runs, 1 explicitly expected MATLAB `MATLAB:badsubscript` source-domain failure,
+and 7 deduplicated image-evidence records. Capture SHA-256:
+`e3c03cf8794da48d58e256b8efe6f2403791c92e585cd8cb28245412383d5c54`.
+The extraction-map, generated constructor, runner, and catalog hashes are
+stored in the bundle manifest. The bundle is kept under the local temporary
+directory, not committed. Rerun `reference-tools/workflow/run_workflow_reference.py`
+against the pinned external source checkout to create a fresh bundle, then
+run `reference-tools/workflow/compare_workflow_reference.py <capture-dir>`.
+
+The strict comparison emitted 7,786 rows: 113 mismatches and 1 unavailable
+expected-failure stage. Captured K0/K1/border-removal/hole-fill/label arrays,
+component memberships, direct measurements, Raw_data and Rawcutoffs_data
+identities, initial per-object shape vectors, histogram/area tables, and the
+other compared table families match. The first divergence is
+`shape_and_initial_threshold`: in the strict-boundary case, source identities
+contain 8 threshold objects while Python contains 5. The updated inclusive
+threshold case matches. `Stats_out` has one additional source convention
+difference: source `basicstats` includes an eccentricity value of zero
+(N=8, mean 0.3540, standard deviation 0.4899); Python classifies that value
+as undefined and excludes it (N=7, mean 0.4045, standard deviation 0.5061).
+These are reported as mismatches, not normalized away.
+
+The remaining 109 mismatches are in `Calc_out`: 46 source `Ln(n)` cells are
+negative infinity, 23 are complex logarithms, and 40 `log(NV>L)` cells are
+negative infinity; Python returns typed `log_of_zero`/`log_of_negative`
+undefined values instead. Source signed/complex values and Python undefined
+reasons are preserved in JSON/Markdown comparison rows. No science formula
+was changed to force parity. These threshold, statistics, and logarithm
+conventions block full original-workflow equivalence. The empty catalog case
+also shows MATLAB failing in the project image-area/histogram stage rather
+than at Python's AutoSmart cutoff stage.
+
+The comparator uses exact array and identity checks, source-order/schema
+checks, unit-specific floating tolerances, exact Stats_out display rounding,
+and separate undefined/NaN/infinity/complex classifications. The comparison
+report is generated beside the external capture and is not treated as a
+permanent original-image fixture.
+
+The Brief 19 benchmark measures fresh preparation, complete
+prepare-plus-analysis, cached analysis re-run, and export projection/write on
+three deterministic synthetic masks (512^2/100, 1024^2/500, and
+2048^2/1000 pixels/components), using one warm-up and five measured runs.
+At 2048^2/1000, final medians were 1.242 s fresh preparation, 1.746 s full
+prepare-plus-analysis, 0.520 s cached re-analysis, and 0.119 s export/write.
+The synthetic workload is not the MATLAB catalog or original images. Windows
+working-set memory is sampled every 5 ms; short peaks can be missed and the
+observed deltas varied between runs.
+
+Profiling located the preparation bottleneck in per-component
+connectivity/hole validation. Replacing Python point-set traversal and Euler
+bookkeeping with OpenCV 4-connected foreground labeling plus a 4-connected
+exterior flood fill reduced profiled validation from 2.57 s to 0.38 s on the
+2048^2/1000 workload. The new check matched the previous validator on all
+3x3 masks and 1,000 seeded 8x8 masks; all 15 perimeter tests and the captured
+source comparison still pass. In five-run benchmarks, fresh preparation
+improved from 1.926 s to 1.242 s (about 36%), and full prepare-plus-analysis
+from 2.443 s to 1.746 s (about 29%). No memory reduction is claimed.
+
+Local validation after this work: all 608 repository tests and all 17 examples
+under `python -O` pass. Configured Ruff scope (`main/`, the Brief 19 benchmark,
+and workflow wrappers) passes; unrestricted `ruff check .` still reports
+import-order/E402 issues in three older perimeter wrappers. Hosted
+Linux/Windows Python 3.11/3.12 CI is not yet recorded. Brief 19 remains
+incomplete until strict-threshold, eccentricity-statistics, and logarithm
+domain differences are dispositioned and the final example/CI gates pass.
+GUI integration and original-image comparison remain later Brief 20/21 gates.

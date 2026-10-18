@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "source_repository": "jsoteloflores/FOAMS-1.0.5",
+  "source_commit": "179663203f2d0f86b2863d5ea7f8f70dadca02f8",
+  "workflow_classification": "original_source_numerical_replay_not_original_gui_run",
+  "primary_perimeter_profile": "matlab_perimeter_r2025b_verified_v1",
+  "source_hash_policy": "Both raw checkout bytes and LF-normalized content are recorded. Extraction and drift validation use the LF-normalized content hash.",
+  "source_files": {
+    "analysis.m": {"raw_sha256": "b4e924c736711cdd35278ada9d2d07b1f5b70d81c2549e268d5623934b27b441", "lf_sha256": "00a17d9d7828c1ac083a9f17686176ab52b925b34bee3f806abdf4f578c0bf14"},
+    "basicstats.m": {"raw_sha256": "8645aa3a7d934bc7081292d16e618e4a72f6f7cfd62bce9de1c35eccbc97ea20", "lf_sha256": "3069b3010adb9b3d7642c30b9ae2321148e915d85db9397ae52e773e08dc1217"},
+    "data_meas.m": {"raw_sha256": "ef47296989cb958b9b40cbb4919c86bc939162fb4aa9837e3bb0d7ea6ab0147d", "lf_sha256": "6b042c0ebfda4a52c5d13b5aa4116b93e51b7cd59def4d8e62dac48d1b32ca5d"},
+    "defaultbinrange.m": {"raw_sha256": "9120411437c479172b5e3b826de3d898cd373e48780109caf9dd88cc0406de68", "lf_sha256": "be2c343ba32f9ecb9ac40d330e989f39c4ff6b63634f8d032d00123ce27c0847"},
+    "miscplots.m": {"raw_sha256": "cc3c14d251ee70e286e0d4654a0ce0322b137befd1f590f3a3d8cc7b833a1520", "lf_sha256": "3e0f6935ea35bae04cf58e4d7ddccd146388e1333e7f9aa81d62d662f0d1e126"},
+    "newstats.m": {"raw_sha256": "8795b1132c25cdc8f1be74f37853b7c656c6343eebbafb40331999ee0035c203", "lf_sha256": "233e5f2ecb6560d47c7be1e2b0a89ccce697acdf6eb80362e48c444067c1ac62"},
+    "project.m": {"raw_sha256": "3ad732c8b212621f4830e513a529b2e80aa7d7dc1cb4699045fa545e27e3bf36", "lf_sha256": "c929155932d827c07117f9da51e83f288fb0805cc8aa614147bfdb628857b35b"},
+    "savestats.m": {"raw_sha256": "bef11b4d52473838a8da53166d358ba889807782ac7d9857bb0d820ebf0d147c", "lf_sha256": "a7f0e84350abf15ad3953afc0465af38c9fb17c0c19876c7d48db7b1dd5830f4"}
+  },
+  "direct_functions": [
+    {
+      "file": "data_meas.m",
+      "function": "data_meas",
+      "outputs": ["SelA", "SelLA", "SelSA", "SelEcc", "SelOr", "SelPeri", "borderk", "excl1_area", "excl2_area", "excl3_area", "excl4_area"],
+      "instrumentation": "The harness repeats the exact K0/K1/K2/K3 preprocessing statements to expose masks and labels not returned by data_meas, then verifies component areas and order against these outputs."
+    },
+    {
+      "file": "basicstats.m",
+      "function": "basicstats",
+      "outputs": ["compile"],
+      "restriction": "Call only with finite nonempty vectors. Empty-input behavior is captured as an extension without modifying this function."
+    }
+  ],
+  "fragments": [
+    {
+      "id": "project_group_setup",
+      "file": "project.m",
+      "start_line": 37,
+      "end_line": 157,
+      "lf_sha256": "3a6a71cc329ea510fee987f2b5c03417e5d28340b0cf1d3db28fcc6cce0855a9",
+      "required_inputs": ["J1", "minpix", "excl1", "excl2", "excl3", "excl4", "excl1_thres through excl4_thres", "a1res through d5res", "present data1 through data20 images"],
+      "produced_variables": ["mags", "mag*_vectors_initialized", "check1 through check19", "excl1 through excl4 defaulted to -Inf when disabled"],
+      "omitted_calls": [{"call": "waitbar", "reason": "progress display only"}]
+    },
+    {
+      "id": "project_per_image_measurements",
+      "file": "project.m",
+      "start_line": 158,
+      "end_line": 1472,
+      "lf_sha256": "512a9076c7d4ef44048c24af31feaa3d79d41651ccab9184f1bf932027ab7f12",
+      "required_inputs": ["mags", "data1 through data20", "source scale variables", "J1", "excl1 through excl4", "exclusion area thresholds"],
+      "produced_variables": ["per-image data_meas outputs", "calibrated per-image object vectors", "excluded component areas and dimensions"],
+      "omitted_calls": [{"call": "waitbar", "reason": "progress display only"}]
+    },
+    {
+      "id": "project_filter_and_bin",
+      "file": "project.m",
+      "start_line": 1473,
+      "end_line": 1584,
+      "lf_sha256": "819667542f52e6bd87074307cccef270e60cf2c4ea2277b6af9ea5255ba6a733",
+      "required_inputs": ["mags", "minpix", "calibrated per-magnification object vectors"],
+      "produced_variables": ["filtered magnification vectors", "original retained indices", "tot_EqDi", "tot_area", "tot_peri", "tot_ori", "tot_ecc", "tot_LA", "tot_SA", "bins", "binsc"],
+      "omitted_calls": [{"call": "waitbar", "reason": "progress display only"}]
+    },
+    {
+      "id": "project_image_areas_histograms_and_na_tables",
+      "file": "project.m",
+      "start_line": 1585,
+      "end_line": 2095,
+      "lf_sha256": "bf7adb02322ffbffa3b6fd27ba162531a5a42cbc407cfa5c658288fa61dcd07b",
+      "required_inputs": ["per-image dimensions", "border masks", "excluded area vectors", "filtered equivalent diameters", "source magnification scales"],
+      "produced_variables": ["mag*_im_area", "mag*_im_area2", "nmag1", "NAmag1", "nmagtwos", "NAmagtwos", "nmagthrees", "NAmagthrees", "nmagfours", "NAmagfours", "sprdrslt", "titlesrslt"],
+      "omitted_calls": [
+        {"call": "waitbar", "reason": "progress display only"},
+        {"call": "findobj/get", "reason": "unused GUI checkbox lookup; box_state1 is not consumed by the mapped calculation"}
+      ]
+    },
+    {
+      "id": "project_pre_nesting_raw_table",
+      "file": "project.m",
+      "start_line": 2102,
+      "end_line": 2108,
+      "lf_sha256": "0bd0e449b5930eacf2c89c2eb3d137a1ff32a4fbf6682235681f5ef2a74da1ea",
+      "required_inputs": ["tot_EqDi", "tot_area", "tot_peri", "tot_LA", "tot_SA", "tot_ori", "mag1s", "magtwos", "magthrees", "magfours"],
+      "produced_variables": ["sprdraw", "titlesraw"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_binned_raw_selection_vesicularity_and_shape",
+      "file": "analysis.m",
+      "start_line": 31,
+      "end_line": 258,
+      "lf_sha256": "745fab9b251197b01ef2f3f039cbacc16113f541ee7bcced8bca92ef735c50cc",
+      "required_inputs": ["manual cutoff variables mag1_up_bd through magfours_lo_bd", "bins", "NAmag1", "NAmagtwos", "NAmagthrees", "NAmagfours", "raw per-magnification vectors", "area1 and area2 sums", "all_im_mags and per-image area2 values"],
+      "produced_variables": ["bins_tot", "NA_tot", "raw cutoff vectors", "ves2d", "shape measures", "initial threshold vectors"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_bulk_na",
+      "file": "analysis.m",
+      "start_line": 271,
+      "end_line": 286,
+      "lf_sha256": "c0fafe24bb6680060b15388dbfb7d39c46492bfffdd7f489cc45e12b6ff83bc6",
+      "required_inputs": ["nmag1", "nmagtwos", "nmagthrees", "row6", "row12", "row18", "row24", "mag*_im_area"],
+      "produced_variables": ["bulkNA", "im_areas"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_nv_conversion",
+      "file": "analysis.m",
+      "start_line": 320,
+      "end_line": 378,
+      "lf_sha256": "bdd3ca3ac8e15dbd71444c9b6e1205eb0fa211ee841e2a3cd36d17a23d851e60",
+      "required_inputs": ["bins", "bins_tot", "NA_tot"],
+      "produced_variables": ["Hbar", "alpha", "NV"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_nv_output_orientation",
+      "file": "analysis.m",
+      "start_line": 380,
+      "end_line": 386,
+      "lf_sha256": "1d8d8430e413eb17ae13ac897a2ac504ea69e332306825c51b18aed10d2857dc",
+      "required_inputs": ["bins_tot", "NV"],
+      "produced_variables": ["bins_tot_r", "NV_tot"],
+      "omitted_calls": [{"call": "findobj/get", "reason": "plot axes lookup only"}, {"call": "axes", "reason": "plot target selection only"}]
+    },
+    {
+      "id": "analysis_volume_normalization_and_image_vesicularity",
+      "file": "analysis.m",
+      "start_line": 392,
+      "end_line": 430,
+      "lf_sha256": "332a2d8b6fab0a42357389efd6398ea14f194b9279eb28311be3b6b15b80b546",
+      "required_inputs": ["Hbar", "NV_tot", "vesnorm_value1", "vesnorm_value2", "vesnorm_value3", "vesic", "ves2d", "mag*_area_t", "mag*_im_area2"],
+      "produced_variables": ["eq_sphere", "vol_frac", "sum_vol_frac", "mult_fact", "adj_vol", "cum_vol", "mag*_ves", "im_ves"],
+      "omitted_calls": [{"call": "set/findobj", "reason": "text-label updates only; numeric results remain in the mapped variables"}]
+    },
+    {
+      "id": "analysis_distribution_summary",
+      "file": "analysis.m",
+      "start_line": 464,
+      "end_line": 483,
+      "lf_sha256": "745a510cbcfc15c5f71d7f637b0e0b9b9739493929d879a4d2766147e07dee7c",
+      "required_inputs": ["bins", "bins_tot", "NV_tot"],
+      "produced_variables": ["bins_low", "bins_dif", "NV_cumsum", "Log_l", "Log_Nvl", "midsize", "n_numb", "ln_n"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_basicstats_calls",
+      "file": "analysis.m",
+      "start_line": 518,
+      "end_line": 522,
+      "lf_sha256": "4c7f9a023ed6cbd3450bf192f5a59aea414e4c494e9cf86292496ad3163c55fb",
+      "required_inputs": ["asp_rat", "elong", "regularity", "tot_ecc_raw"],
+      "produced_variables": ["stats_asp_rat", "stats_elong", "stats_reg", "stats_ecc"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_image_count",
+      "file": "analysis.m",
+      "start_line": 523,
+      "end_line": 526,
+      "lf_sha256": "e61e463b5717a8396b3bb5c7fa442733ca37d808336327b3089642a3771f41bd",
+      "required_inputs": ["check1 through check19"],
+      "produced_variables": ["num_im"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_size_category_percentages",
+      "file": "analysis.m",
+      "start_line": 528,
+      "end_line": 539,
+      "lf_sha256": "d2e5020c10866597a30bd2733cbdf3a10e659960b63ad5597d04003e95074e82",
+      "required_inputs": ["up_cut", "lo_cut", "bins", "nmag1", "nmagtwos", "nmagthrees", "nmagfours"],
+      "produced_variables": ["perc_up", "perc_med", "perc_lo"],
+      "omitted_calls": [{"call": "findobj/get", "reason": "GUI category-cutoff reads; explicit values are supplied as case settings"}]
+    },
+    {
+      "id": "analysis_calc_table_array",
+      "file": "analysis.m",
+      "start_line": 553,
+      "end_line": 555,
+      "lf_sha256": "5f8505b92891394173fc46d3bd293e98f97d21913b48723acf18c2036885edca",
+      "required_inputs": ["bins_tot", "NA_tot", "NV_tot", "adj_vol", "cum_vol", "Log_Nvl", "Log_l", "ln_n"],
+      "produced_variables": ["titlescalc", "sprdcalc"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_ves_table_array",
+      "file": "analysis.m",
+      "start_line": 563,
+      "end_line": 579,
+      "lf_sha256": "3087cf1e17f1c24d19c9fc1c7d0054cc81f4fb1a07b9747c5cf68d9fc95c3fbe",
+      "required_inputs": ["im_ves", "mag1_ves", "magtwos_ves", "magthrees_ves", "magfours_ves", "sum_vol_frac", "mult_fact", "vesic", "ves2d"],
+      "produced_variables": ["titlesves", "sprdves"],
+      "omitted_calls": [{"call": "waitbar", "reason": "progress display only"}]
+    },
+    {
+      "id": "analysis_misc_table_array",
+      "file": "analysis.m",
+      "start_line": 587,
+      "end_line": 597,
+      "lf_sha256": "794b2c127d6cb55ab9ff9ee6c1d3d1533d6e5875c7fa3bf81d747e3e2649c66b",
+      "required_inputs": ["NV_tot", "vesnorm_value1", "vesnorm_value2", "vesnorm_value3", "ves2d", "vesic", "tot_area_raw", "num_im", "lo_cut", "up_cut", "perc_up", "perc_med", "perc_lo"],
+      "produced_variables": ["NVcorr", "titlesmisc", "sprdmisc"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_area_table_array",
+      "file": "analysis.m",
+      "start_line": 607,
+      "end_line": 610,
+      "lf_sha256": "d95c0c5d74d8324239310f272bf870a243428969a7502f589437370c39189dbd",
+      "required_inputs": ["num_im", "mag1_im_area", "first_im_area", "second_im_area", "third_im_area", "fifteenth_im_area", "fourth_im_area", "fifth_im_area", "sixth_im_area", "seventh_im_area", "eigth_im_area", "ninth_im_area", "tenth_im_area", "eleventh_im_area", "sixteenth_im_area", "seventeenth_im_area", "twelth_im_area", "thirteenth_im_area", "fourteenth_im_area", "eighteenth_im_area", "nineteenth_im_area"],
+      "produced_variables": ["tot_image_areas", "num_im_tot", "titlesarea", "sprdarea"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_shape_table_array",
+      "file": "analysis.m",
+      "start_line": 620,
+      "end_line": 621,
+      "lf_sha256": "31c0d3568a02f33684d1407f6cdbe297f083e427a4d877a4d151b00825babc50",
+      "required_inputs": ["tot_ecc_raw", "elong", "asp_rat", "regularity"],
+      "produced_variables": ["titlesshape", "sprdshape"],
+      "omitted_calls": []
+    },
+    {
+      "id": "analysis_rawcutoffs_table_array",
+      "file": "analysis.m",
+      "start_line": 630,
+      "end_line": 637,
+      "lf_sha256": "64f5026eed0c0fc1fbaeb1e91ff6f98192f751788d95c8be948c024ad07bbff2",
+      "required_inputs": ["mag1s_raw2", "magtwos_raw2", "magthrees_raw2", "magfours_raw2", "tot_EqDi_raw", "tot_area_raw", "tot_peri_raw", "tot_LA_raw", "tot_SA_raw", "tot_ori_raw"],
+      "produced_variables": ["mag_type_raw", "sprdraw_raw", "titlesraw_raw"],
+      "omitted_calls": []
+    },
+    {
+      "id": "autosmart_cutoff_replay",
+      "file": "defaultbinrange.m",
+      "start_line": 1,
+      "end_line": 143,
+      "lf_sha256": "be2c343ba32f9ecb9ac40d330e989f39c4ff6b63634f8d032d00123ce27c0847",
+      "required_inputs": ["mags", "bins", "NAmag1", "NAmagtwos", "NAmagthrees", "NAmagfours"],
+      "produced_variables": ["mag1_lo_bd", "mag1_up_bd", "magtwos_lo_bd", "magtwos_up_bd", "magthrees_lo_bd", "magthrees_up_bd", "magfours_lo_bd", "magfours_up_bd"],
+      "omitted_calls": [
+        {"call": "helpdlg", "reason": "GUI error dialog only"},
+        {"call": "set/findobj", "reason": "cutoff display only; computed cutoff variables are captured directly"}
+      ]
+    },
+    {
+      "id": "updated_shape_minimum_statistics",
+      "file": "newstats.m",
+      "start_line": 8,
+      "end_line": 22,
+      "lf_sha256": "fddebee0371d7fa9c786fadd0905bb914bfb0708324315561ca7fb3e0e2297b7",
+      "required_inputs": ["min_diameter", "mags", "tot_EqDi_raw", "tot_area_raw", "regularity", "asp_rat", "elong", "tot_ori_raw", "tot_ecc_raw"],
+      "produced_variables": ["location_thres", "tot_*_thres", "stats_asp_rat", "stats_elong", "stats_reg", "stats_ecc"],
+      "omitted_calls": []
+    },
+    {
+      "id": "stats_table_array",
+      "file": "savestats.m",
+      "start_line": 2,
+      "end_line": 5,
+      "lf_sha256": "3f083cd26945539365567b98d6e550a4e37c714924dd1db46ce90b2d7da6f18b",
+      "required_inputs": ["stats_asp_rat", "stats_elong", "stats_reg", "stats_ecc"],
+      "produced_variables": ["titlesstats", "titlesstats2", "sprdstats"],
+      "omitted_calls": [{"call": "waitbar", "reason": "progress display only"}],
+      "note": "The fragment stops after the source numeric array; the following tblwrite line is outside the capture range."
+    }
+  ],
+  "histogram_calls": [
+    {"id": "eccentricity_hist", "file": "miscplots.m", "line": 19, "lf_sha256": "0453217c6e6824a082f562eb8fb755ca34402268bd88a5df0eaa289ca9d805bc", "function": "hist", "grid_expression": "0:0.05:1", "grid_kind": "centers", "expression": "hist(tot_ecc_thres,0:0.05:1)"},
+    {"id": "regularity_histc", "file": "miscplots.m", "line": 33, "lf_sha256": "96afdba5a20d42b06f00af234483a96fc31ea70aa7ef4afe19d8673f1ef2b6c5", "function": "histc", "grid_expression": "0:0.05:1", "grid_kind": "edges", "expression": "histc(tot_reg_thres,0:0.05:1)"},
+    {"id": "elongation_hist", "file": "miscplots.m", "line": 47, "lf_sha256": "f8a439fd9dcb40286ed7bf866d4dca2e97194861403443f1740cb3c379802f02", "function": "hist", "grid_expression": "0:0.05:1", "grid_kind": "centers", "expression": "hist(tot_elong_thres,0:0.05:1)"},
+    {"id": "aspect_ratio_hist", "file": "miscplots.m", "line": 60, "lf_sha256": "bc80f2450e51c570422682af9d4f916731ec077288d5548c7a0d43dbc6980706", "function": "hist", "grid_expression": "0:0.05:1", "grid_kind": "centers", "expression": "hist(tot_AR_thres,0:0.05:1)"},
+    {"id": "orientation_hist", "file": "analysis.m", "line": 298, "lf_sha256": "a344cf772e4787f714ab3b20d2fab8820ba4172546b216be576a3026cc549c36", "function": "hist", "grid_expression": "0:10:180", "grid_kind": "centers", "expression": "hist(tot_Or_thres,0:10:180)"}
+  ],
+  "known_scope_limits": [
+    "This is an isolated source-fragment replay, not an original GUI session.",
+    "The source commit does not identify the historical MATLAB runtime used for original workbooks."
+  ]
+}
