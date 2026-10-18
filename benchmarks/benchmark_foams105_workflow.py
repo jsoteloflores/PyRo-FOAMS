@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import math
 import os
 import platform
 import statistics
+import subprocess
 import sys
 import tempfile
 import threading
@@ -39,6 +41,7 @@ from main.core.legacy_pipeline import (
     prepare_foams105_analysis,
 )  # noqa: E402
 from main.core.legacy_selection import Foams105BinnedRange  # noqa: E402
+from main.core.legacy_shape_statistics import summarize_foams105_shapes  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -137,19 +140,32 @@ def _sample_operation(function: Callable[[], object], repeats: int) -> Tuple[Ope
     return OperationResult(tuple(durations), tuple(rss_deltas)), last_result
 
 
-def _synthetic_input(image_size: int, component_count: int) -> Tuple[Foams105PipelineGroupInput, ...]:
+def _synthetic_input(
+    image_size: int,
+    component_count: int,
+    *,
+    shape_kind: str = "circles",
+) -> Tuple[Foams105PipelineGroupInput, ...]:
     image = np.zeros((image_size, image_size), dtype=np.uint8)
-    radius = max(4, image_size // 128)
-    columns = math.ceil(math.sqrt(component_count))
-    rows = math.ceil(component_count / columns)
-    x_values = np.linspace(radius + 2, image_size - radius - 3, columns, dtype=np.int32)
-    y_values = np.linspace(radius + 2, image_size - radius - 3, rows, dtype=np.int32)
-    for component_index in range(component_count):
-        x = int(x_values[component_index % columns])
-        y = int(y_values[component_index // columns])
-        cv2.circle(image, (x, y), radius, 1, thickness=-1)
+    if shape_kind == "sparse_l":
+        start = image_size // 16
+        end = image_size - start
+        image[start, start:end] = 1
+        image[start:end, start] = 1
+    elif shape_kind == "circles":
+        radius = max(4, image_size // 128)
+        columns = math.ceil(math.sqrt(component_count))
+        rows = math.ceil(component_count / columns)
+        x_values = np.linspace(radius + 2, image_size - radius - 3, columns, dtype=np.int32)
+        y_values = np.linspace(radius + 2, image_size - radius - 3, rows, dtype=np.int32)
+        for component_index in range(component_count):
+            x = int(x_values[component_index % columns])
+            y = int(y_values[component_index // columns])
+            cv2.circle(image, (x, y), radius, 1, thickness=-1)
+    else:
+        raise ValueError(f"unsupported benchmark shape kind: {shape_kind}")
     image_input = Foams105SegmentedImageInput(
-        image_id=f"bench-{image_size}-{component_count}",
+        image_id=f"bench-{shape_kind}-{image_size}-{component_count}",
         source_image_key="mag1",
         segmented_image=image,
         scale_px_per_mm=1.0,
@@ -177,37 +193,99 @@ def _prepare(groups: Tuple[Foams105PipelineGroupInput, ...]):
     )
 
 
-def _settings(prepared) -> Foams105AnalysisSettings:
+def _settings(
+    prepared,
+    *,
+    cutoff_indices: Tuple[int, int] = (0, 44),
+    volume_mode: str = "unnormalized",
+    shape_minimum_diameter_px: float = 0.0,
+) -> Foams105AnalysisSettings:
     labels = prepared.label_preparation_result.bin_labels_mm
     return Foams105AnalysisSettings(
         selection_mode="manual",
-        manual_ranges=(Foams105BinnedRange("benchmark", labels[0], labels[-1]),),
-        volume_normalization_mode="unnormalized",
+        manual_ranges=(Foams105BinnedRange("benchmark", labels[cutoff_indices[0]], labels[cutoff_indices[1]]),),
+        volume_normalization_mode=volume_mode,
         known_vesicularity_percent=None,
         size_lower_cutoff_mm=1e-6,
         size_upper_cutoff_mm=1e6,
-        shape_minimum_diameter_px=0.0,
-        shape_statistics_mode="initial_analysis",
+        shape_minimum_diameter_px=shape_minimum_diameter_px,
+        shape_statistics_mode="updated_minimum",
     )
+
+
+def _candidate_identity() -> dict:
+    repository_root = Path(__file__).resolve().parents[1]
+    generated_paths = {
+        "benchmarks/results_foams105_brief19.md",
+        "benchmarks/results_foams105_brief19.json",
+        "benchmarks/results_foams105_brief19_pre19a.md",
+        "benchmarks/results_foams105_brief19_pre19a.json",
+        "main/tests/fixtures/19a_foams105_reference.json.gz",
+        "main/tests/fixtures/19a_foams105_reference.json.gz.manifest.json",
+    }
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository_root,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repository_root,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    dirty_files = []
+    excluded_files = []
+    for line in status.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        state, name = line[:2], line[3:].strip()
+        if name in generated_paths:
+            excluded_files.append(name)
+            continue
+        path = repository_root / name
+        dirty_files.append(
+            {
+                "status": state,
+                "path": name,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+            }
+        )
+    return {
+        "commit": revision.stdout.strip() if revision.returncode == 0 else "unknown",
+        "dirty": bool(status.stdout.strip()),
+        "dirty_files": dirty_files,
+        "generated_evidence_excluded": sorted(excluded_files),
+    }
 
 
 def _json_report(
     results: dict,
     workload_metadata: dict,
     repeats: int,
+    workload_series: dict,
+    operation_settings: dict,
 ) -> str:
+    pre_change = _pre19a_comparison(results)
     payload = {
         "schema_version": 1,
         "benchmark": "brief19_foams105_workflow",
         "python": sys.version.splitlines()[0],
         "platform": platform.platform(),
         "processor": platform.processor(),
+        "candidate": _candidate_identity(),
         "numpy": np.__version__,
         "opencv": cv2.__version__,
         "warmup_iterations": 1,
         "measured_iterations": repeats,
         "rss_method": "5ms process working-set sampling" if _rss_bytes() is not None else "unavailable",
+        "workload_series": workload_series,
         "workloads": workload_metadata,
+        "operation_settings": operation_settings,
+        "pre_19a_comparison": pre_change,
         "operations": {
             f"{workload}/{operation}": {
                 "samples_seconds": result.samples_seconds,
@@ -223,7 +301,36 @@ def _json_report(
     return json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
-def _markdown_report(results: dict, workload_metadata: dict, repeats: int) -> str:
+def _pre19a_comparison(results: dict) -> dict:
+    baseline_path = Path(__file__).with_name("results_foams105_brief19_pre19a.json")
+    if not baseline_path.is_file():
+        return {"status": "missing_preserved_pre19a_baseline"}
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    comparison = {}
+    operations = ("fresh_prepare", "complete_analysis_prepare_plus_reanalysis")
+    for workload in ("512x512_100components", "1024x1024_500components", "2048x2048_1000components"):
+        if workload not in results:
+            continue
+        for operation in operations:
+            baseline_record = baseline["operations"].get(f"{workload}/{operation}")
+            current_record = results[workload][operation]
+            if baseline_record is None:
+                continue
+            before = float(baseline_record["median_seconds"])
+            after = float(current_record.median_seconds)
+            comparison[f"{workload}/{operation}"] = {
+                "pre_19a_median_seconds": before,
+                "bounded_median_seconds": after,
+                "relative_time_change": (after - before) / before if before else None,
+                "pre_19a_samples_seconds": baseline_record["samples_seconds"],
+                "bounded_samples_seconds": current_record.samples_seconds,
+            }
+    return comparison
+
+
+def _markdown_report(results: dict, workload_metadata: dict, repeats: int, workload_series: dict, operation_settings: dict) -> str:
+    candidate = _candidate_identity()
+    pre_change = _pre19a_comparison(results)
     lines = [
         "# Brief 19 FOAMS Workflow Benchmarks",
         "",
@@ -231,23 +338,44 @@ def _markdown_report(results: dict, workload_metadata: dict, repeats: int) -> st
         f"- Platform: `{platform.platform()}`",
         f"- Processor: `{platform.processor() or 'not reported'}`",
         f"- NumPy/OpenCV: `{np.__version__}` / `{cv2.__version__}`",
+        f"- Candidate Git commit: `{candidate['commit']}`; dirty: `{candidate['dirty']}`; dirty file hashes: {len(candidate['dirty_files'])}",
         f"- Iterations: 1 warm-up, {repeats} measured runs",
-        "- Memory: sampled process working set at 5 ms intervals; short peaks may be missed.",
-        "- Workloads are synthetic, non-overlapping circular pore masks, not the original MATLAB catalog images.",
+        "- Memory: sampled process working set at 5 ms intervals; short peaks may be missed and the sampling thread contributes overhead.",
+        "- Circle workloads are synthetic and non-overlapping; the sparse L workload has a large bounding box relative to foreground.",
+        "- These workloads are not the original MATLAB catalog or real images.",
+        f"- Series: `{json.dumps(workload_series, sort_keys=True)}`",
         "",
-        "| Workload | Operation | Median seconds | Range seconds | Median sampled RSS delta | Pixels | Components | Selected rows | Export bytes |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "## Preserved Pre-19a Comparison",
+        "",
+        "| Workload / operation | Pre-19a median s | Bounded median s | Time change |",
+        "| --- | ---: | ---: | ---: |",
     ]
+    for key, item in pre_change.items():
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            f"| {key} | {item['pre_19a_median_seconds']:.6f} | {item['bounded_median_seconds']:.6f} "
+            f"| {item['relative_time_change'] * 100:+.1f}% |"
+        )
+    lines.extend(
+        (
+        "",
+        "| Workload | Operation | Changed settings | Median seconds | Range seconds | Median sampled RSS delta | Pixels | Foreground | Components | Selected rows | Export bytes |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        )
+    )
     for workload, operations in results.items():
         metadata = workload_metadata[workload]
         for operation, result in operations.items():
             low, high = result.range_seconds
             memory = result.median_peak_rss_delta_bytes
             memory_text = "unavailable" if memory is None else f"{memory / (1024 * 1024):.2f} MiB"
+            changed = operation_settings[workload].get(operation, {})
             lines.append(
-                f"| {workload} | {operation} | {result.median_seconds:.6f} "
+                f"| {workload} | {operation} | `{json.dumps(changed, sort_keys=True)}` | {result.median_seconds:.6f} "
                 f"| {low:.6f}-{high:.6f} | {memory_text} "
-                f"| {metadata['pixels']} | {metadata['components']} | {metadata['selected_rows']} | {metadata['export_bytes']} |"
+                f"| {metadata['pixels']} | {metadata['foreground_pixels']} | {metadata['components']} "
+                f"| {metadata['selected_rows']} | {metadata['export_bytes']} |"
             )
     return "\n".join(lines) + "\n"
 
@@ -263,57 +391,136 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
     repeats = max(5, args.runs)
-    workload_specs = ((512, 100), (1024, 500), (2048, 1000))
+    workload_specs = (
+        ("512x512_100components", 512, 100, "circles"),
+        ("1024x1024_100components", 1024, 100, "circles"),
+        ("2048x2048_100components", 2048, 100, "circles"),
+        ("2048x2048_1000components", 2048, 1000, "circles"),
+        ("1024x1024_500components", 1024, 500, "circles"),
+        ("1024x1024_1000components", 1024, 1000, "circles"),
+        ("1024x1024_sparse_l", 1024, 1, "sparse_l"),
+    )
+    workload_series = {
+        "component_count_fixed_1024px": (
+            "1024x1024_100components",
+            "1024x1024_500components",
+            "1024x1024_1000components",
+        ),
+        "image_size_fixed_100_components_approximately_fixed_density": (
+            "512x512_100components",
+            "1024x1024_100components",
+            "2048x2048_100components",
+        ),
+        "pre_19a_comparison_2048px_1000_components": ("2048x2048_1000components",),
+        "sparse_long_shape": ("1024x1024_sparse_l",),
+    }
     results = {}
     workload_metadata = {}
+    operation_settings = {}
 
     with tempfile.TemporaryDirectory(prefix="foams105-brief19-benchmark-") as temporary_root:
         root = Path(temporary_root)
-        for image_size, component_count in workload_specs:
-            workload = f"{image_size}x{image_size}_{component_count}components"
-            groups = _synthetic_input(image_size, component_count)
+        for workload, image_size, requested_components, shape_kind in workload_specs:
+            groups = _synthetic_input(image_size, requested_components, shape_kind=shape_kind)
+            source_image = groups[0].images[0].segmented_image
+            foreground_pixels = int(np.count_nonzero(source_image == 1))
             pixels = image_size * image_size
             prepared_results, prepared = _sample_operation(lambda: _prepare(groups), repeats)
-            settings = _settings(prepared)
+            baseline_settings = _settings(prepared)
+            cutoff_indices = (20, 25)
+            cutoff_settings = _settings(prepared, cutoff_indices=cutoff_indices)
+            normalization_settings = _settings(prepared, volume_mode="integrated_2d")
+            shape_minimum_px = max(1.0, image_size / 64.0)
 
             def complete_analysis():
                 fresh_prepared = _prepare(groups)
-                return analyze_foams105_prepared(fresh_prepared, settings)
+                return analyze_foams105_prepared(fresh_prepared, _settings(fresh_prepared))
 
             full_results, analysis = _sample_operation(complete_analysis, repeats)
-            reanalysis_results, reanalysis = _sample_operation(
-                lambda: analyze_foams105_prepared(prepared, settings),
+            unchanged_results, unchanged_analysis = _sample_operation(
+                lambda: analyze_foams105_prepared(prepared, baseline_settings),
+                repeats,
+            )
+            cutoff_results, cutoff_analysis = _sample_operation(
+                lambda: analyze_foams105_prepared(prepared, cutoff_settings),
+                repeats,
+            )
+            normalization_results, normalization_analysis = _sample_operation(
+                lambda: analyze_foams105_prepared(prepared, normalization_settings),
+                repeats,
+            )
+            configured_scales = tuple(group.scale_px_per_mm for group in prepared.groups)
+            shape_results, shape_summary = _sample_operation(
+                lambda: summarize_foams105_shapes(
+                    unchanged_analysis.shape_result,
+                    configured_scales_px_per_mm=configured_scales,
+                    minimum_diameter_px=shape_minimum_px,
+                    mode="updated_minimum",
+                ),
                 repeats,
             )
             export_index = [0]
 
-            def project_and_write():
+            projection_results, projection = _sample_operation(
+                lambda: build_foams105_export_tables(unchanged_analysis),
+                repeats,
+            )
+
+            def write_prebuilt_projection():
                 destination = root / f"{workload}-bundle-{export_index[0]}"
                 export_index[0] += 1
-                return write_foams105_export_bundle(reanalysis, destination)
+                return write_foams105_export_bundle(
+                    unchanged_analysis,
+                    destination,
+                    projection_result=projection,
+                )
 
-            export_results, bundle = _sample_operation(project_and_write, repeats)
-            exports = build_foams105_export_tables(reanalysis)
+            write_results, bundle = _sample_operation(write_prebuilt_projection, repeats)
             export_bytes = sum(path.stat().st_size for path in Path(bundle.output_directory).iterdir() if path.is_file())
+            rows, columns = np.nonzero(source_image == 1)
+            bbox_area = 0 if rows.size == 0 else (int(rows.max()) - int(rows.min()) + 1) * (int(columns.max()) - int(columns.min()) + 1)
             workload_metadata[workload] = {
                 "pixels": pixels,
+                "foreground_pixels": foreground_pixels,
+                "foreground_density": foreground_pixels / pixels,
+                "bounding_box_pixels": bbox_area,
+                "bbox_to_foreground_ratio": bbox_area / foreground_pixels if foreground_pixels else None,
                 "components": len(prepared.groups[0].unfiltered_pore_objects),
-                "selected_rows": reanalysis.raw_selection_result.selected_count,
+                "selected_rows": unchanged_analysis.raw_selection_result.selected_count,
                 "export_bytes": export_bytes,
-                "export_table_count": len(exports.tables),
+                "export_table_count": len(projection.tables),
             }
             results[workload] = {
                 "fresh_prepare": prepared_results,
                 "complete_analysis_prepare_plus_reanalysis": full_results,
-                "cached_cutoff_normalization_shape_reanalysis": reanalysis_results,
-                "export_projection_and_write": export_results,
+                "cached_unchanged_analysis": unchanged_results,
+                "cached_cutoff_edit_reanalysis": cutoff_results,
+                "cached_normalization_edit_reanalysis": normalization_results,
+                "cached_shape_minimum_update": shape_results,
+                "pure_table_projection": projection_results,
+                "disk_write_of_prebuilt_projection": write_results,
+            }
+            labels = prepared.label_preparation_result.bin_labels_mm
+            operation_settings[workload] = {
+                "fresh_prepare": {"minimum_diameter_px": 0.5, "perimeter_profile": FOAMS105_PERIMETER_PROFILE_CURRENT},
+                "complete_analysis_prepare_plus_reanalysis": {"selection_mode": "manual", "cutoff_indices": [0, 44], "volume_mode": "unnormalized", "shape_mode": "updated_minimum", "shape_minimum_diameter_px": 0.0},
+                "cached_unchanged_analysis": {"selection_mode": "manual", "cutoff_indices": [0, 44], "volume_mode": "unnormalized", "shape_mode": "updated_minimum", "shape_minimum_diameter_px": 0.0},
+                "cached_cutoff_edit_reanalysis": {"changed": "manual_ranges", "baseline_bin_indices": [0, 44], "edited_bin_indices": list(cutoff_indices), "edited_range_mm": [labels[cutoff_indices[0]], labels[cutoff_indices[1]]]},
+                "cached_normalization_edit_reanalysis": {"changed": "volume_normalization_mode", "baseline": "unnormalized", "edited": "integrated_2d"},
+                "cached_shape_minimum_update": {"changed": "shape_minimum_diameter_px", "baseline": 0.0, "edited": shape_minimum_px, "mode": shape_summary.mode, "operator": ">=", "api": "summarize_foams105_shapes", "pipeline_reanalysis": False},
+                "pure_table_projection": {"operation": "build_foams105_export_tables", "disk_write": False},
+                "disk_write_of_prebuilt_projection": {"operation": "write_foams105_export_bundle", "projection_prebuilt": True, "projection_recomputed": False},
             }
 
-    markdown = _markdown_report(results, workload_metadata, repeats)
+    markdown = _markdown_report(results, workload_metadata, repeats, workload_series, operation_settings)
     json_path = args.output.with_suffix(".json")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(markdown, encoding="utf-8", newline="\n")
-    json_path.write_text(_json_report(results, workload_metadata, repeats), encoding="utf-8", newline="\n")
+    json_path.write_text(
+        _json_report(results, workload_metadata, repeats, workload_series, operation_settings),
+        encoding="utf-8",
+        newline="\n",
+    )
     print(markdown, end="")
     print("JSON samples:", json_path)
     return 0

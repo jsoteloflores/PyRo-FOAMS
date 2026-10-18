@@ -1,0 +1,16 @@
+{
+  "case_ids": [
+    "single_manual_unnormalized_initial",
+    "two_scale_manual_known",
+    "shape_threshold_equality_initial_strict",
+    "shape_threshold_equality_updated_inclusive",
+    "empty_autosmart_expected_domain_failure"
+  ],
+  "compressed_sha256": "32379cd9313e24f12ea4ea22468b0eb649b52f72dc1375911ebf7ca33fac7aa6",
+  "compression": "gzip-mtime-zero-canonical-json-v1",
+  "filename": "19a_foams105_reference.json.gz",
+  "parent_capture_sha256": "ad5fce5ea56d406877b5948821ececa8bc0ca298dd9f650bfce0b90e5bde6d4c",
+  "payload_sha256": "60ed38a96f05fd3dae301e788eda1f2f6fdab76ea411e5a34f5a2183c39b09b7",
+  "schema_version": 1,
+  "selected_catalog_sha256": "e9b2c54d0ea0810af30616e954f95a3e0f1561655f5d330086279547d25c6d66"
+}

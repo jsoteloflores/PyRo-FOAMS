@@ -18,6 +18,7 @@ from main.core.legacy_perimeter import (
     FOAMS105_PERIMETER_SELECTION_METHOD,
     Foams105PerimeterNumericalError,
     Foams105PerimeterValidationError,
+    _validate_connected_filled_component,
     measure_foams105_perimeter,
     select_foams105_perimeter,
 )
@@ -346,6 +347,90 @@ class TestFoams105PerimeterProfilesAndValidation(unittest.TestCase):
         with self.assertRaises(Foams105PerimeterValidationError) as caught:
             measure_foams105_perimeter("disconnected", disconnected, profile=FOAMS105_PERIMETER_PROFILE_CURRENT)
         self.assertEqual(caught.exception.code, "invalid_component_topology")
+
+    def test_sparse_long_l_component_avoids_dense_bbox_allocations(self):
+        pixels = tuple((5, column) for column in range(5, 1005)) + tuple((row, 5) for row in range(6, 1005))
+        image = _image_from_pixels((1010, 1010), pixels)
+        measurement = measure_foams105_phase(image, 1, 1.0)
+        with patch(
+            "main.core.legacy_perimeter.np.zeros",
+            side_effect=AssertionError("dense bounding-box allocation"),
+        ):
+            _validate_connected_filled_component("sparse-l", 1, pixels)
+        with patch("main.core.legacy_perimeter.cv2.connectedComponents", side_effect=AssertionError("dense path")), patch(
+            "main.core.legacy_perimeter.cv2.floodFill",
+            side_effect=AssertionError("dense path"),
+        ):
+            result = measure_foams105_perimeter(
+                "sparse-l",
+                measurement,
+                profile=FOAMS105_PERIMETER_PROFILE_CURRENT,
+            )
+        self.assertEqual(result.component_count, 1)
+        self.assertGreater(result.components[0].perimeter_px, 0.0)
+
+    def test_sparse_long_c_and_staircase_components_avoid_dense_bbox_allocations(self):
+        c_shape = (
+            tuple((5, column) for column in range(5, 1005))
+            + tuple((row, 5) for row in range(6, 1005))
+            + tuple((1004, column) for column in range(6, 1005))
+        )
+        staircase_points = [(5, 5)]
+        row = 5
+        column = 5
+        for _ in range(300):
+            column += 1
+            staircase_points.append((row, column))
+            row += 1
+            staircase_points.append((row, column))
+        staircase = tuple(staircase_points)
+        for shape_name, points in (("c", c_shape), ("staircase", staircase)):
+            with self.subTest(shape=shape_name):
+                with patch("main.core.legacy_perimeter.cv2.connectedComponents", side_effect=AssertionError("dense path")), patch(
+                    "main.core.legacy_perimeter.cv2.floodFill",
+                    side_effect=AssertionError("dense path"),
+                ), patch(
+                    "main.core.legacy_perimeter.np.zeros",
+                    side_effect=AssertionError("dense bounding-box allocation"),
+                ):
+                    _validate_connected_filled_component(shape_name, 1, points)
+
+    def test_bounded_topology_matches_prior_euler_validator_on_all_3x3_masks(self):
+        def prior_valid(points):
+            point_set = set(points)
+            if not point_set:
+                return False
+            stack = [next(iter(point_set))]
+            visited = set()
+            while stack:
+                row, column = stack.pop()
+                if (row, column) in visited:
+                    continue
+                visited.add((row, column))
+                for dr, dc in ((-1, 0), (0, 1), (1, 0), (0, -1)):
+                    neighbor = (row + dr, column + dc)
+                    if neighbor in point_set and neighbor not in visited:
+                        stack.append(neighbor)
+            if len(visited) != len(point_set):
+                return False
+            vertices = set()
+            shared_edges = 0
+            for row, column in points:
+                vertices.update(((row, column), (row + 1, column), (row, column + 1), (row + 1, column + 1)))
+                shared_edges += (row - 1, column) in point_set
+                shared_edges += (row, column - 1) in point_set
+            return len(vertices) - 3 * len(points) + shared_edges == 1
+
+        for bits in range(1, 1 << 9):
+            points = tuple((index // 3, index % 3) for index in range(9) if bits & (1 << index))
+            expected = prior_valid(points)
+            try:
+                _validate_connected_filled_component("grid", bits, points)
+            except Foams105PerimeterValidationError:
+                actual = False
+            else:
+                actual = True
+            self.assertEqual(actual, expected, f"3x3 mask bits={bits}")
 
         ring_image = np.zeros((11, 11), dtype=np.uint8)
         ring_image[4:7, 4] = 1

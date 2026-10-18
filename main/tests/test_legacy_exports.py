@@ -240,8 +240,9 @@ class TestFoams105ExportBundle(unittest.TestCase):
         result = _build_result()
         with tempfile.TemporaryDirectory() as root:
             root_path = Path(root)
+            projection = build_foams105_export_tables(result)
             first = write_foams105_export_bundle(result, root_path / "one")
-            second = write_foams105_export_bundle(result, root_path / "two")
+            second = write_foams105_export_bundle(result, root_path / "two", projection_result=projection)
             self.assertTrue(first.complete)
             self.assertEqual(first.table_filenames, tuple(
                 ("NA_mag.txt", "Raw_data.txt", "Rawcutoffs_data.txt", "Calc_out.txt", "Area_out.txt", "Ves_out.txt", "Misc_out.txt", "Shape_out.txt", "Stats_out.txt")
@@ -277,6 +278,19 @@ class TestFoams105ExportBundle(unittest.TestCase):
             with self.assertRaises(Foams105ExportError) as caught:
                 write_foams105_export_bundle(result, root_path / "one")
             self.assertEqual(caught.exception.code, "output_directory_exists")
+
+    def test_prebuilt_projection_must_belong_to_exact_analysis_result(self):
+        result = _build_result()
+        projection = build_foams105_export_tables(result)
+        other_result = _build_result()
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(Foams105ExportError) as caught:
+                write_foams105_export_bundle(
+                    other_result,
+                    Path(directory) / "bundle",
+                    projection_result=projection,
+                )
+        self.assertEqual(caught.exception.code, "projection_analysis_mismatch")
 
     def test_write_failure_cleans_only_temporary_sibling(self):
         result = _build_result()

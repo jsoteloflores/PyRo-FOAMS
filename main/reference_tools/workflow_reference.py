@@ -327,6 +327,30 @@ def load_workflow_case_catalog(path: Union[Path, str]) -> WorkflowCaseCatalog:
             raise _catalog_error("catalog run identity, scene, outcome, or settings are invalid", "invalid_catalog_run", case_id=case_id)
         if analysis.get("selection_mode") not in ("manual", "autosmart") or analysis.get("volume_normalization_mode") not in ("unnormalized", "integrated_2d", "known_vesicularity"):
             raise _catalog_error("catalog run uses unsupported analysis modes", "invalid_catalog_settings", case_id=case_id)
+        shape_mode = analysis.get("shape_statistics_mode")
+        preparation_minimum = preparation.get("minimum_diameter_px")
+        shape_minimum = analysis.get("shape_minimum_diameter_px")
+        if shape_mode not in ("initial_analysis", "updated_minimum"):
+            raise _catalog_error("catalog run uses an unsupported shape-statistics mode", "invalid_catalog_settings", case_id=case_id)
+        if (
+            not isinstance(preparation_minimum, (int, float))
+            or isinstance(preparation_minimum, bool)
+            or not np.isfinite(preparation_minimum)
+            or preparation_minimum <= 0
+            or not isinstance(shape_minimum, (int, float))
+            or isinstance(shape_minimum, bool)
+            or not np.isfinite(shape_minimum)
+            or shape_minimum < 0
+        ):
+            raise _catalog_error("catalog diameter minima must be finite and valid", "invalid_catalog_settings", case_id=case_id)
+        if shape_mode == "initial_analysis" and shape_minimum != preparation_minimum:
+            raise _catalog_error(
+                "original initial-analysis replay requires one shared project/shape minimum",
+                "inconsistent_initial_shape_threshold",
+                case_id=case_id,
+                preparation_minimum_diameter_px=preparation_minimum,
+                shape_minimum_diameter_px=shape_minimum,
+            )
         ranges = analysis.get("manual_ranges")
         if not isinstance(ranges, list):
             raise _catalog_error("manual_ranges must be an immutable list", "invalid_catalog_settings", case_id=case_id)
@@ -707,6 +731,9 @@ def load_workflow_extraction_map(path: Union[Path, str] = DEFAULT_EXTRACTION_MAP
             or not isinstance(fragment.get("required_inputs"), list)
             or not isinstance(fragment.get("produced_variables"), list)
             or not isinstance(fragment.get("omitted_calls"), list)
+            or not isinstance(fragment.get("required_assignments", []), list)
+            or not all(isinstance(name, str) and name for name in fragment.get("required_assignments", []))
+            or not set(fragment.get("required_assignments", [])).issubset(set(fragment.get("produced_variables", [])))
         ):
             raise WorkflowReferenceValidationError(
                 "extraction fragment identity or contract is invalid",
@@ -892,6 +919,13 @@ def extract_mapped_source_fragment(
                 OmittedSourceLine(entry["start_line"] + offset, line.rstrip("\r\n"), reason)
             )
     executable_text = "".join(executable_lines)
+    for variable in entry.get("required_assignments", ()):
+        if re.search(rf"(?m)^\s*{re.escape(variable)}\s*=", executable_text) is None:
+            raise WorkflowReferenceValidationError(
+                "mapped source fragment does not assign a required output",
+                code="missing_source_assignment",
+                context={"fragment_id": fragment_id, "variable": variable},
+            )
     forbidden = re.compile(r"\b(?:waitbar|findobj|helpdlg|uiwait|axes|figure|plot|loglog|semilogy|bar|tblwrite|xlswrite)\s*\(")
     remaining = [
         (entry["start_line"] + offset, line.rstrip("\r\n"))

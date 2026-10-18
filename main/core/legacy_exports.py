@@ -661,10 +661,28 @@ def _plot_diagnostics(analysis: Foams105AnalysisResult) -> Tuple[Foams105ExportD
 def write_foams105_export_bundle(
     analysis_result: Foams105AnalysisResult,
     output_directory: str | os.PathLike[str],
+    *,
+    projection_result: Optional[Foams105ExportTablesResult] = None,
 ) -> Foams105ExportBundleResult:
-    """Write reproducible TSV tables and sidecars into a fresh directory."""
+    """Write reproducible TSV tables and sidecars into a fresh directory.
 
-    tables = build_foams105_export_tables(analysis_result)
+    A projection may be supplied when it was built from this exact immutable
+    analysis result, allowing callers to measure projection and disk writing
+    independently without changing output semantics.
+    """
+
+    if projection_result is None:
+        tables = build_foams105_export_tables(analysis_result)
+    elif (
+        not isinstance(projection_result, Foams105ExportTablesResult)
+        or projection_result.analysis_result is not analysis_result
+    ):
+        raise Foams105ExportError(
+            "prebuilt table projection must belong to the exact analysis result",
+            code="projection_analysis_mismatch",
+        )
+    else:
+        tables = projection_result
     destination = Path(output_directory).expanduser().resolve()
     if destination.exists():
         raise Foams105ExportError(

@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass
+import subprocess
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Mapping, Optional, Sequence, Tuple, Union
 
@@ -61,6 +62,11 @@ class WorkflowComparisonRow:
     within_tolerance: bool
     classification_match: bool
     code: Optional[str] = None
+    assessment: str = "unassessed"
+    extension_policy: Optional[str] = None
+    operation: Optional[str] = None
+    reference_operand: object = None
+    python_operand: object = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +81,18 @@ class WorkflowComparisonReport:
     affected_tables: Tuple[str, ...]
     known_extensions: Tuple[str, ...]
     rows: Tuple[WorkflowComparisonRow, ...]
+    exact_match_count: int = 0
+    extension_eligible_count: int = 0
+    documented_extension_count: int = 0
+    unexpected_mismatch_count: int = 0
+    policy_version: Optional[str] = None
+    policy_qualified_success: bool = False
+    strict_success: bool = False
+    catalog_label: str = "unknown"
+    candidate_dirty_files: Tuple[Tuple[str, str, Optional[str]], ...] = ()
+    candidate_dirty_excluded_paths: Tuple[str, ...] = ()
+    candidate_worktree_dirty: bool = False
+    threshold_settings: Tuple[Mapping[str, object], ...] = ()
 
 
 TABLE_STAGE = {
@@ -108,6 +126,11 @@ KNOWN_EXTENSIONS = (
     "Analytical moment/orientation conventions are not promoted to MATLAB equivalence by this comparison.",
     "A source-domain failure is a recorded outcome, not a passing numerical comparison.",
 )
+REAL_LOG_EXTENSION_POLICY = "foams105-real-log-classification-v1"
+REAL_LOG_EXPRESSIONS = {
+    "log(NV>L)": ("log10_cumulative_nv", "log10_expression", "log10"),
+    "Ln(n)": ("natural_log_number_density_per_width", "natural_log_expression", "log"),
+}
 
 
 def _validation_error(message: str, code: str, **context: object) -> WorkflowReferenceValidationError:
@@ -120,6 +143,49 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+_GENERATED_EVIDENCE_PATHS = (
+    "main/tests/fixtures/19a_foams105_reference.json.gz",
+    "main/tests/fixtures/19a_foams105_reference.json.gz.manifest.json",
+    "benchmarks/results_foams105_brief19.md",
+    "benchmarks/results_foams105_brief19.json",
+    "benchmarks/results_foams105_brief19_pre19a.md",
+    "benchmarks/results_foams105_brief19_pre19a.json",
+)
+
+
+def _candidate_revision_evidence() -> Tuple[str, Tuple[Tuple[str, str, Optional[str]], ...], Tuple[str, ...], bool]:
+    repository_root = Path(__file__).resolve().parents[2]
+    revision_result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository_root,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    revision = revision_result.stdout.strip() if revision_result.returncode == 0 else "unknown"
+    status_result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repository_root,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    dirty_files = []
+    excluded_paths = []
+    if status_result.returncode == 0:
+        for line in status_result.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            status, name = line[:2], line[3:].strip()
+            if name in _GENERATED_EVIDENCE_PATHS:
+                excluded_paths.append(name)
+                continue
+            path = (repository_root / name).resolve()
+            digest = _sha256(path) if path.is_file() else None
+            dirty_files.append((status, name, digest))
+    return revision, tuple(sorted(dirty_files)), tuple(sorted(excluded_paths)), bool(status_result.stdout.strip())
 
 
 def _decode_number(cell: object, *, context: Mapping[str, object]) -> ClassifiedNumber:
@@ -477,6 +543,87 @@ def _compare_cell(
     )
 
 
+def _assess_real_log_extension(
+    comparison: WorkflowComparisonRow,
+    *,
+    source_case: Mapping[str, object],
+    analysis: object,
+) -> Optional[Mapping[str, object]]:
+    if comparison.table != "Calc_out.txt" or comparison.column not in REAL_LOG_EXPRESSIONS:
+        return None
+    row_index = comparison.row_index
+    if not isinstance(row_index, int) or row_index < 0:
+        return None
+    source_volume = source_case.get("volume")
+    if not isinstance(source_volume, dict) or not isinstance(source_volume.get("log_inputs"), dict):
+        return None
+    input_key, expression_key, operation = REAL_LOG_EXPRESSIONS[comparison.column]
+    input_record = source_volume["log_inputs"]
+    expected_expression = "Log_Nvl=log10(NV_cumsum);" if operation == "log10" else "ln_n=log(n_numb);"
+    if input_record.get(expression_key) != expected_expression:
+        return None
+    source_shape, source_operands = _flatten_encoded_array(
+        input_record.get(input_key),
+        context={"case_id": comparison.case_id, "table": comparison.table, "field": input_key},
+    )
+    if len(source_shape) != 2 or source_shape[1] != 1 or row_index >= len(source_operands):
+        return None
+    source_operand = source_operands[row_index]
+    summary_rows = getattr(analysis.distribution_summary_result, "rows", ())
+    if row_index >= len(summary_rows):
+        return None
+    summary_row = summary_rows[row_index]
+    python_value = (
+        summary_row.log10_cumulative_nv
+        if comparison.column == "log(NV>L)"
+        else summary_row.ln_number_density_per_width
+    )
+    python_operand = python_value.operands[0] if len(python_value.operands) == 1 else None
+    source_classification = comparison.reference_value.get("classification")
+    reference_complex = comparison.reference_value.get("value")
+    expected_python_reason = {
+        "negative_infinity": "log_of_zero",
+        "complex": "log_of_negative",
+    }.get(source_classification)
+    if (
+        expected_python_reason is None
+        or python_value.reason != expected_python_reason
+        or python_value.legacy_classification != source_classification
+        or source_operand.classification not in ("finite", "integer")
+        or python_operand is None
+    ):
+        return None
+    source_number = float(source_operand.value)
+    candidate_operand = float(python_operand)
+    operand_rtol, operand_atol = 1e-10, 1e-12
+    operands_match = abs(source_number - candidate_operand) <= operand_atol + operand_rtol * abs(source_number)
+    if not operands_match:
+        return None
+    if source_classification == "negative_infinity":
+        valid_domain = source_number == 0.0 and candidate_operand == 0.0
+        result_matches_operation = reference_complex is None
+    else:
+        valid_domain = source_number < 0.0 and candidate_operand < 0.0
+        if not isinstance(reference_complex, complex):
+            return None
+        scale = math.log10 if operation == "log10" else math.log
+        expected_value = complex(scale(abs(source_number)), math.pi if operation == "log" else math.pi / math.log(10.0))
+        output_delta = abs(reference_complex - expected_value)
+        result_matches_operation = output_delta <= 1e-12 + 1e-10 * abs(expected_value)
+    if not valid_domain or not result_matches_operation:
+        return None
+    return {
+        "policy": REAL_LOG_EXTENSION_POLICY,
+        "operation": operation,
+        "source_expression": expected_expression,
+        "source_operand": source_number,
+        "python_operand": candidate_operand,
+        "source_classification": source_classification,
+        "python_reason": python_value.reason,
+        "source_result": reference_complex,
+    }
+
+
 def _matrix_rows_for_python(table_name: str, projection: Foams105ExportTableProjection):
     if table_name == "Stats_out.txt":
         rows = tuple((row[0],) + row[1:] for row in projection.rows)
@@ -576,12 +723,17 @@ def compare_workflow_reference(
     imported: ImportedWorkflowCapture,
     *,
     python_results: Optional[Mapping[str, WorkflowPythonRunResult]] = None,
+    enable_real_log_extension: bool = False,
 ) -> WorkflowComparisonReport:
     """Compare the imported MATLAB replay against production Python results."""
 
     if python_results is None:
-        python_results = {run.case_id: run_python_workflow_case(run) for run in imported.catalog.runs}
-    expected_ids = {run.case_id for run in imported.catalog.runs}
+        python_results = {
+            run.case_id: run_python_workflow_case(run)
+            for run in imported.catalog.runs
+            if run.case_id in imported.cases_by_id
+        }
+    expected_ids = set(imported.cases_by_id)
     if set(python_results) != expected_ids:
         raise _validation_error(
             "Python comparison results do not match the versioned catalog",
@@ -591,6 +743,8 @@ def compare_workflow_reference(
         )
 
     rows = []
+    threshold_settings_rows = []
+    analyses_by_case = {}
     unavailable = 0
     capture_images = {image["image_id"]: image for image in imported.capture["image_evidence"]}
     run_specs = {run.case_id: run for run in imported.catalog.runs}
@@ -624,15 +778,26 @@ def compare_workflow_reference(
         run_spec = run_specs[case_id]
         if run_spec.expected_outcome == "expected_domain_failure":
             unavailable += 1
-            if python_case.failure_stage != run_spec.expected_stage:
-                rows.append(
-                    WorkflowComparisonRow(
-                        case_id, "expected_failure", None, None, None, None,
-                        {"stage": run_spec.expected_source_stage, "identifier": run_spec.expected_source_error},
-                        {"stage": python_case.failure_stage, "code": python_case.failure_code},
-                        None, None, None, "stage/error-code", False, False, "failure_stage_mismatch",
-                    )
+            rows.append(
+                WorkflowComparisonRow(
+                    case_id,
+                    "expected_failure",
+                    None,
+                    None,
+                    None,
+                    None,
+                    {"stage": run_spec.expected_source_stage, "identifier": run_spec.expected_source_error},
+                    {"stage": python_case.failure_stage, "code": python_case.failure_code},
+                    None,
+                    None,
+                    None,
+                    "stage/error-code",
+                    False,
+                    False,
+                    "source_failure_unavailable" if python_case.failure_stage == run_spec.expected_stage else "failure_stage_mismatch",
+                    assessment="unavailable",
                 )
+            )
             continue
         analysis = python_case.analysis_result
         if analysis is None:
@@ -645,6 +810,67 @@ def compare_workflow_reference(
                 )
             )
             continue
+        analyses_by_case[case_id] = analysis
+
+        source_thresholds = source_case["threshold_settings"]
+        maximum_scale = max(group.scale_px_per_mm for group in run_spec.scene.groups)
+        python_project_minimum = float(analysis.prepared_result.preparation_settings.minimum_diameter_px)
+        python_statistics_minimum = float(analysis.analysis_settings.shape_minimum_diameter_px)
+        python_operator = ">" if analysis.analysis_settings.shape_statistics_mode == "initial_analysis" else ">="
+        python_thresholds = {
+            "project_minimum_diameter_px": python_project_minimum,
+            "statistics_minimum_diameter_px": python_statistics_minimum,
+            "maximum_scale_px_per_mm": float(analysis.shape_statistics_result.maximum_configured_scale_px_per_mm),
+            "project_threshold_mm": python_project_minimum / maximum_scale,
+            "statistics_threshold_mm": python_statistics_minimum / maximum_scale,
+            "statistics_operator": python_operator,
+        }
+        source_threshold_view = {
+            key: source_thresholds[key]
+            for key in (
+                "project_minimum_diameter_px",
+                "statistics_minimum_diameter_px",
+                "maximum_scale_px_per_mm",
+                "project_threshold_mm",
+                "statistics_threshold_mm",
+                "statistics_operator",
+            )
+        }
+        threshold_settings_match = source_threshold_view == python_thresholds
+        threshold_settings_rows.append(
+            {
+                "case_id": case_id,
+                "matlab": source_threshold_view,
+                "python": python_thresholds,
+            }
+        )
+        rows.append(
+            WorkflowComparisonRow(
+                case_id,
+                "shape_statistics" if python_operator == ">=" else "shape_and_initial_threshold",
+                "threshold_settings",
+                None,
+                "actual input settings",
+                None,
+                source_threshold_view,
+                python_thresholds,
+                0.0 if threshold_settings_match else None,
+                0.0 if threshold_settings_match else None,
+                (0.0, 0.0),
+                "px/mm/operator",
+                threshold_settings_match,
+                threshold_settings_match,
+                None if threshold_settings_match else "threshold_settings_mismatch",
+            )
+        )
+        if not threshold_settings_match:
+            raise _validation_error(
+                "shape identities are not compared when actual threshold settings differ",
+                "candidate_threshold_settings_mismatch",
+                case_id=case_id,
+                matlab=source_threshold_view,
+                python=python_thresholds,
+            )
 
         for source_key, python_rows, stage in (
             ("raw_data_identities", analysis.raw_data_rows, "calibration_and_diameter_filter"),
@@ -926,11 +1152,11 @@ def compare_workflow_reference(
         projections = build_foams105_export_tables(analysis)
         python_tables = {table.filename.removesuffix(".txt"): table for table in projections.tables}
         source_tables = source_case["tables"]
-        if tuple(source_tables) != table_names:
+        if set(source_tables) != set(table_names):
             rows.append(
                 WorkflowComparisonRow(
                     case_id, "table_projection", None, None, None, None,
-                    table_names, tuple(source_tables), None, None, (0.0, 0.0), "table-order", False, False, "table_set_mismatch",
+                    table_names, tuple(sorted(source_tables)), None, None, (0.0, 0.0), "table-set", False, False, "table_set_mismatch",
                 )
             )
         for table_name in table_names:
@@ -997,7 +1223,48 @@ def compare_workflow_reference(
                     rows.append(comparison)
 
     stage_rank = {stage: index for index, stage in enumerate(comparison_order)}
-    mismatches = [row for row in rows if not row.within_tolerance or not row.classification_match]
+    assessed_rows = []
+    exact_matches = 0
+    extension_eligible = 0
+    documented_extensions = 0
+    unexpected_mismatches = 0
+    for row in rows:
+        if row.assessment == "unavailable":
+            assessed_rows.append(row)
+            continue
+        if row.within_tolerance and row.classification_match:
+            exact_matches += 1
+            assessed_rows.append(replace(row, assessment="exact_match"))
+            continue
+        extension = _assess_real_log_extension(
+            row,
+            source_case=imported.cases_by_id[row.case_id],
+            analysis=analyses_by_case.get(row.case_id),
+        )
+        if extension is not None:
+            extension_eligible += 1
+            qualified = enable_real_log_extension
+            if qualified:
+                documented_extensions += 1
+            assessed_rows.append(
+                replace(
+                    row,
+                    assessment="documented_extension" if qualified else "extension_eligible_not_enabled",
+                    extension_policy=REAL_LOG_EXTENSION_POLICY,
+                    operation=str(extension["operation"]),
+                    reference_operand=extension["source_operand"],
+                    python_operand=extension["python_operand"],
+                )
+            )
+        else:
+            unexpected_mismatches += 1
+            assessed_rows.append(replace(row, assessment="unexpected_mismatch"))
+    unavailable_rows = tuple(row for row in assessed_rows if row.assessment == "unavailable")
+    mismatches = [
+        row
+        for row in assessed_rows
+        if row.assessment in ("documented_extension", "extension_eligible_not_enabled", "unexpected_mismatch")
+    ]
     first_stage = min((row.stage for row in mismatches), key=lambda stage: stage_rank.get(stage, len(stage_rank)), default=None)
     affected = set()
     if first_stage:
@@ -1005,17 +1272,32 @@ def compare_workflow_reference(
     for mismatch in mismatches:
         if mismatch.table:
             affected.add(mismatch.table.removesuffix(".txt"))
+    candidate_revision, candidate_dirty_files, candidate_dirty_excluded_paths, candidate_worktree_dirty = _candidate_revision_evidence()
+    catalog_label = str(imported.catalog.runs[0].source_metadata.get("pyro_revision", "unknown"))
+    raw_difference_count = len(mismatches)
     return WorkflowComparisonReport(
         source_commit=ORIGINAL_SOURCE_COMMIT,
         matlab_release=str(imported.capture["matlab_release"]),
-        python_revision=str(imported.catalog.runs[0].source_metadata.get("pyro_revision", "unknown")),
-        comparison_count=len(rows),
-        failure_count=len(mismatches),
-        unavailable_stage_count=unavailable,
+        python_revision=candidate_revision,
+        comparison_count=len(assessed_rows),
+        failure_count=raw_difference_count,
+        unavailable_stage_count=max(unavailable, len(unavailable_rows)),
         first_divergent_stage=first_stage,
         affected_tables=tuple(table for table in table_names if table in affected),
         known_extensions=KNOWN_EXTENSIONS,
-        rows=tuple(rows),
+        rows=tuple(assessed_rows),
+        exact_match_count=exact_matches,
+        extension_eligible_count=extension_eligible,
+        documented_extension_count=documented_extensions,
+        unexpected_mismatch_count=unexpected_mismatches,
+        policy_version=REAL_LOG_EXTENSION_POLICY if enable_real_log_extension else None,
+        policy_qualified_success=enable_real_log_extension and unexpected_mismatches == 0,
+        strict_success=raw_difference_count == 0 and unavailable == 0,
+        catalog_label=catalog_label,
+        candidate_dirty_files=candidate_dirty_files,
+        candidate_dirty_excluded_paths=candidate_dirty_excluded_paths,
+        candidate_worktree_dirty=candidate_worktree_dirty,
+        threshold_settings=tuple(threshold_settings_rows),
     )
 
 
@@ -1049,18 +1331,49 @@ def workflow_comparison_markdown(report: WorkflowComparisonReport) -> str:
         "",
         f"- Source commit: `{report.source_commit}`",
         f"- MATLAB: `{report.matlab_release}`",
-        f"- Python revision: `{report.python_revision}`",
+        f"- Candidate Git commit: `{report.python_revision}`",
+        f"- Catalog label: `{report.catalog_label}`",
+        f"- Candidate worktree dirty: {report.candidate_worktree_dirty}",
+        f"- Dirty source files with hashes: {len(report.candidate_dirty_files)}",
+        f"- Excluded generated evidence paths (separately checksummed): {', '.join(report.candidate_dirty_excluded_paths) or 'none'}",
         f"- Comparisons: {report.comparison_count}",
-        f"- Mismatches: {report.failure_count}",
+        f"- Exact/toleranced matches: {report.exact_match_count}",
+        f"- Raw representation differences: {report.failure_count}",
+        f"- Operand-verified extension-eligible rows: {report.extension_eligible_count}",
+        f"- Policy-qualified extension rows: {report.documented_extension_count}",
+        f"- Unexpected mismatches: {report.unexpected_mismatch_count}",
         f"- Unavailable stages: {report.unavailable_stage_count}",
+        f"- Extension policy: `{report.policy_version or 'disabled'}`",
+        f"- Strict raw status: {'PASS' if report.strict_success else 'FAIL'}",
+        f"- Policy-qualified supported-comparison status: {'PASS' if report.policy_qualified_success else 'NOT ENABLED OR FAIL'}",
+        f"- Overall coverage: {'INCOMPLETE' if report.unavailable_stage_count else 'COMPLETE'}",
         f"- First divergent stage: `{report.first_divergent_stage or 'none'}`",
         f"- Affected tables: {', '.join(report.affected_tables) or 'none'}",
         "",
-        "## Mismatches",
+        "## Threshold Settings",
         "",
-        "| Case | Stage | Table | Row | Column | Identity | MATLAB | Python | Tolerance | Unit | Code |",
-        "| --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |",
+        "| Case | MATLAB inputs | Python inputs |",
+        "| --- | --- | --- |",
     ]
+    for settings in report.threshold_settings:
+        lines.append(f"| {cell(settings['case_id'])} | {cell(settings['matlab'])} | {cell(settings['python'])} |")
+    lines.extend(("## Candidate Worktree", "", "| Status | Path | SHA-256 |", "| --- | --- | --- |"))
+    lines.extend(
+        f"| `{cell(status)}` | {cell(path)} | `{digest or 'not a file'}` |"
+        for status, path, digest in report.candidate_dirty_files
+    )
+    if report.candidate_dirty_excluded_paths:
+        lines.extend(("", "Generated evidence excluded from dirty-source hashes (each has a separate checksum):"))
+        lines.extend(f"- {path}" for path in report.candidate_dirty_excluded_paths)
+    lines.extend(("", "## Raw Differences And Unavailable Stages", ""))
+    lines.extend(
+        (
+            "## Mismatches",
+            "",
+            "| Case | Stage | Table | Row | Column | Identity | MATLAB | Python | Tolerance | Unit | Assessment | Operation | Operands | Code |",
+            "| --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        )
+    )
     for row in failures:
         lines.append(
             "| "
@@ -1076,6 +1389,9 @@ def workflow_comparison_markdown(report: WorkflowComparisonReport) -> str:
                     cell(row.python_value),
                     cell(row.tolerance),
                     cell(row.unit),
+                    cell(row.assessment),
+                    cell(row.operation),
+                    cell((row.reference_operand, row.python_operand)),
                     cell(row.code),
                 )
             )

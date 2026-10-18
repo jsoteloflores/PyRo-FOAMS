@@ -341,6 +341,29 @@ class TestFoams105ShapePipeline(unittest.TestCase):
         self.assertIn((singleton.image_id, singleton.component_id), below.threshold_identities)
         self.assertNotIn((singleton.image_id, singleton.component_id), above.threshold_identities)
 
+    def test_updated_population_counts_a_real_zero_eccentricity(self):
+        zero_row = next(row for row in self.shape_result.rows if row.eccentricity == 0.0)
+        threshold_px = zero_row.equivalent_diameter_mm * max(scale for _, _, _, scale in self.specs)
+        initial = summarize_foams105_shapes(
+            self.shape_result,
+            configured_scales_px_per_mm=tuple(spec[3] for spec in self.specs),
+            minimum_diameter_px=threshold_px,
+            mode="initial_analysis",
+        )
+        updated = summarize_foams105_shapes(
+            self.shape_result,
+            configured_scales_px_per_mm=tuple(spec[3] for spec in self.specs),
+            minimum_diameter_px=threshold_px,
+            mode="updated_minimum",
+        )
+        eccentricity = next(row for row in updated.statistic_rows if row.metric == "eccentricity")
+        identity = (zero_row.image_id, zero_row.component_id)
+
+        self.assertNotIn(identity, initial.threshold_identities)
+        self.assertIn(identity, updated.threshold_identities)
+        self.assertIn(identity, eccentricity.included_identities)
+        self.assertEqual(eccentricity.n, updated.threshold_count)
+
     def test_summary_does_not_replay_images_and_uses_external_max_scale(self):
         with patch("main.core.legacy_shape_statistics.select_foams105_moment_geometry") as moment_replay, patch(
             "main.core.legacy_shape_statistics.select_foams105_perimeter"

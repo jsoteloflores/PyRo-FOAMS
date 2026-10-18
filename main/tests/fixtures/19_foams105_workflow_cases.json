@@ -207,13 +207,13 @@
       "expected_outcome": "success",
       "preparation": {"minimum_diameter_px": 1.0, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"},
       "source_metadata": {"density_derived_vesicularity_percent": 25.0, "pyro_revision": "brief19-catalog-v1"},
-      "analysis": {"selection_mode": "manual", "manual_ranges": [{"group_id": "fine", "lower_bin_index": 9, "upper_bin_index": 10}, {"group_id": "coarse", "lower_bin_index": 7, "upper_bin_index": 7}], "volume_normalization_mode": "known_vesicularity", "known_vesicularity_percent": 25.0, "size_lower_cutoff_mm": 0.5, "size_upper_cutoff_mm": 4.0, "shape_minimum_diameter_px": 2.0, "shape_statistics_mode": "initial_analysis"}
+      "analysis": {"selection_mode": "manual", "manual_ranges": [{"group_id": "fine", "lower_bin_index": 9, "upper_bin_index": 10}, {"group_id": "coarse", "lower_bin_index": 7, "upper_bin_index": 7}], "volume_normalization_mode": "known_vesicularity", "known_vesicularity_percent": 25.0, "size_lower_cutoff_mm": 0.5, "size_upper_cutoff_mm": 4.0, "shape_minimum_diameter_px": 1.0, "shape_statistics_mode": "initial_analysis"}
     },
     {
       "case_id": "shape_threshold_equality_initial_strict",
       "scene_id": "single_group_two_images",
       "expected_outcome": "success",
-      "preparation": {"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"},
+      "preparation": {"minimum_diameter_px": 2.256758334191025, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"},
       "source_metadata": {"density_derived_vesicularity_percent": 25.0, "pyro_revision": "brief19-catalog-v1"},
       "analysis": {"selection_mode": "manual", "manual_ranges": [{"group_id": "coarse", "lower_bin_index": 0, "upper_bin_index": 14}], "volume_normalization_mode": "unnormalized", "known_vesicularity_percent": null, "size_lower_cutoff_mm": 0.5, "size_upper_cutoff_mm": 4.0, "shape_minimum_diameter_px": 2.256758334191025, "shape_statistics_mode": "initial_analysis"}
     },

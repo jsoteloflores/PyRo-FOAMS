@@ -250,10 +250,11 @@
       "id": "updated_shape_minimum_statistics",
       "file": "newstats.m",
       "start_line": 8,
-      "end_line": 22,
-      "lf_sha256": "fddebee0371d7fa9c786fadd0905bb914bfb0708324315561ca7fb3e0e2297b7",
+      "end_line": 23,
+      "lf_sha256": "37e8c28f537a8c0fbd08f13486da466627ce3fff704303bc522c8853b556075e",
       "required_inputs": ["min_diameter", "mags", "tot_EqDi_raw", "tot_area_raw", "regularity", "asp_rat", "elong", "tot_ori_raw", "tot_ecc_raw"],
       "produced_variables": ["location_thres", "tot_*_thres", "stats_asp_rat", "stats_elong", "stats_reg", "stats_ecc"],
+      "required_assignments": ["stats_asp_rat", "stats_elong", "stats_reg", "stats_ecc"],
       "omitted_calls": []
     },
     {

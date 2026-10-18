@@ -4,21 +4,79 @@
 - Platform: `Windows-10-10.0.26200-SP0`
 - Processor: `AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD`
 - NumPy/OpenCV: `2.2.6` / `4.12.0`
+- Candidate Git commit: `d71c17931dbb3625ca68dcefb304d275d7dfa7fe`; dirty: `True`; dirty file hashes: 17
 - Iterations: 1 warm-up, 5 measured runs
-- Memory: sampled process working set at 5 ms intervals; short peaks may be missed.
-- Workloads are synthetic, non-overlapping circular pore masks, not the original MATLAB catalog images.
+- Memory: sampled process working set at 5 ms intervals; short peaks may be missed and the sampling thread contributes overhead.
+- Circle workloads are synthetic and non-overlapping; the sparse L workload has a large bounding box relative to foreground.
+- These workloads are not the original MATLAB catalog or real images.
+- Series: `{"component_count_fixed_1024px": ["1024x1024_100components", "1024x1024_500components", "1024x1024_1000components"], "image_size_fixed_100_components_approximately_fixed_density": ["512x512_100components", "1024x1024_100components", "2048x2048_100components"], "pre_19a_comparison_2048px_1000_components": ["2048x2048_1000components"], "sparse_long_shape": ["1024x1024_sparse_l"]}`
 
-| Workload | Operation | Median seconds | Range seconds | Median sampled RSS delta | Pixels | Components | Selected rows | Export bytes |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512x512_100components | fresh_prepare | 0.027581 | 0.026435-0.028779 | 5.93 MiB | 262144 | 100 | 100 | 122299 |
-| 512x512_100components | complete_analysis_prepare_plus_reanalysis | 0.070650 | 0.068919-0.075491 | 5.68 MiB | 262144 | 100 | 100 | 122299 |
-| 512x512_100components | cached_cutoff_normalization_shape_reanalysis | 0.039097 | 0.037085-0.047577 | 0.16 MiB | 262144 | 100 | 100 | 122299 |
-| 512x512_100components | export_projection_and_write | 0.021051 | 0.020252-0.022077 | 0.04 MiB | 262144 | 100 | 100 | 122299 |
-| 1024x1024_500components | fresh_prepare | 0.192258 | 0.185810-0.209871 | 25.84 MiB | 1048576 | 500 | 500 | 477914 |
-| 1024x1024_500components | complete_analysis_prepare_plus_reanalysis | 0.468438 | 0.426114-0.473207 | 25.37 MiB | 1048576 | 500 | 500 | 477914 |
-| 1024x1024_500components | cached_cutoff_normalization_shape_reanalysis | 0.282050 | 0.234012-0.317873 | 2.46 MiB | 1048576 | 500 | 500 | 477914 |
-| 1024x1024_500components | export_projection_and_write | 0.062195 | 0.061777-0.065262 | 0.12 MiB | 1048576 | 500 | 500 | 477914 |
-| 2048x2048_1000components | fresh_prepare | 1.242338 | 1.217438-1.282377 | 193.49 MiB | 4194304 | 1000 | 1000 | 929882 |
-| 2048x2048_1000components | complete_analysis_prepare_plus_reanalysis | 1.745680 | 1.720909-1.791870 | 155.65 MiB | 4194304 | 1000 | 1000 | 929882 |
-| 2048x2048_1000components | cached_cutoff_normalization_shape_reanalysis | 0.520032 | 0.479525-0.532164 | 5.28 MiB | 4194304 | 1000 | 1000 | 929882 |
-| 2048x2048_1000components | export_projection_and_write | 0.118508 | 0.112692-0.192555 | 0.03 MiB | 4194304 | 1000 | 1000 | 929882 |
+## Preserved Pre-19a Comparison
+
+| Workload / operation | Pre-19a median s | Bounded median s | Time change |
+| --- | ---: | ---: | ---: |
+| 512x512_100components/fresh_prepare | 0.027581 | 0.029389 | +6.6% |
+| 512x512_100components/complete_analysis_prepare_plus_reanalysis | 0.070650 | 0.074050 | +4.8% |
+| 1024x1024_500components/fresh_prepare | 0.192258 | 0.239238 | +24.4% |
+| 1024x1024_500components/complete_analysis_prepare_plus_reanalysis | 0.468438 | 0.518758 | +10.7% |
+| 2048x2048_1000components/fresh_prepare | 1.242338 | 1.270999 | +2.3% |
+| 2048x2048_1000components/complete_analysis_prepare_plus_reanalysis | 1.745680 | 1.671284 | -4.3% |
+
+| Workload | Operation | Changed settings | Median seconds | Range seconds | Median sampled RSS delta | Pixels | Foreground | Components | Selected rows | Export bytes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512x512_100components | fresh_prepare | `{"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"}` | 0.029389 | 0.028058-0.030251 | 5.89 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 512x512_100components | complete_analysis_prepare_plus_reanalysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.074050 | 0.067446-0.076824 | 5.95 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 512x512_100components | cached_unchanged_analysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.039331 | 0.038617-0.049323 | 0.21 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 512x512_100components | cached_cutoff_edit_reanalysis | `{"baseline_bin_indices": [0, 44], "changed": "manual_ranges", "edited_bin_indices": [20, 25], "edited_range_mm": [50.0, 158.11388]}` | 0.004192 | 0.003701-0.004610 | 0.02 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 512x512_100components | cached_normalization_edit_reanalysis | `{"baseline": "unnormalized", "changed": "volume_normalization_mode", "edited": "integrated_2d"}` | 0.044555 | 0.040563-0.052131 | 0.09 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 512x512_100components | cached_shape_minimum_update | `{"api": "summarize_foams105_shapes", "baseline": 0.0, "changed": "shape_minimum_diameter_px", "edited": 8.0, "mode": "updated_minimum", "operator": ">=", "pipeline_reanalysis": false}` | 0.012124 | 0.011668-0.025348 | 0.02 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 512x512_100components | pure_table_projection | `{"disk_write": false, "operation": "build_foams105_export_tables"}` | 0.000715 | 0.000650-0.000923 | 0.02 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 512x512_100components | disk_write_of_prebuilt_projection | `{"operation": "write_foams105_export_bundle", "projection_prebuilt": true, "projection_recomputed": false}` | 0.021937 | 0.020205-0.023751 | 0.03 MiB | 262144 | 4900 | 100 | 100 | 133538 |
+| 1024x1024_100components | fresh_prepare | `{"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"}` | 0.073971 | 0.073506-0.075660 | 22.06 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 1024x1024_100components | complete_analysis_prepare_plus_reanalysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.121262 | 0.112297-0.132079 | 22.44 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 1024x1024_100components | cached_unchanged_analysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.042339 | 0.039581-0.050214 | 0.06 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 1024x1024_100components | cached_cutoff_edit_reanalysis | `{"baseline_bin_indices": [0, 44], "changed": "manual_ranges", "edited_bin_indices": [20, 25], "edited_range_mm": [50.0, 158.11388]}` | 0.004335 | 0.003614-0.004649 | 0.02 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 1024x1024_100components | cached_normalization_edit_reanalysis | `{"baseline": "unnormalized", "changed": "volume_normalization_mode", "edited": "integrated_2d"}` | 0.044456 | 0.040572-0.053735 | 0.13 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 1024x1024_100components | cached_shape_minimum_update | `{"api": "summarize_foams105_shapes", "baseline": 0.0, "changed": "shape_minimum_diameter_px", "edited": 16.0, "mode": "updated_minimum", "operator": ">=", "pipeline_reanalysis": false}` | 0.011129 | 0.010947-0.011367 | 0.03 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 1024x1024_100components | pure_table_projection | `{"disk_write": false, "operation": "build_foams105_export_tables"}` | 0.000782 | 0.000576-0.000822 | 0.02 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 1024x1024_100components | disk_write_of_prebuilt_projection | `{"operation": "write_foams105_export_bundle", "projection_prebuilt": true, "projection_recomputed": false}` | 0.021162 | 0.020641-0.021827 | 0.04 MiB | 1048576 | 19700 | 100 | 100 | 140803 |
+| 2048x2048_100components | fresh_prepare | `{"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"}` | 0.306681 | 0.291620-0.357654 | 91.11 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_100components | complete_analysis_prepare_plus_reanalysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.393375 | 0.331978-0.422227 | 88.89 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_100components | cached_unchanged_analysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.050693 | 0.043874-0.059602 | 0.02 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_100components | cached_cutoff_edit_reanalysis | `{"baseline_bin_indices": [0, 44], "changed": "manual_ranges", "edited_bin_indices": [20, 25], "edited_range_mm": [50.0, 158.11388]}` | 0.004306 | 0.003918-0.005347 | 0.02 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_100components | cached_normalization_edit_reanalysis | `{"baseline": "unnormalized", "changed": "volume_normalization_mode", "edited": "integrated_2d"}` | 0.042383 | 0.041025-0.058396 | 0.02 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_100components | cached_shape_minimum_update | `{"api": "summarize_foams105_shapes", "baseline": 0.0, "changed": "shape_minimum_diameter_px", "edited": 32.0, "mode": "updated_minimum", "operator": ">=", "pipeline_reanalysis": false}` | 0.011054 | 0.010884-0.011503 | 0.02 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_100components | pure_table_projection | `{"disk_write": false, "operation": "build_foams105_export_tables"}` | 0.000619 | 0.000561-0.000896 | 0.02 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_100components | disk_write_of_prebuilt_projection | `{"operation": "write_foams105_export_bundle", "projection_prebuilt": true, "projection_recomputed": false}` | 0.021426 | 0.020687-0.022116 | 0.02 MiB | 4194304 | 79700 | 100 | 100 | 143227 |
+| 2048x2048_1000components | fresh_prepare | `{"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"}` | 1.270999 | 1.203980-1.352514 | 190.48 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 2048x2048_1000components | complete_analysis_prepare_plus_reanalysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 1.671284 | 1.655363-1.764647 | 150.79 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 2048x2048_1000components | cached_unchanged_analysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.501326 | 0.457434-0.597097 | 4.30 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 2048x2048_1000components | cached_cutoff_edit_reanalysis | `{"baseline_bin_indices": [0, 44], "changed": "manual_ranges", "edited_bin_indices": [20, 25], "edited_range_mm": [50.0, 158.11388]}` | 0.038324 | 0.032898-0.094556 | 0.02 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 2048x2048_1000components | cached_normalization_edit_reanalysis | `{"baseline": "unnormalized", "changed": "volume_normalization_mode", "edited": "integrated_2d"}` | 0.519302 | 0.503656-0.583104 | 4.90 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 2048x2048_1000components | cached_shape_minimum_update | `{"api": "summarize_foams105_shapes", "baseline": 0.0, "changed": "shape_minimum_diameter_px", "edited": 32.0, "mode": "updated_minimum", "operator": ">=", "pipeline_reanalysis": false}` | 0.130359 | 0.126635-0.226901 | 3.20 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 2048x2048_1000components | pure_table_projection | `{"disk_write": false, "operation": "build_foams105_export_tables"}` | 0.007214 | 0.006654-0.007819 | 0.02 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 2048x2048_1000components | disk_write_of_prebuilt_projection | `{"operation": "write_foams105_export_bundle", "projection_prebuilt": true, "projection_recomputed": false}` | 0.115996 | 0.108106-0.152510 | 0.02 MiB | 4194304 | 797000 | 1000 | 1000 | 1041921 |
+| 1024x1024_500components | fresh_prepare | `{"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"}` | 0.239238 | 0.215261-0.258931 | 26.09 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_500components | complete_analysis_prepare_plus_reanalysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.518758 | 0.498482-0.544557 | 22.81 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_500components | cached_unchanged_analysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.279500 | 0.230983-0.344768 | 1.69 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_500components | cached_cutoff_edit_reanalysis | `{"baseline_bin_indices": [0, 44], "changed": "manual_ranges", "edited_bin_indices": [20, 25], "edited_range_mm": [50.0, 158.11388]}` | 0.020167 | 0.019432-0.024613 | 0.04 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_500components | cached_normalization_edit_reanalysis | `{"baseline": "unnormalized", "changed": "volume_normalization_mode", "edited": "integrated_2d"}` | 0.245951 | 0.222810-0.347122 | 1.72 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_500components | cached_shape_minimum_update | `{"api": "summarize_foams105_shapes", "baseline": 0.0, "changed": "shape_minimum_diameter_px", "edited": 16.0, "mode": "updated_minimum", "operator": ">=", "pipeline_reanalysis": false}` | 0.075793 | 0.064201-0.078764 | 1.68 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_500components | pure_table_projection | `{"disk_write": false, "operation": "build_foams105_export_tables"}` | 0.003348 | 0.003311-0.003757 | 0.02 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_500components | disk_write_of_prebuilt_projection | `{"operation": "write_foams105_export_bundle", "projection_prebuilt": true, "projection_recomputed": false}` | 0.071823 | 0.063495-0.076680 | 0.02 MiB | 1048576 | 98500 | 500 | 500 | 533953 |
+| 1024x1024_1000components | fresh_prepare | `{"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"}` | 0.471951 | 0.380181-0.599882 | 29.40 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_1000components | complete_analysis_prepare_plus_reanalysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 1.241716 | 1.206691-1.407876 | 29.15 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_1000components | cached_unchanged_analysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.740234 | 0.709415-0.771436 | 6.04 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_1000components | cached_cutoff_edit_reanalysis | `{"baseline_bin_indices": [0, 44], "changed": "manual_ranges", "edited_bin_indices": [20, 25], "edited_range_mm": [50.0, 158.11388]}` | 0.049098 | 0.042392-0.144672 | 0.02 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_1000components | cached_normalization_edit_reanalysis | `{"baseline": "unnormalized", "changed": "volume_normalization_mode", "edited": "integrated_2d"}` | 0.732421 | 0.713166-0.760119 | 4.71 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_1000components | cached_shape_minimum_update | `{"api": "summarize_foams105_shapes", "baseline": 0.0, "changed": "shape_minimum_diameter_px", "edited": 16.0, "mode": "updated_minimum", "operator": ">=", "pipeline_reanalysis": false}` | 0.185874 | 0.182568-0.285679 | 3.33 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_1000components | pure_table_projection | `{"disk_write": false, "operation": "build_foams105_export_tables"}` | 0.009491 | 0.007976-0.012125 | 0.02 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_1000components | disk_write_of_prebuilt_projection | `{"operation": "write_foams105_export_bundle", "projection_prebuilt": true, "projection_recomputed": false}` | 0.128281 | 0.118058-0.204857 | 0.02 MiB | 1048576 | 197000 | 1000 | 1000 | 1039489 |
+| 1024x1024_sparse_l | fresh_prepare | `{"minimum_diameter_px": 0.5, "perimeter_profile": "matlab_perimeter_r2025b_verified_v1"}` | 0.086935 | 0.078762-0.090233 | 16.13 MiB | 1048576 | 1791 | 1 | 1 | 48753 |
+| 1024x1024_sparse_l | complete_analysis_prepare_plus_reanalysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.093903 | 0.085558-0.103361 | 16.05 MiB | 1048576 | 1791 | 1 | 1 | 48753 |
+| 1024x1024_sparse_l | cached_unchanged_analysis | `{"cutoff_indices": [0, 44], "selection_mode": "manual", "shape_minimum_diameter_px": 0.0, "shape_mode": "updated_minimum", "volume_mode": "unnormalized"}` | 0.004818 | 0.003881-0.005030 | 0.02 MiB | 1048576 | 1791 | 1 | 1 | 48753 |
+| 1024x1024_sparse_l | cached_cutoff_edit_reanalysis | `{"baseline_bin_indices": [0, 44], "changed": "manual_ranges", "edited_bin_indices": [20, 25], "edited_range_mm": [50.0, 158.11388]}` | 0.001841 | 0.001498-0.002234 | 0.02 MiB | 1048576 | 1791 | 1 | 1 | 48753 |
+| 1024x1024_sparse_l | cached_normalization_edit_reanalysis | `{"baseline": "unnormalized", "changed": "volume_normalization_mode", "edited": "integrated_2d"}` | 0.004673 | 0.003884-0.005545 | 0.02 MiB | 1048576 | 1791 | 1 | 1 | 48753 |
+| 1024x1024_sparse_l | cached_shape_minimum_update | `{"api": "summarize_foams105_shapes", "baseline": 0.0, "changed": "shape_minimum_diameter_px", "edited": 16.0, "mode": "updated_minimum", "operator": ">=", "pipeline_reanalysis": false}` | 0.000414 | 0.000403-0.000474 | 0.02 MiB | 1048576 | 1791 | 1 | 1 | 48753 |
+| 1024x1024_sparse_l | pure_table_projection | `{"disk_write": false, "operation": "build_foams105_export_tables"}` | 0.000293 | 0.000247-0.000314 | 0.02 MiB | 1048576 | 1791 | 1 | 1 | 48753 |
+| 1024x1024_sparse_l | disk_write_of_prebuilt_projection | `{"operation": "write_foams105_export_bundle", "projection_prebuilt": true, "projection_recomputed": false}` | 0.017897 | 0.016612-0.018145 | 0.02 MiB | 1048576 | 1791 | 1 | 1 | 48753 |

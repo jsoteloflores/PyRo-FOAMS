@@ -1,6 +1,13 @@
+The durable, MATLAB-free five-case projection is
+`main/tests/fixtures/19a_foams105_reference.json.gz`, with sibling manifest
+`19a_foams105_reference.json.gz.manifest.json`. The manifest pins compressed
+and decompressed SHA-256, parent capture hash, selected catalog hash and exact
+case IDs. Final compressed SHA-256:
+`32379cd9313e24f12ea4ea22468b0eb649b52f72dc1375911ebf7ca33fac7aa6`; payload
+SHA-256: `60ed38a96f05fd3dae301e788eda1f2f6fdab76ea411e5a34f5a2183c39b09b7`.
 # Original FOAMS completion tracker
 
-Last updated: 2026-10-16.
+Last updated: 2026-10-18.
 
 **Original FOAMS implementation: NOT COMPLETE.**
 
@@ -17,10 +24,10 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 4. 2D vesicularity and phase accounting | Brief 13 accepted in configured CI run `38417127328` | Independent scale/area sorting, source recurrence, actual-membership summaries, area2 denominators, area1 provenance, signed diagnostics, diameter filtering, and cutoff-separated inventories tested |
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
-| 7. Shape outputs and statistics | Briefs 16-18a accepted within bounded analytical/R2025b scopes | Moment orientation remains analytical; R2025b perimeter and roundn checks are narrow reference tests; original-run reconciliation exposed strict-threshold identity and eccentricity-statistics convention mismatches |
+| 7. Shape outputs and statistics | Briefs 16-18a accepted within bounded analytical/R2025b scopes | Moment orientation remains analytical; R2025b perimeter and roundn checks are narrow reference tests; corrected MATLAB replay now confirms threshold identities and updated eccentricity statistics |
 | 8. Analysis interface | Headless Brief 18 workflow accepted; GUI integration remains Brief 20 | Preparation/analysis APIs compose accepted stages and preserve source slots; GUI remains pending |
-| 9. Original-equivalent exports | Nine deterministic TSV projections accepted in Brief 18a | All nine table families and sidecars are produced; comparison found no differences outside Calc_out and Stats_out, subject to documented Area_out/Ves_out availability rules |
-| 10. Full workflow reconciliation | Brief 19 first MATLAB replay and benchmark complete; parity blocked on recorded deviations | Pinned source/runtime capture, 7-image/10-case catalog, 7,786 comparisons, mismatch report, and synthetic benchmarks are retained; hosted CI and original-image/GUI parity remain pending |
+| 9. Original-equivalent exports | Nine deterministic TSV projections accepted in Brief 18a | All nine table families and sidecars are produced; corrected comparison has no unexpected finite/table mismatch outside the documented Calc_out logarithm representation extension, subject to Area_out/Ves_out availability rules |
+| 10. Full workflow reconciliation | Brief 19 corrected replay and durable reference complete; literal raw parity intentionally differs at log serialization; hosted CI pending | Exact pinned source/runtime capture and compressed five-case real-MATLAB reference; 7,719 full-capture rows with 117 operand-verified log representation differences and one unavailable source failure; redesigned benchmarks include bounded topology tradeoffs |
 
 ## Current verified boundary
 
@@ -225,79 +232,103 @@ COMPLETE until those later gates and intentional deviations are resolved.
 The original FOAMS functionality may be called implemented and verified only
 after all milestones pass and intentional deviations are explicitly resolved.
 
-## Brief 19 First Replay And Benchmark
+## Brief 19a Corrected Replay And Evidence
 
-The pinned MATLAB workflow was executed locally against the external checkout
-of `jsoteloflores/FOAMS-1.0.5` at
+The pinned MATLAB workflow was replayed from the external checkout of
+`jsoteloflores/FOAMS-1.0.5` at
 `179663203f2d0f86b2863d5ea7f8f70dadca02f8`, using MATLAB
-`25.2.0.2998904 (R2025b)` and Image Processing Toolbox `25.2`. The source
-checkout remains outside this repository. This is an exact-fragment numerical
-replay, not an original GUI session or a real-image comparison.
+`25.2.0.2998904 (R2025b)` and Image Processing Toolbox `25.2`. The original
+source remains external. This is a numerical source-fragment replay, not an
+original GUI session or real-image comparison.
 
-The complete external capture contains 10 catalog cases, 9 successful source
-runs, 1 explicitly expected MATLAB `MATLAB:badsubscript` source-domain failure,
-and 7 deduplicated image-evidence records. Capture SHA-256:
-`e3c03cf8794da48d58e256b8efe6f2403791c92e585cd8cb28245412383d5c54`.
-The extraction-map, generated constructor, runner, and catalog hashes are
-stored in the bundle manifest. The bundle is kept under the local temporary
-directory, not committed. Rerun `reference-tools/workflow/run_workflow_reference.py`
-against the pinned external source checkout to create a fresh bundle, then
-run `reference-tools/workflow/compare_workflow_reference.py <capture-dir>`.
+The `updated_shape_minimum_statistics` extraction now spans `newstats.m`
+lines 8-23, LF SHA-256
+`37e8c28f537a8c0fbd08f13486da466627ce3fff704303bc522c8853b556075e`. Its
+declared `stats_asp_rat`, `stats_elong`, `stats_reg`, and `stats_ecc` outputs
+are assignment-checked; MATLAB clears the prior values before evaluation and
+requires all four outputs afterward. A regression proves an updated subset
+counts a genuine zero-eccentricity object. The previous “eccentricity
+convention mismatch” diagnosis was a stale MATLAB `stats_ecc` caused by the
+truncated fragment, not a Python exclusion rule.
 
-The strict comparison emitted 7,786 rows: 113 mismatches and 1 unavailable
-expected-failure stage. Captured K0/K1/border-removal/hole-fill/label arrays,
-component memberships, direct measurements, Raw_data and Rawcutoffs_data
-identities, initial per-object shape vectors, histogram/area tables, and the
-other compared table families match. The first divergence is
-`shape_and_initial_threshold`: in the strict-boundary case, source identities
-contain 8 threshold objects while Python contains 5. The updated inclusive
-threshold case matches. `Stats_out` has one additional source convention
-difference: source `basicstats` includes an eccentricity value of zero
-(N=8, mean 0.3540, standard deviation 0.4899); Python classifies that value
-as undefined and excludes it (N=7, mean 0.4045, standard deviation 0.5061).
-These are reported as mismatches, not normalized away.
+Every original `initial_analysis` catalog run now uses the same project
+`minpix` and statistics minimum. The independent Python summary API remains
+available, and `updated_minimum` still uses the distinct `min_diameter` from
+`newstats.m`. Capture/report metadata records project and statistics minima,
+maximum scale, both thresholds in mm, and strict `>` versus inclusive `>=`.
+Exact boundary and neighboring-double behavior remains covered separately by
+shape-statistics API tests; a full replay is not used to imply an equality
+object survives the earlier project diameter filter.
 
-The remaining 109 mismatches are in `Calc_out`: 46 source `Ln(n)` cells are
-negative infinity, 23 are complex logarithms, and 40 `log(NV>L)` cells are
-negative infinity; Python returns typed `log_of_zero`/`log_of_negative`
-undefined values instead. Source signed/complex values and Python undefined
-reasons are preserved in JSON/Markdown comparison rows. No science formula
-was changed to force parity. These threshold, statistics, and logarithm
-conventions block full original-workflow equivalence. The empty catalog case
-also shows MATLAB failing in the project image-area/histogram stage rather
-than at Python's AutoSmart cutoff stage.
+The fresh complete capture contains 10 cases, 9 successful source runs, one
+expected MATLAB `MATLAB:badsubscript` failure, and 7 deduplicated source-image
+records. Capture SHA-256:
+`ad5fce5ea56d406877b5948821ececa8bc0ca298dd9f650bfce0b90e5bde6d4c`.
+The previously reviewed, unmodified capture remains external at
+`%TEMP%/foams105-workflow-r2025b-5729f079fbc54a6eaa74df3e713e3aae`; it is
+superseded and is not the parent of the committed package.
+The durable, MATLAB-free five-case projection is
+`main/tests/fixtures/19a_foams105_reference.json.gz`, with sibling manifest
+`19a_foams105_reference.json.gz.manifest.json`. The manifest pins compressed
+and decompressed SHA-256, parent capture hash, selected catalog hash and exact
+case IDs. Final compressed SHA-256:
+`7b2acdbd5e564a0f5774e82a39f7aa2751fe79ab061a7ad88ba808b462728b93`; payload
+SHA-256: `afecf0ab4c187e480051268f4734e24e703a4e787eb83443ccf8a4f4b831f0b5`.
+Decompression is deterministic gzip (`mtime=0`) over canonical UTF-8 JSON.
+The projection retains every selected case field, table cell,
+identity, direct image evidence, expected failure, and strict/policy report;
+it does not filter mismatches. No private original source files are included.
 
-The comparator uses exact array and identity checks, source-order/schema
-checks, unit-specific floating tolerances, exact Stats_out display rounding,
-and separate undefined/NaN/infinity/complex classifications. The comparison
-report is generated beside the external capture and is not treated as a
-permanent original-image fixture.
+On the full corrected capture, strict raw comparison produced 7,719 rows:
+7,601 exact/toleranced matches, 117 raw differences, and one unavailable
+expected-failure stage. All 117 raw differences are confined to `Calc_out`
+logarithm representation: 52 `Ln(n)` negative-infinity values, 18 `Ln(n)`
+complex values, and 47 `log(NV>L)` negative-infinity values. Source operands
+and exact operations are captured (`ln(n_numb)` and
+`log10(NV_cumsum)`). The named policy
+`foams105-real-log-classification-v1` verifies source/Python operand equality,
+operation/base, Python reason/classification, and the source result before
+qualifying the existing real-valued API extension. Policy mode reports 117
+qualified representation differences and zero unexpected mismatches; strict
+mode reports 117 raw differences and fails. No finite scientific table or
+image-stage mismatch remains in the supported cases, but literal
+`Calc_out` export parity is not established. The expected source failure remains unavailable:
+MATLAB fails at project image-area/histogram processing, Python at
+`autosmart_cutoffs`; both stages and reasons are retained.
 
-The Brief 19 benchmark measures fresh preparation, complete
-prepare-plus-analysis, cached analysis re-run, and export projection/write on
-three deterministic synthetic masks (512^2/100, 1024^2/500, and
-2048^2/1000 pixels/components), using one warm-up and five measured runs.
-At 2048^2/1000, final medians were 1.242 s fresh preparation, 1.746 s full
-prepare-plus-analysis, 0.520 s cached re-analysis, and 0.119 s export/write.
-The synthetic workload is not the MATLAB catalog or original images. Windows
-working-set memory is sampled every 5 ms; short peaks can be missed and the
-observed deltas varied between runs.
+Candidate code identity is the actual Git commit `d71c17931dbb3625ca68dcefb304d275d7dfa7fe`; `brief19-catalog-v1` is recorded separately as a catalog label. Reports include dirty source-file hashes while excluding the self-referential reference package and generated benchmark result files, which have their own checksums.
 
-Profiling located the preparation bottleneck in per-component
-connectivity/hole validation. Replacing Python point-set traversal and Euler
-bookkeeping with OpenCV 4-connected foreground labeling plus a 4-connected
-exterior flood fill reduced profiled validation from 2.57 s to 0.38 s on the
-2048^2/1000 workload. The new check matched the previous validator on all
-3x3 masks and 1,000 seeded 8x8 masks; all 15 perimeter tests and the captured
-source comparison still pass. In five-run benchmarks, fresh preparation
-improved from 1.926 s to 1.242 s (about 36%), and full prepare-plus-analysis
-from 2.443 s to 1.746 s (about 29%). No memory reduction is claimed.
+The topology optimization now bounds the OpenCV dense path by padded
+bounding-box area `<= 8 * component_pixel_count`, computed with Python integer
+arithmetic before allocating the dense mask. Longer/sparser components use
+the previous sparse four-connected traversal plus Euler hole check. Tests
+forbid dense allocation/OpenCV calls on long L, C and staircase shapes, retain
+disconnected/hole rejection and Euler failure context, and compare every
+nonempty 3x3 mask to the prior validator. The 1024^2 L workload has 1,791
+foreground pixels inside an 802,816-pixel padded bounding box (448.25x); its
+fresh preparation is about 0.057 s without allocating that box.
 
-Local validation after this work: all 608 repository tests and all 17 examples
-under `python -O` pass. Configured Ruff scope (`main/`, the Brief 19 benchmark,
-and workflow wrappers) passes; unrestricted `ruff check .` still reports
-import-order/E402 issues in three older perimeter wrappers. Hosted
-Linux/Windows Python 3.11/3.12 CI is not yet recorded. Brief 19 remains
-incomplete until strict-threshold, eccentricity-statistics, and logarithm
-domain differences are dispositioned and the final example/CI gates pass.
-GUI integration and original-image comparison remain later Brief 20/21 gates.
+The benchmark now has a fixed-image-size component-count series, an
+approximately fixed-density image-size series, sparse-L input, actual cached
+cutoff and normalization edits, a shape-minimum-only call to
+`summarize_foams105_shapes`, and separate pure projection versus disk writing
+using a prebuilt projection. The original Brief 19 results remain preserved
+as `benchmarks/results_foams105_brief19_pre19a.{md,json}`. New results and raw
+samples are in `benchmarks/results_foams105_brief19.{md,json}`. Each operation
+uses one warm-up and five measured iterations; RSS is a 5 ms process-working-
+set sample and can miss short peaks. Workloads are synthetic, not MATLAB
+catalog or original images. In the final 2048^2/1000 run, fresh preparation
+is 1.271 s and full prepare-plus-analysis is 1.671 s, versus pre-19a medians
+1.242 s and 1.746 s (+2.3% and -4.3%). Repeated runs varied appreciably; no
+general compact-mask speedup or memory reduction is claimed. The value of the
+bound is the explicit sparse-shape work/memory cap.
+
+Final local validation: 624 tests passed with no skips; all 17 examples passed
+under `python -O`; configured Ruff passes. Unrestricted `ruff check .` still
+reports import-order/E402 issues in three older perimeter wrappers outside
+this brief. Hosted Linux/Windows Python 3.11/3.12 CI remains pending; this
+dirty worktree was not pushed or committed, so the four hosted jobs could not
+be run on this exact candidate. Brief 19 remains pending independent review,
+hosted CI, and explicit acceptance of the documented raw logarithm
+serialization extension. GUI integration and final real-image comparison
+remain Briefs 20/21.

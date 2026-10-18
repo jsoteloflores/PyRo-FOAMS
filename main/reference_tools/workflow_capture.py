@@ -72,7 +72,7 @@ def _verify_captured_cases(capture: Mapping[str, object], catalog: WorkflowCaseC
     for run in catalog.runs:
         case = actual[run.case_id]
         if run.expected_outcome == "success":
-            required = {"direct_image_ids", "project_measurements", "initial_shape", "initial_statistics", "tables", "volume", "bulk_na"}
+            required = {"direct_image_ids", "project_measurements", "initial_shape", "initial_statistics", "threshold_settings", "tables", "volume", "bulk_na"}
             if case.get("outcome") != "success" or not required.issubset(case):
                 raise WorkflowReferenceValidationError(
                     "successful catalog case lacks one or more required stage outputs",
@@ -92,6 +92,41 @@ def _verify_captured_cases(capture: Mapping[str, object], catalog: WorkflowCaseC
                     "successful catalog case lacks exactly nine source table arrays",
                     code="capture_table_set_mismatch",
                     context={"case_id": run.case_id, "tables": tuple(case["tables"])},
+                )
+            log_inputs = case["volume"].get("log_inputs")
+            if not isinstance(log_inputs, dict) or (
+                log_inputs.get("log10_expression") != "Log_Nvl=log10(NV_cumsum);"
+                or log_inputs.get("natural_log_expression") != "ln_n=log(n_numb);"
+            ):
+                raise WorkflowReferenceValidationError(
+                    "source logarithm expressions or operands are missing",
+                    code="missing_log_operand_evidence",
+                    context={"case_id": run.case_id},
+                )
+            thresholds = case["threshold_settings"]
+            if not isinstance(thresholds, dict):
+                raise WorkflowReferenceValidationError(
+                    "captured threshold settings are malformed",
+                    code="capture_threshold_settings_mismatch",
+                    context={"case_id": run.case_id},
+                )
+            maximum_scale = max(group.scale_px_per_mm for group in run.scene.groups)
+            project_minimum = float(run.preparation["minimum_diameter_px"])
+            statistics_minimum = float(run.analysis["shape_minimum_diameter_px"])
+            expected_operator = ">" if run.analysis["shape_statistics_mode"] == "initial_analysis" else ">="
+            expected_thresholds = {
+                "project_minimum_diameter_px": project_minimum,
+                "statistics_minimum_diameter_px": statistics_minimum,
+                "maximum_scale_px_per_mm": maximum_scale,
+                "project_threshold_mm": project_minimum / maximum_scale,
+                "statistics_threshold_mm": statistics_minimum / maximum_scale,
+                "statistics_operator": expected_operator,
+            }
+            if any(thresholds.get(key) != value for key, value in expected_thresholds.items()):
+                raise WorkflowReferenceValidationError(
+                    "captured MATLAB threshold settings differ from the versioned Python run settings",
+                    code="capture_threshold_settings_mismatch",
+                    context={"case_id": run.case_id, "expected": expected_thresholds, "actual": thresholds},
                 )
         else:
             failure = case.get("failure")
