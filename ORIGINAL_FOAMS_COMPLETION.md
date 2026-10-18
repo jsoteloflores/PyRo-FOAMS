@@ -271,10 +271,16 @@ The durable, MATLAB-free five-case projection is
 `main/tests/fixtures/19a_foams105_reference.json.gz`, with sibling manifest
 `19a_foams105_reference.json.gz.manifest.json`. The manifest pins compressed
 and decompressed SHA-256, parent capture hash, selected catalog hash and exact
-case IDs. Final compressed SHA-256:
-`7b2acdbd5e564a0f5774e82a39f7aa2751fe79ab061a7ad88ba808b462728b93`; payload
-SHA-256: `afecf0ab4c187e480051268f4734e24e703a4e787eb83443ccf8a4f4b831f0b5`.
-Decompression is deterministic gzip (`mtime=0`) over canonical UTF-8 JSON.
+case IDs. Final portable compressed SHA-256:
+`600f27ff79cc709522d93a108bef97b2b8d7d6a0dc9a792d5a6aa0c73b6abdf5`; payload
+SHA-256 remains `60ed38a96f05fd3dae301e788eda1f2f6fdab76ea411e5a34f5a2183c39b09b7`.
+The earlier Windows gzip stream had compressed SHA-256
+`32379cd9313e24f12ea4ea22468b0eb649b52f72dc1375911ebf7ca33fac7aa6`; only its
+gzip representation changed. The manifest records the old/new compression
+methods and unchanged parent capture/payload hashes. New streams use
+`gzip.GzipFile` with empty filename, `mtime=0`, level 9, over canonical UTF-8
+JSON. Cross-runtime verification compares decoded payload bytes, not zlib
+bitstreams.
 The projection retains every selected case field, table cell,
 identity, direct image evidence, expected failure, and strict/policy report;
 it does not filter mismatches. No private original source files are included.
@@ -332,3 +338,54 @@ be run on this exact candidate. Brief 19 remains pending independent review,
 hosted CI, and explicit acceptance of the documented raw logarithm
 serialization extension. GUI integration and final real-image comparison
 remain Briefs 20/21.
+
+## Brief 19b Packaging And Export-Record Validation
+
+The reviewed base commit is `2a91dd5520d63f25b866957359de22e8cec3f43f`. The
+saved MATLAB payload and parent capture did not change. The reviewed Windows
+gzip stream (`32379cd9...fac7aa6`) was verified against its recorded hash,
+decompressed, and recompressed with `gzip.GzipFile` using an empty filename,
+`mtime=0`, level 9. This is a transport-only change. The final manifest records
+compressed SHA-256
+`600f27ff79cc709522d93a108bef97b2b8d7d6a0dc9a792d5a6aa0c73b6abdf5`, unchanged
+payload SHA-256
+`60ed38a96f05fd3dae301e788eda1f2f6fdab76ea411e5a34f5a2183c39b09b7`, and
+unchanged parent capture SHA-256
+`ad5fce5ea56d406877b5948821ececa8bc0ca298dd9f650bfce0b90e5bde6d4c`.
+New package streams use a fixed GzipFile header; cross-runtime checks compare
+the decoded canonical payload, not zlib's platform-dependent bitstream.
+
+Prebuilt exports are accepted only when issued by
+`build_foams105_export_tables` and when the private immutable validation
+record still matches the exact analysis object, ordered table objects,
+headers/rows, supported immutable cells, diagnostics, completion, method, and
+schema. The writer validates both the analysis and projection before creating
+the destination or temporary sibling. The private low-level projector does
+not issue a valid record. The `N_A=123456` Calc_out reproduction, altered
+Shape_out cells/headers, table order, diagnostics, completion, missing record,
+mixed analysis, and valid no-reprojection path are covered. Valid prebuilt
+writing retains byte-identical output checksums; the benchmark uses this
+validated path rather than bypassing projection validation.
+
+CI run `39151038871` failed on Linux Python 3.11 because its earlier package
+test demanded Windows and Linux gzip streams be byte-identical. The corrected
+test checks same-runtime GzipFile reproducibility and cross-runtime decoded
+payload identity. The 19b source changes are local and uncommitted at reviewed
+base `2a91dd5520d63f25b866957359de22e8cec3f43f`; no final four-job hosted CI
+run exists yet. Final local validation passes 632 tests (no reported skips),
+all 17 examples under `python -O`, and configured Ruff. The final offline
+saved-package comparison on this base plus the five dirty candidate files
+produces 3,318 rows: 3,255 exact/toleranced matches, 62 raw logarithm
+representation differences, all 62 policy-qualified, zero unexpected
+mismatches, and one unavailable expected-failure stage. Strict mode continues
+to fail on the raw differences; literal Calc_out parity is not claimed.
+
+The final manifest records compressed SHA-256
+`600f27ff79cc709522d93a108bef97b2b8d7d6a0dc9a792d5a6aa0c73b6abdf5`, payload
+SHA-256 `60ed38a96f05fd3dae301e788eda1f2f6fdab76ea411e5a34f5a2183c39b09b7`,
+and parent capture SHA-256
+`ad5fce5ea56d406877b5948821ececa8bc0ca298dd9f650bfce0b90e5bde6d4c`.
+Only the gzip transport changed; scientific payload and source provenance did
+not. GitHub CLI and Python 3.12 are not installed in this environment, and
+the candidate has not been committed/pushed, so the four hosted jobs cannot
+be truthfully reported as run. Hosted CI remains a release blocker.

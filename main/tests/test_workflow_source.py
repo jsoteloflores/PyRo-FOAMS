@@ -25,7 +25,14 @@ from main.reference_tools.workflow_compare import (
     workflow_comparison_json,
     workflow_comparison_markdown,
 )
-from main.reference_tools.workflow_package import import_workflow_reference_package
+from main.reference_tools.workflow_package import (
+    LEGACY_COMPRESSION_METHOD,
+    REFERENCE_COMPRESSION_METHOD,
+    _canonical_json,
+    _gzip_canonical_payload,
+    import_workflow_reference_package,
+    repack_workflow_reference_package_transport_only,
+)
 from main.reference_tools.workflow_reference import (
     WorkflowReferenceValidationError,
     extract_mapped_source_fragment,
@@ -639,7 +646,7 @@ class TestWorkflowReferencePackage(unittest.TestCase):
 
         self.assertEqual(caught.exception.code, "reference_package_checksum_mismatch")
 
-    def test_package_decompression_and_recompression_are_deterministic(self):
+    def test_package_hashes_and_same_runtime_compression_are_deterministic(self):
         compressed = self.package_path.read_bytes()
         manifest_path = self.package_path.with_suffix(self.package_path.suffix + ".manifest.json")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -647,7 +654,90 @@ class TestWorkflowReferencePackage(unittest.TestCase):
 
         self.assertEqual(hashlib.sha256(compressed).hexdigest(), manifest["compressed_sha256"])
         self.assertEqual(hashlib.sha256(payload).hexdigest(), manifest["payload_sha256"])
-        self.assertEqual(gzip.compress(payload, compresslevel=9, mtime=0), compressed)
+        self.assertEqual(_gzip_canonical_payload(payload), _gzip_canonical_payload(payload))
+
+    def test_transport_only_repack_preserves_payload_and_parent_capture(self):
+        old_manifest = json.loads(
+            self.package_path.with_suffix(self.package_path.suffix + ".manifest.json").read_text(encoding="utf-8")
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "legacy.json.gz"
+            legacy_manifest = dict(old_manifest)
+            legacy_payload = gzip.decompress(self.package_path.read_bytes())
+            legacy_compressed = gzip.compress(legacy_payload, compresslevel=9, mtime=0)
+            legacy_manifest["filename"] = legacy_path.name
+            legacy_manifest["compression"] = LEGACY_COMPRESSION_METHOD
+            legacy_manifest["compressed_sha256"] = hashlib.sha256(legacy_compressed).hexdigest()
+            legacy_manifest.pop("transport_change", None)
+            legacy_path.write_bytes(legacy_compressed)
+            legacy_path.with_suffix(legacy_path.suffix + ".manifest.json").write_text(
+                json.dumps(legacy_manifest),
+                encoding="utf-8",
+            )
+            destination = Path(directory) / self.package_path.name
+            new_manifest = repack_workflow_reference_package_transport_only(legacy_path, destination)
+            new_payload = gzip.decompress(destination.read_bytes())
+            self.assertEqual(hashlib.sha256(new_payload).hexdigest(), new_manifest["payload_sha256"])
+            self.assertEqual(
+                import_workflow_reference_package(
+                    destination,
+                    repository_root=Path(__file__).resolve().parents[2],
+                ).capture["source_commit"],
+                self.imported.capture["source_commit"],
+            )
+
+        self.assertEqual(new_manifest["payload_sha256"], old_manifest["payload_sha256"])
+        self.assertEqual(new_manifest["parent_capture_sha256"], old_manifest["parent_capture_sha256"])
+        self.assertEqual(new_manifest["transport_change"]["kind"], "gzip_representation_only")
+        self.assertEqual(new_manifest["transport_change"]["from"], LEGACY_COMPRESSION_METHOD)
+        self.assertEqual(new_manifest["compression"], REFERENCE_COMPRESSION_METHOD)
+        self.assertEqual(new_manifest["filename"], self.package_path.name)
+
+    def test_changed_payload_with_valid_compressed_hash_is_rejected(self):
+        compressed = self.package_path.read_bytes()
+        manifest_path = self.package_path.with_suffix(self.package_path.suffix + ".manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = bytearray(gzip.decompress(compressed))
+        payload[-2] ^= 1
+        changed_compressed = _gzip_canonical_payload(bytes(payload))
+        manifest["compressed_sha256"] = hashlib.sha256(changed_compressed).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            changed_path = Path(directory) / self.package_path.name
+            changed_path.write_bytes(changed_compressed)
+            changed_path.with_suffix(changed_path.suffix + ".manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaises(WorkflowReferenceValidationError) as caught:
+                import_workflow_reference_package(changed_path, repository_root=Path(__file__).resolve().parents[2])
+        self.assertEqual(caught.exception.code, "reference_package_payload_checksum_mismatch")
+
+    def test_mismatched_manifest_payload_hash_is_rejected(self):
+        manifest_path = self.package_path.with_suffix(self.package_path.suffix + ".manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["payload_sha256"] = "0" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            changed_path = Path(directory) / self.package_path.name
+            changed_path.write_bytes(self.package_path.read_bytes())
+            changed_path.with_suffix(changed_path.suffix + ".manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaises(WorkflowReferenceValidationError) as caught:
+                import_workflow_reference_package(changed_path, repository_root=Path(__file__).resolve().parents[2])
+        self.assertEqual(caught.exception.code, "reference_package_payload_checksum_mismatch")
+
+    def test_malformed_case_projection_is_rejected(self):
+        compressed = self.package_path.read_bytes()
+        manifest_path = self.package_path.with_suffix(self.package_path.suffix + ".manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = json.loads(gzip.decompress(compressed))
+        payload["capture"]["cases"].pop()
+        changed_payload = _canonical_json(payload)
+        changed_compressed = _gzip_canonical_payload(changed_payload)
+        manifest["payload_sha256"] = hashlib.sha256(changed_payload).hexdigest()
+        manifest["compressed_sha256"] = hashlib.sha256(changed_compressed).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            changed_path = Path(directory) / self.package_path.name
+            changed_path.write_bytes(changed_compressed)
+            changed_path.with_suffix(changed_path.suffix + ".manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaises(WorkflowReferenceValidationError) as caught:
+                import_workflow_reference_package(changed_path, repository_root=Path(__file__).resolve().parents[2])
+        self.assertEqual(caught.exception.code, "reference_package_case_mismatch")
 
 
 if __name__ == "__main__":

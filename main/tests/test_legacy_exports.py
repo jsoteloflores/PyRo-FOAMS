@@ -20,6 +20,7 @@ from main.core.legacy_exports import (
     SHAPE_HEADERS,
     STATS_HEADERS,
     VES_HEADERS,
+    Foams105ExportDiagnostic,
     Foams105ExportError,
     _area_out_projection,
     _format_cell,
@@ -236,6 +237,19 @@ class TestFoams105ExportProjections(unittest.TestCase):
 
 
 class TestFoams105ExportBundle(unittest.TestCase):
+    def _assert_rejected_without_output(self, analysis_result, projection, code):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "bundle"
+            with self.assertRaises(Foams105ExportError) as caught:
+                write_foams105_export_bundle(
+                    analysis_result,
+                    destination,
+                    projection_result=projection,
+                )
+            self.assertEqual(caught.exception.code, code)
+            self.assertFalse(destination.exists())
+            self.assertEqual(tuple(Path(directory).iterdir()), ())
+
     def test_deterministic_tsv_bundle_checksums_and_collision_refusal(self):
         result = _build_result()
         with tempfile.TemporaryDirectory() as root:
@@ -291,6 +305,99 @@ class TestFoams105ExportBundle(unittest.TestCase):
                     projection_result=projection,
                 )
         self.assertEqual(caught.exception.code, "projection_analysis_mismatch")
+
+    def test_private_projection_helper_does_not_issue_public_validation_record(self):
+        result = _build_result()
+        unrecorded_projection = _project_foams105_export_tables(result)
+        self.assertIsNone(unrecorded_projection._validation_record)
+        self._assert_rejected_without_output(
+            result,
+            unrecorded_projection,
+            "missing_projection_validation_record",
+        )
+
+    def test_replaced_shape_rows_headers_order_completion_and_diagnostics_are_rejected(self):
+        result = _build_result()
+        projection = build_foams105_export_tables(result)
+        shape_index = next(index for index, table in enumerate(projection.tables) if table.filename == "Shape_out.txt")
+        shape_table = projection.tables[shape_index]
+        changed_shape_row = (shape_table.rows[0][0] + 0.125,) + shape_table.rows[0][1:]
+        changed_rows = replace(shape_table, rows=(changed_shape_row,) + shape_table.rows[1:])
+        changed_shape_tables = list(projection.tables)
+        changed_shape_tables[shape_index] = changed_rows
+        changed_projection_rows = replace(projection, tables=tuple(changed_shape_tables))
+        changed_header = replace(shape_table, headers=("tampered",) + shape_table.headers[1:])
+        changed_header_tables = list(projection.tables)
+        changed_header_tables[shape_index] = changed_header
+        changed_projection_header = replace(projection, tables=tuple(changed_header_tables))
+        swapped_tables = (projection.tables[1], projection.tables[0]) + projection.tables[2:]
+        changed_projection_order = replace(projection, tables=swapped_tables)
+        changed_projection_complete = replace(projection, complete=not projection.complete)
+        changed_projection_method = replace(projection, method="tampered-method")
+        changed_projection_schema = replace(projection, schema_version="tampered-schema")
+        changed_projection_diagnostics = replace(
+            projection,
+            diagnostics=projection.diagnostics
+            + (Foams105ExportDiagnostic("tampered", None, None, None, "changed diagnostics"),),
+        )
+        missing_record = replace(projection, _validation_record=None)
+
+        for altered, code in (
+            (changed_projection_rows, "invalid_projection_record"),
+            (changed_projection_header, "invalid_projection_record"),
+            (changed_projection_order, "invalid_projection_record"),
+            (changed_projection_complete, "invalid_projection_record"),
+            (changed_projection_method, "invalid_projection_record"),
+            (changed_projection_schema, "invalid_projection_record"),
+            (changed_projection_diagnostics, "invalid_projection_record"),
+            (missing_record, "missing_projection_validation_record"),
+        ):
+            with self.subTest(code=code, projection=altered):
+                self._assert_rejected_without_output(result, altered, code)
+
+    def test_valid_prebuilt_projection_does_not_reproject(self):
+        result = _build_result()
+        projection = build_foams105_export_tables(result)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch(
+                "main.core.legacy_exports.build_foams105_export_tables",
+                side_effect=AssertionError("projection builder called"),
+            ) as builder, patch(
+                "main.core.legacy_exports._project_foams105_export_tables",
+                side_effect=AssertionError("table projection called"),
+            ) as projector:
+                bundle = write_foams105_export_bundle(
+                    result,
+                    Path(directory) / "bundle",
+                    projection_result=projection,
+                )
+            self.assertTrue(bundle.complete)
+            builder.assert_not_called()
+            projector.assert_not_called()
+
+    def test_altered_prebuilt_calc_out_row_is_rejected_before_output_creation(self):
+        result = _build_result()
+        projection = build_foams105_export_tables(result)
+        calc_index = next(index for index, table in enumerate(projection.tables) if table.filename == "Calc_out.txt")
+        calc_table = projection.tables[calc_index]
+        altered_first_row = (calc_table.rows[0][0], 123456.0) + calc_table.rows[0][2:]
+        altered_calc_table = replace(
+            calc_table,
+            rows=(altered_first_row,) + calc_table.rows[1:],
+        )
+        altered_tables = list(projection.tables)
+        altered_tables[calc_index] = altered_calc_table
+        altered_projection = replace(projection, tables=tuple(altered_tables))
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "bundle"
+            with self.assertRaises(Foams105ExportError):
+                write_foams105_export_bundle(
+                    result,
+                    destination,
+                    projection_result=altered_projection,
+                )
+            self.assertFalse(destination.exists())
+            self.assertEqual(tuple(Path(directory).iterdir()), ())
 
     def test_write_failure_cleans_only_temporary_sibling(self):
         result = _build_result()

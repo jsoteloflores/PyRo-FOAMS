@@ -10,7 +10,7 @@ import math
 import os
 import shutil
 import tempfile
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Optional, Tuple
@@ -123,6 +123,20 @@ class Foams105ExportTableProjection:
 
 
 @dataclass(frozen=True)
+class _Foams105ExportProjectionValidationRecord:
+    analysis_result: Foams105AnalysisResult
+    table_tuple_reference: Tuple[Foams105ExportTableProjection, ...]
+    table_references: Tuple[Foams105ExportTableProjection, ...]
+    table_field_references: Tuple[Tuple[object, ...], ...]
+    table_values: Tuple[Tuple[object, ...], ...]
+    diagnostics_reference: Tuple[Foams105ExportDiagnostic, ...]
+    diagnostics_values: Tuple[Foams105ExportDiagnostic, ...]
+    complete: bool
+    method: str
+    schema_version: str
+
+
+@dataclass(frozen=True)
 class Foams105ExportTablesResult:
     analysis_result: Foams105AnalysisResult
     tables: Tuple[Foams105ExportTableProjection, ...]
@@ -130,6 +144,11 @@ class Foams105ExportTablesResult:
     complete: bool
     method: str = FOAMS105_EXPORT_METHOD
     schema_version: str = FOAMS105_EXPORT_SCHEMA_VERSION
+    _validation_record: Optional[_Foams105ExportProjectionValidationRecord] = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -253,6 +272,180 @@ def _area_out_projection(result: Foams105AnalysisResult, diagnostics: list) -> F
     return _table("Area_out.txt", AREA_HEADERS, rows)
 
 
+def _projection_value_is_immutable(value: object) -> bool:
+    if value is None or type(value) in (str, int, float, bool):
+        return True
+    if type(value) is not Foams105RealValue:
+        return False
+    if not Foams105RealValue.__dataclass_params__.frozen:
+        return False
+    return (
+        value.value is None or type(value.value) in (int, float)
+    ) and (
+        value.reason is None or type(value.reason) is str
+    ) and type(value.operands) is tuple and all(type(item) in (int, float) for item in value.operands) and (
+        value.legacy_classification is None or type(value.legacy_classification) is str
+    ) and (value.upstream_reason is None or type(value.upstream_reason) is str)
+
+
+def _projection_content_snapshot(
+    projection: Foams105ExportTablesResult,
+) -> Tuple[Tuple[object, ...], ...]:
+    if (
+        type(projection.tables) is not tuple
+        or type(projection.diagnostics) is not tuple
+        or type(projection.complete) is not bool
+        or type(projection.method) is not str
+        or type(projection.schema_version) is not str
+    ):
+        raise Foams105ExportError(
+            "table projection collections or metadata are not immutable builder values",
+            code="invalid_projection_values",
+        )
+    snapshots = []
+    for table_index, table in enumerate(projection.tables):
+        if (
+            type(table) is not Foams105ExportTableProjection
+            or type(table.filename) is not str
+            or type(table.headers) is not tuple
+            or not all(type(header) is str for header in table.headers)
+            or type(table.rows) is not tuple
+            or any(type(row) is not tuple for row in table.rows)
+            or type(table.status) is not str
+            or table.unavailable_reason is not None and type(table.unavailable_reason) is not str
+        ):
+            raise Foams105ExportError(
+                "projected table is not an immutable builder value",
+                code="invalid_projection_values",
+                context={"table_index": table_index},
+            )
+        for row_index, row in enumerate(table.rows):
+            if any(not _projection_value_is_immutable(value) for value in row):
+                raise Foams105ExportError(
+                    "projected table row contains an unsupported mutable value",
+                    code="invalid_projection_values",
+                    context={"table_index": table_index, "row_index": row_index},
+                )
+        snapshots.append(
+            (
+                table.filename,
+                table.headers,
+                table.rows,
+                tuple(table.rows),
+                tuple(tuple(row) for row in table.rows),
+                table.status,
+                table.unavailable_reason,
+            )
+        )
+    if any(
+        type(diagnostic) is not Foams105ExportDiagnostic
+        or type(diagnostic.code) is not str
+        or diagnostic.table is not None and type(diagnostic.table) is not str
+        or diagnostic.row_index is not None and type(diagnostic.row_index) is not int
+        or diagnostic.column is not None and type(diagnostic.column) is not str
+        or diagnostic.reason is not None and type(diagnostic.reason) is not str
+        or diagnostic.legacy_classification is not None and type(diagnostic.legacy_classification) is not str
+        or type(diagnostic.context) is not tuple
+        or any(
+            type(item) is not tuple
+            or len(item) != 2
+            or type(item[0]) is not str
+            or type(item[1]) is not str
+            for item in diagnostic.context
+        )
+        for diagnostic in projection.diagnostics
+    ):
+        raise Foams105ExportError(
+            "projection diagnostics are not builder-issued immutable records",
+            code="invalid_projection_values",
+        )
+    return tuple(snapshots)
+
+
+def _issue_projection_validation_record(
+    projection: Foams105ExportTablesResult,
+) -> Foams105ExportTablesResult:
+    snapshots = _projection_content_snapshot(projection)
+    record = _Foams105ExportProjectionValidationRecord(
+        analysis_result=projection.analysis_result,
+        table_tuple_reference=projection.tables,
+        table_references=tuple(projection.tables),
+        table_field_references=tuple(
+            (table.headers, table.rows, *tuple(table.rows))
+            for table in projection.tables
+        ),
+        table_values=snapshots,
+        diagnostics_reference=projection.diagnostics,
+        diagnostics_values=tuple(projection.diagnostics),
+        complete=projection.complete,
+        method=projection.method,
+        schema_version=projection.schema_version,
+    )
+    return replace(projection, _validation_record=record)
+
+
+def _validate_projection_validation_record(
+    analysis_result: Foams105AnalysisResult,
+    projection: Foams105ExportTablesResult,
+) -> Foams105ExportTablesResult:
+    record = getattr(projection, "_validation_record", None)
+    if not isinstance(record, _Foams105ExportProjectionValidationRecord):
+        raise Foams105ExportError(
+            "prebuilt table projection was not issued by the public builder",
+            code="missing_projection_validation_record",
+        )
+    if projection.analysis_result is not analysis_result or record.analysis_result is not analysis_result:
+        raise Foams105ExportError(
+            "prebuilt table projection belongs to another analysis result",
+            code="projection_analysis_mismatch",
+        )
+    if (
+        projection.tables is not record.table_tuple_reference
+        or len(projection.tables) != len(record.table_references)
+        or any(actual is not expected for actual, expected in zip(projection.tables, record.table_references))
+        or projection.diagnostics is not record.diagnostics_reference
+        or any(actual is not expected for actual, expected in zip(projection.diagnostics, record.diagnostics_values))
+        or projection.complete is not record.complete
+        or projection.method != record.method
+        or projection.schema_version != record.schema_version
+    ):
+        raise Foams105ExportError(
+            "prebuilt table projection metadata or ordered references were replaced",
+            code="invalid_projection_record",
+        )
+    for table_index, (table, expected_fields) in enumerate(zip(projection.tables, record.table_field_references)):
+        if (
+            len(expected_fields) != len(table.rows) + 2
+            or table.headers is not expected_fields[0]
+            or table.rows is not expected_fields[1]
+            or any(row is not expected for row, expected in zip(table.rows, expected_fields[2:]))
+        ):
+            raise Foams105ExportError(
+                "prebuilt table field references differ from the builder-issued record",
+                code="invalid_projection_record",
+                context={"table_index": table_index, "filename": table.filename},
+            )
+    try:
+        current_snapshot = _projection_content_snapshot(projection)
+    except Foams105ExportError as exc:
+        raise Foams105ExportError(
+            "prebuilt table projection content is invalid",
+            code="invalid_projection_record",
+            context={"cause_code": exc.code, **dict(exc.context)},
+        ) from exc
+    if current_snapshot != record.table_values:
+        raise Foams105ExportError(
+            "prebuilt table projection rows or headers differ from the builder snapshot",
+            code="invalid_projection_record",
+        )
+    if tuple(projection.diagnostics) != record.diagnostics_values:
+        raise Foams105ExportError(
+            "prebuilt projection diagnostics differ from the builder snapshot",
+            code="invalid_projection_record",
+        )
+    return projection
+
+
 def build_foams105_export_tables(analysis_result: Foams105AnalysisResult) -> Foams105ExportTablesResult:
     """Project stored stage results into the nine source table schemas."""
 
@@ -264,7 +457,7 @@ def build_foams105_export_tables(analysis_result: Foams105AnalysisResult) -> Foa
             code="invalid_analysis_result_cache",
             context={"cause_stage": exc.stage, "cause_code": exc.cause_code},
         ) from exc
-    return _project_foams105_export_tables(analysis_result)
+    return _issue_projection_validation_record(_project_foams105_export_tables(analysis_result))
 
 
 def _project_foams105_export_tables(analysis_result: Foams105AnalysisResult) -> Foams105ExportTablesResult:
@@ -673,16 +866,21 @@ def write_foams105_export_bundle(
 
     if projection_result is None:
         tables = build_foams105_export_tables(analysis_result)
-    elif (
-        not isinstance(projection_result, Foams105ExportTablesResult)
-        or projection_result.analysis_result is not analysis_result
-    ):
-        raise Foams105ExportError(
-            "prebuilt table projection must belong to the exact analysis result",
-            code="projection_analysis_mismatch",
-        )
     else:
-        tables = projection_result
+        try:
+            analysis_result = _validate_analysis_result(analysis_result)
+        except Foams105PipelineStageError as exc:
+            raise Foams105ExportError(
+                "analysis result failed its builder-issued cache validation",
+                code="invalid_analysis_result_cache",
+                context={"cause_stage": exc.stage, "cause_code": exc.cause_code},
+            ) from exc
+        if not isinstance(projection_result, Foams105ExportTablesResult):
+            raise Foams105ExportError(
+                "prebuilt table projection has the wrong type",
+                code="invalid_projection_record",
+            )
+        tables = _validate_projection_validation_record(analysis_result, projection_result)
     destination = Path(output_directory).expanduser().resolve()
     if destination.exists():
         raise Foams105ExportError(

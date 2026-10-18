@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import io
 import json
 import tempfile
 from pathlib import Path
@@ -28,6 +29,8 @@ DEFAULT_REFERENCE_CASES = (
     "shape_threshold_equality_updated_inclusive",
     "empty_autosmart_expected_domain_failure",
 )
+REFERENCE_COMPRESSION_METHOD = "gzip.GzipFile-filename-empty-mtime-zero-level9-canonical-json-v1"
+LEGACY_COMPRESSION_METHOD = "gzip-mtime-zero-canonical-json-v1"
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -42,6 +45,69 @@ def _canonical_json(value: object) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def _gzip_canonical_payload(payload: bytes) -> bytes:
+    stream = io.BytesIO()
+    with gzip.GzipFile(
+        filename="",
+        mode="wb",
+        fileobj=stream,
+        compresslevel=9,
+        mtime=0,
+    ) as compressor:
+        compressor.write(payload)
+    return stream.getvalue()
+
+
+def repack_workflow_reference_package_transport_only(
+    package_path: Union[Path, str],
+    output_path: Union[Path, str],
+) -> Mapping[str, object]:
+    """Recompress verified package payload bytes without changing scientific/provenance JSON."""
+
+    source = Path(package_path).resolve()
+    source_manifest_path = source.with_suffix(source.suffix + ".manifest.json")
+    destination = Path(output_path).resolve()
+    destination_manifest_path = destination.with_suffix(destination.suffix + ".manifest.json")
+    if destination.exists() or destination_manifest_path.exists():
+        raise _error("transport-repack output already exists", "output_directory_exists", path=str(destination))
+    try:
+        compressed = source.read_bytes()
+        manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+        if _sha256_bytes(compressed) != manifest.get("compressed_sha256"):
+            raise _error("source package compressed hash mismatch", "reference_package_checksum_mismatch")
+        payload = gzip.decompress(compressed)
+        if _sha256_bytes(payload) != manifest.get("payload_sha256"):
+            raise _error("source package payload hash mismatch", "reference_package_payload_checksum_mismatch")
+    except WorkflowReferenceValidationError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError, gzip.BadGzipFile, EOFError) as exc:
+        raise _error("source package is unreadable or malformed", "invalid_reference_package", cause=str(exc)) from exc
+
+    new_compressed = _gzip_canonical_payload(payload)
+    updated_manifest = dict(manifest)
+    updated_manifest["filename"] = destination.name
+    updated_manifest["compression"] = REFERENCE_COMPRESSION_METHOD
+    updated_manifest["compressed_sha256"] = _sha256_bytes(new_compressed)
+    updated_manifest["payload_sha256"] = _sha256_bytes(payload)
+    if not isinstance(manifest.get("transport_change"), dict):
+        if manifest.get("compression") != REFERENCE_COMPRESSION_METHOD or manifest.get("compressed_sha256") != _sha256_bytes(new_compressed):
+            updated_manifest["transport_change"] = {
+                "kind": "gzip_representation_only",
+                "from": manifest.get("compression", "unknown"),
+                "to": REFERENCE_COMPRESSION_METHOD,
+                "payload_sha256_preserved": True,
+                "parent_capture_sha256_preserved": manifest.get("parent_capture_sha256"),
+            }
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(new_compressed)
+    destination_manifest_path.write_text(
+        json.dumps(updated_manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return updated_manifest
 
 
 def _error(message: str, code: str, **context: object) -> WorkflowReferenceValidationError:
@@ -141,7 +207,7 @@ def build_workflow_reference_package(
         },
     }
     raw_payload = _canonical_json(package_payload)
-    compressed_payload = gzip.compress(raw_payload, compresslevel=9, mtime=0)
+    compressed_payload = _gzip_canonical_payload(raw_payload)
     destination = Path(output_path).resolve()
     manifest_path = destination.with_suffix(destination.suffix + ".manifest.json")
     if destination.exists() or manifest_path.exists():
@@ -151,7 +217,7 @@ def build_workflow_reference_package(
     manifest = {
         "schema_version": 1,
         "filename": destination.name,
-        "compression": "gzip-mtime-zero-canonical-json-v1",
+        "compression": REFERENCE_COMPRESSION_METHOD,
         "compressed_sha256": _sha256_bytes(compressed_payload),
         "payload_sha256": _sha256_bytes(raw_payload),
         "parent_capture_sha256": source_manifest["capture_sha256"],
@@ -190,6 +256,8 @@ def import_workflow_reference_package(
         raise _error("reference package parent capture hash is inconsistent", "reference_package_parent_mismatch")
     if payload.get("selected_catalog_sha256") != manifest.get("selected_catalog_sha256"):
         raise _error("reference package catalog hash is inconsistent", "reference_package_catalog_mismatch")
+    if manifest.get("compression") not in (REFERENCE_COMPRESSION_METHOD, LEGACY_COMPRESSION_METHOD):
+        raise _error("reference package compression policy is unsupported", "reference_package_compression_mismatch")
     if payload.get("completion", {}).get("status") != "COMPLETE" or payload.get("completion", {}).get("process_exit_code") != 0:
         raise _error("reference package does not record successful MATLAB completion", "incomplete_reference_package")
     if payload.get("capture", {}).get("source_commit") != payload.get("source_manifest", {}).get("source_commit"):
