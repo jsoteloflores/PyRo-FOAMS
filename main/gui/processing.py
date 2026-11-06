@@ -2,6 +2,7 @@
 # Step 2 GUI: Thresholding + Separation with live preview
 from __future__ import annotations
 
+import inspect
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -87,7 +88,11 @@ class ProcessingWindow(tk.Toplevel):
                  calibrationRevisions=None,
                  binaries=None,
                  labels=None,
-                 labelRevisions=None):
+                 labelRevisions=None,
+                 targetIndices=None,
+                 startIndex=0,
+                 processingSettings=None,
+                 analysisCallback=None):
         super().__init__(parent)
         self.title("PyFOAMS – Processing (Threshold + Separation)")
         self.transient(parent)
@@ -98,11 +103,17 @@ class ProcessingWindow(tk.Toplevel):
         self.paths = paths or [f"Image {i+1}" for i in range(len(images))]
         self.scales = scales or [None] * len(images)
         self.resultsCallback = resultsCallback
+        self.analysisCallback = analysisCallback
         self.imageRevisions = imageRevisions if imageRevisions is not None else [0] * len(images)
         self.calibrationRevisions = calibrationRevisions if calibrationRevisions is not None else [0] * len(images)
+        if targetIndices is None:
+            self.targetIndices = list(range(len(images)))
+        else:
+            picked = sorted({int(index) for index in targetIndices if 0 <= int(index) < len(images)})
+            self.targetIndices = picked
 
         # Must exist before any _showCurrent() calls/bindings
-        self.currentIndex = 0
+        self.currentIndex = max(0, min(int(startIndex), len(images) - 1)) if images else 0
 
         # Outputs
         self.binaries = binaries if binaries is not None else [None] * len(self.images)
@@ -188,6 +199,8 @@ class ProcessingWindow(tk.Toplevel):
         self._invalidEntry = None
         self._dispatchAfterId = None
         self._resultPollAfterId = None
+        self._restorePersistedSettings(processingSettings)
+
         self._ownership = PreviewOwnership()
         self._worker = LatestPreviewWorker(self._computePreviewRequest)
 
@@ -205,6 +218,75 @@ class ProcessingWindow(tk.Toplevel):
         self.after_idle(self._showCurrent)
         self.geometry("1280x800")
         self.minsize(980, 640)
+
+    def _restorePersistedSettings(self, processing_settings):
+        if not isinstance(processing_settings, dict):
+            return
+        threshold = processing_settings.get("threshold")
+        separation = processing_settings.get("separation")
+        if not isinstance(threshold, dict) or not isinstance(separation, dict):
+            return
+        values = {
+            "methodVar": threshold.get("method", "otsu"),
+            "polarityVar": threshold.get("polarity", "auto"),
+            "useCLAHEVar": threshold.get("useCLAHE", False),
+            "claheClipVar": threshold.get("claheClip", 2.0),
+            "claheTileVar": threshold.get("claheTile", 8),
+            "medianKVar": threshold.get("medianK", 3),
+            "gaussianKVar": threshold.get("gaussianK", 0),
+            "applyOpenCloseVar": threshold.get("applyOpenClose", False),
+            "morphKVar": threshold.get("morphK", 3),
+            "adaptiveBlockVar": threshold.get("adaptiveBlock", 51),
+            "adaptiveCVar": threshold.get("adaptiveC", 2),
+            "percentileVar": threshold.get("percentile", 50.0),
+            "pickValueVar": threshold.get("pickValue", 128),
+            "pickTolVar": threshold.get("pickTolerance", 10),
+            "sepMethodVar": separation.get("method", "watershed"),
+            "fillHolesVar": separation.get("fillHoles", True),
+            "minAreaVar": separation.get("minAreaPx", 30),
+            "distanceBlurVar": separation.get("distanceBlurK", 3),
+            "peakMinDistVar": separation.get("peakMinDistance", 9),
+            "peakRelThrVar": separation.get("peakRelThreshold", 0.2),
+            "connectivityVar": separation.get("connectivity", 8),
+            "clearBorderVar": separation.get("clearBorder", False),
+            "overlayAlphaVar": separation.get("overlayAlpha", 0.45),
+        }
+        for attribute, value in values.items():
+            variable = getattr(self, attribute, None)
+            if variable is not None:
+                try:
+                    variable.set(value)
+                except (tk.TclError, TypeError, ValueError):
+                    return
+        self.useDefaultsVar.set(False)
+
+    def _emitResults(self, target_indices=None):
+        cb = getattr(self, "resultsCallback", None)
+        if not callable(cb):
+            return
+        settings = {
+            "threshold": self._committedConfig.threshold_dict(),
+            "separation": self._committedConfig.separation_dict(),
+        }
+        candidates = (
+            (self.binaries, self.labels, settings, target_indices),
+            (self.binaries, self.labels, settings),
+            (self.binaries, self.labels),
+            (self.binaries,),
+        )
+        try:
+            callback_signature = inspect.signature(cb)
+        except (TypeError, ValueError):
+            cb(*candidates[0])
+            return
+        for arguments in candidates:
+            try:
+                callback_signature.bind(*arguments)
+            except TypeError:
+                continue
+            cb(*arguments)
+            return
+        raise TypeError("results callback does not accept a supported argument set")
 
 
     # ----------------- UI -----------------
@@ -360,7 +442,7 @@ class ProcessingWindow(tk.Toplevel):
             bottom, text="Apply to Current", command=self.applyToCurrent, state="disabled"
         )
         self.applyCurrentButton.pack(side="left")
-        ttk.Button(bottom, text="Apply to All", command=self.applyToAll).pack(side="left", padx=6)
+        ttk.Button(bottom, text="Apply to selected", command=self.applyToAll).pack(side="left", padx=6)
         ttk.Button(bottom, text="Save Masks…", command=self.saveMasks).pack(side="left", padx=6)
         ttk.Button(bottom, text="Save Labels…", command=self.saveLabels).pack(side="left", padx=6)
         ttk.Button(bottom, text="Stereology…", command=self.openStereology).pack(side="left", padx=6)
@@ -653,20 +735,24 @@ class ProcessingWindow(tk.Toplevel):
             self._showCurrent()
 
     def _onClose(self):
-        self._ownership.invalidate()
-        if self._dispatchAfterId is not None:
+        ownership = getattr(self, "_ownership", None)
+        if ownership is not None:
+            ownership.invalidate()
+        if getattr(self, "_dispatchAfterId", None) is not None:
             try:
                 self.after_cancel(self._dispatchAfterId)
             except tk.TclError:
                 pass
             self._dispatchAfterId = None
-        if self._resultPollAfterId is not None:
+        if getattr(self, "_resultPollAfterId", None) is not None:
             try:
                 self.after_cancel(self._resultPollAfterId)
             except tk.TclError:
                 pass
             self._resultPollAfterId = None
-        self._worker.close()
+        worker = getattr(self, "_worker", None)
+        if worker is not None:
+            worker.close()
         self.destroy()
 
     # ----------------- Display -----------------
@@ -1255,6 +1341,10 @@ class ProcessingWindow(tk.Toplevel):
 
 
     def openStereology(self):
+        analysis_callback = getattr(self, "analysisCallback", None)
+        if callable(analysis_callback):
+            analysis_callback()
+            return
         if not any(L is not None for L in getattr(self, "labels", [])):
             messagebox.showwarning("Stereology", "No labels available. Apply to current or all first.")
             return
@@ -1301,12 +1391,10 @@ class ProcessingWindow(tk.Toplevel):
             self.labels[idx] = result.labels.copy() if result.labels is not None else None
             self.labelRevisions[idx] += 1
 
-            cb = getattr(self, "resultsCallback", None)
-            if callable(cb):
-                try:
-                    cb(self.binaries)
-                except Exception as e:
-                    print("resultsCallback error:", e)
+            try:
+                self._emitResults([idx])
+            except Exception as e:
+                print("resultsCallback error:", e)
 
             try: self.update_idletasks()
             except Exception: pass
@@ -1328,6 +1416,10 @@ class ProcessingWindow(tk.Toplevel):
             return
 
         n = len(self.images)
+        target_indices = list(self.targetIndices)
+        if not target_indices:
+            messagebox.showwarning("Apply", "No target images selected for batch apply.")
+            return
         if not hasattr(self, "binaries") or len(self.binaries) != n:
             self.binaries = [None] * n
         if not hasattr(self, "labels") or len(self.labels) != n:
@@ -1342,10 +1434,10 @@ class ProcessingWindow(tk.Toplevel):
         import os as _os
         max_workers = max(1, (_os.cpu_count() or 4) // 2)
         # For small batches, sequential is faster (no process spawn overhead)
-        if n <= 3:
+        if len(target_indices) <= 3:
             max_workers = 1
 
-        dlg = BusyDialog(self, title=f"Applying to all ({max_workers} workers)…", mode="determinate", maximum=n)
+        dlg = BusyDialog(self, title=f"Applying to selected ({max_workers} workers)…", mode="determinate", maximum=len(target_indices))
 
         def progress_cb(completed: int, total: int):
             try:
@@ -1361,23 +1453,28 @@ class ProcessingWindow(tk.Toplevel):
             except Exception: pass
 
             # Use parallel batch processing
+            source_images = [self.images[index] for index in target_indices]
+            source_scales = None
+            if getattr(self, "scales", None) is not None:
+                source_scales = [self.scales[index] for index in target_indices]
+
             binaries, labels_list, _ = process_batch_parallel(
-                images=self.images,
+                images=source_images,
                 thresh_params=tparams,
                 sep_params=sparams,
-                scales=getattr(self, "scales", None),
+                scales=source_scales,
                 measure=False,  # measurement done separately in stereology
                 max_workers=max_workers,
                 progress_callback=progress_cb
             )
 
             # Copy results
-            for i in range(n):
-                self.binaries[i] = binaries[i]
-                self.labels[i] = labels_list[i]
-                self.labelRevisions[i] += 1
+            for offset, image_index in enumerate(target_indices):
+                self.binaries[image_index] = binaries[offset]
+                self.labels[image_index] = labels_list[offset]
+                self.labelRevisions[image_index] += 1
 
-            saved = sum(1 for b in self.binaries if b is not None)
+            saved = sum(1 for i in target_indices if self.binaries[i] is not None)
 
         except Exception as e:
             messagebox.showerror("Apply", f"Batch processing failed:\n{e}")
@@ -1389,14 +1486,15 @@ class ProcessingWindow(tk.Toplevel):
             try: self.attributes("-disabled", False)
             except Exception: pass
 
-        cb = getattr(self, "resultsCallback", None)
-        if callable(cb):
-            try:
-                cb(self.binaries)
-            except Exception as e:
-                print("resultsCallback error:", e)
+        try:
+            self._emitResults(target_indices)
+        except Exception as e:
+            print("resultsCallback error:", e)
 
-        messagebox.showinfo("Apply", f"Applied to {saved}/{n} images (parallel, {max_workers} workers).")
+        messagebox.showinfo(
+            "Apply",
+            f"Applied to {saved}/{len(target_indices)} selected image(s) (parallel, {max_workers} workers).",
+        )
 
 
     def saveMasks(self):

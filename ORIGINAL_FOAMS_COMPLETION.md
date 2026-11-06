@@ -7,7 +7,7 @@ case IDs. Final compressed SHA-256:
 SHA-256: `60ed38a96f05fd3dae301e788eda1f2f6fdab76ea411e5a34f5a2183c39b09b7`.
 # Original FOAMS completion tracker
 
-Last updated: 2026-10-18.
+Last updated: 2026-11-05.
 
 **Original FOAMS implementation: NOT COMPLETE.**
 
@@ -25,7 +25,7 @@ Target reference: `jsoteloflores/FOAMS-1.0.5` at commit
 | 5. Volume distributions and normalization | Brief 14 accepted in configured CI run `38842930126` | Equivalent-sphere row volumes, all three normalization modes, signed and duplicate rows, ordered cumulative fractions, and contextual numerical failures tested |
 | 6. Density summaries and plotting quantities | Brief 15 accepted after Brief 15a correction commit `82033e0`; configured CI run `38846116435` | NV/NVcorr, exact-grid widths, ordered forward and reverse sums, logarithms, paired volume bins, strict size-category percentages, and Python 3.11/3.12 portability tested |
 | 7. Shape outputs and statistics | Briefs 16-18a accepted within bounded analytical/R2025b scopes | Moment orientation remains analytical; R2025b perimeter and roundn checks are narrow reference tests; corrected MATLAB replay now confirms threshold identities and updated eccentricity statistics |
-| 8. Analysis interface | Headless Brief 18 workflow accepted; GUI integration remains Brief 20 | Preparation/analysis APIs compose accepted stages and preserve source slots; GUI remains pending |
+| 8. Analysis interface | Headless Brief 18 workflow accepted; Brief 20 sample-project foundation implemented, integrated analysis setup remains pending | Project workspace routes modern stereology through accepted/included/calibrated snapshots; Original FOAMS grouping, nesting, and comparison screens are still future work |
 | 9. Original-equivalent exports | Nine deterministic TSV projections accepted in Brief 18a | All nine table families and sidecars are produced; corrected comparison has no unexpected finite/table mismatch outside the documented Calc_out logarithm representation extension, subject to Area_out/Ves_out availability rules |
 | 10. Full workflow reconciliation | Brief 19 corrected replay and durable reference complete; literal raw parity intentionally differs at log serialization; hosted CI pending | Exact pinned source/runtime capture and compressed five-case real-MATLAB reference; 7,719 full-capture rows with 117 operand-verified log representation differences and one unavailable source failure; redesigned benchmarks include bounded topology tradeoffs |
 
@@ -122,9 +122,14 @@ Historical MATLAB moment/perimeter equivalence is still not established.
 Brief 16 final validation fix extends strict scalar contracts to retained
 phase-measurement components before canonical replay uses nested IDs,
 coordinates, counts, and calibrated fields. Fractional/Boolean/nonfinite and
-nonscalar payloads now fail with typed contextual validation errors instead of
-incidental conversion/arithmetic exceptions. Valid NumPy integer scalar inputs
-remain supported. This remains a boundary correction only: perimeter,
+Configured Ruff passes. The full local unittest suite passes 646 tests with no
+skips. An
+automated live-Tk smoke on Windows passed 12 workflow gates covering duplicate
+basenames, selected batch drafts, editor changes, acceptance/inclusion,
+calibration, stereology, save, and reopen. A non-fatal Tk callback warning was
+printed during window teardown. This is widget-level automation, not a
+user-driven visual acceptance session; headless tests do not substitute for
+that final review.
 historical MATLAB equivalence, and derived shape statistics are still pending.
 
 friendly MATLAB TSV capture runner, Python preparation/import/comparison
@@ -389,3 +394,36 @@ Only the gzip transport changed; scientific payload and source provenance did
 not. GitHub CLI and Python 3.12 are not installed in this environment, and
 the candidate has not been committed/pushed, so the four hosted jobs cannot
 be truthfully reported as run. Hosted CI remains a release blocker.
+
+## Brief 20 Sample-Project Foundation
+
+The current Brief 20 implementation adds a Tk-independent, versioned sample
+project model and folder persistence, stable project/image/snapshot IDs,
+source and working-image assets, source-coordinate crop ROIs, draft and
+accepted masks/labels, calibration, inclusion, provenance, and per-image
+revisions. Assets are written atomically before the manifest; loading rejects
+unsupported schemas, missing/corrupt assets, invalid dimensions, inconsistent
+labels, and paths outside the project folder. Original source pixels remain
+separate from cropped working images.
+
+The existing thumbnail workflow now supports adding images to one sample,
+display renaming, independent active-image and batch-target selection,
+selected-only draft processing, binary raster or explicit NumPy label-map
+import, manual draft editing, acceptance, inclusion, project save/reopen, and
+accepted-input modern stereology. Physical analysis is blocked until every
+included image has a supported calibration. Draft processing settings and
+import/manual/automatic provenance are retained. The nine original-compatible
+table exports and scientific formulas were not changed.
+
+The workflow guide is `main/SAMPLE_PROJECT_WORKFLOW.md`. This is a foundation,
+not completed sample analysis or full FOAMS GUI integration. Original FOAMS
+analysis setup, method-specific resolution grouping and nesting, immutable
+analysis-run history, final joinable export tables, performance/usability
+acceptance, and same-real-image MATLAB comparison remain future handoffs.
+Configured Ruff passes. The full local unittest suite passes 645 tests. An
+automated live-Tk smoke on Windows passed 12 workflow gates covering duplicate
+basenames, selected batch drafts, editor changes, acceptance/inclusion,
+calibration, stereology, save, and reopen. A non-fatal Tk callback warning was
+printed during window teardown. This is widget-level automation, not a
+user-driven visual acceptance session; headless tests do not substitute for
+that final review.

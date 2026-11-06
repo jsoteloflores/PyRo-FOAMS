@@ -14,8 +14,9 @@ from __future__ import annotations
 #     * Per-image scale is displayed and stored
 import os
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from tkinter import filedialog, messagebox, simpledialog, ttk
+from typing import Dict, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
@@ -28,7 +29,29 @@ else:
     RESAMPLE_LANCZOS = getattr(Image, "LANCZOS", Image.BICUBIC)
 
 # Package imports
-from ..core.preprocessing import applyCropBatch, clampRectToImage, cropWithRect
+from ..core.preprocessing import (
+    applyCropBatch,
+    clampRectToImage,
+    cropWithRect,
+    marginsToRect,
+    rectToMargins,
+)
+from ..core.sample_project import (
+    SampleProjectError,
+    accept_draft,
+    add_image,
+    calibration_mm_per_px,
+    create_project,
+    included_images,
+    included_images_missing_calibration,
+    labels_from_mask,
+    now_utc_iso,
+    replace_working_image,
+    set_analysis_included,
+    set_calibration,
+    update_draft,
+)
+from ..core.sample_project_io import open_project, save_project
 from . import postprocessing, processing  # sibling GUI modules
 from .widgets import debounce, ensure_mask_uint8
 
@@ -134,6 +157,13 @@ class PreprocessApp:
         self.master = master
         self.root = master
         self.master.title("PyFOAMS – Preprocessing")
+        self.project = create_project("Untitled Sample")
+        self.projectPath: Optional[Path] = None
+        self.unsavedChanges = False
+
+        self.sampleNameVar = tk.StringVar(value=self.project.sample_name)
+        self.sampleNameVar.trace_add("write", self._onSampleNameChanged)
+
         self.images: list[np.ndarray] = []
         self.previews: list[np.ndarray] = []
         self.imagePaths: list[str] = []
@@ -142,6 +172,13 @@ class PreprocessApp:
 
         self.paths: List[str] = []
         self.selectedIndex: Optional[int] = None
+        self.batchSelection: Set[int] = set()
+        self.inclusionFlags: List[bool] = []
+        self.acceptedMasks: List[Optional[np.ndarray]] = []
+        self.acceptedLabels: List[Optional[np.ndarray]] = []
+        self.acceptedSnapshotIds: List[Optional[str]] = []
+        self.acceptedChecksums: List[Optional[str]] = []
+        self.acceptedProvenance: List[Optional[Dict[str, object]]] = []
 
         # Per-image scales: dict or None, e.g. {"unitsPerPx": 0.005, "unitName": "mm"}
         self.scales: List[Optional[Dict[str, float | str]]] = []
@@ -158,11 +195,20 @@ class PreprocessApp:
 
 
         self._buildUi()
+        self.master.protocol("WM_DELETE_WINDOW", self._onCloseRequested)
 
     # --------------------------- UI scaffolding ---------------------------
 
     def _buildUi(self):
-        # Toolbar
+        self.projectToolbar = ttk.Frame(self.master)
+        self.projectToolbar.pack(side="top", fill="x")
+        ttk.Label(self.projectToolbar, text="Sample:").pack(side="left", padx=(6, 2), pady=6)
+        self.sampleEntry = ttk.Entry(self.projectToolbar, textvariable=self.sampleNameVar, width=28)
+        self.sampleEntry.pack(side="left", padx=(0, 8), pady=6)
+        ttk.Button(self.projectToolbar, text="New Project", command=self.onNewProject).pack(side="left", padx=4)
+        ttk.Button(self.projectToolbar, text="Open Project", command=self.onOpenProject).pack(side="left", padx=4)
+        ttk.Button(self.projectToolbar, text="Save Project", command=self.onSaveProject).pack(side="left", padx=4)
+
         self.toolbar = ttk.Frame(self.master)
         self.toolbar.pack(side="top", fill="x")
 
@@ -179,6 +225,12 @@ class PreprocessApp:
             ttk.Radiobutton(self.toolbar, text=txt, value=val, variable=self.displayModeVar, command=self._redrawAllThumbs).pack(side="left", padx=4)
 
         ttk.Button(self.toolbar, text="Edit Masks…", command=self.onOpenEditor).pack(side="left", padx=10)
+        ttk.Button(self.toolbar, text="Import Mask…", command=self.onImportMask).pack(side="left", padx=4)
+        ttk.Button(self.toolbar, text="Rename Image", command=self.onRenameImage).pack(side="left", padx=4)
+        ttk.Button(self.toolbar, text="Set Calibration…", command=self.onSetCalibration).pack(side="left", padx=4)
+        ttk.Button(self.toolbar, text="Accept Draft", command=self.onAcceptDraft).pack(side="left", padx=4)
+        ttk.Button(self.toolbar, text="Toggle Include", command=self.onToggleInclude).pack(side="left", padx=4)
+        ttk.Button(self.toolbar, text="Analyze Included", command=self.onAnalyzeIncluded).pack(side="left", padx=4)
 
         self.statusVar = tk.StringVar(value="No images loaded")
         ttk.Label(self.toolbar, textvariable=self.statusVar).pack(side="left", padx=12)
@@ -200,12 +252,155 @@ class PreprocessApp:
             c = i % GRID_COLS
             canvas.grid(row=r, column=c, sticky="nsew")
             canvas.bind("<Configure>", debounce(canvas, 100)(lambda e, idx=i: self._redrawThumb(idx)))
-            canvas.bind("<Button-1>", lambda e, idx=i: self._onThumbClick(idx))
+            canvas.bind("<Button-1>", lambda e, idx=i: self._onThumbClick(idx, e))
+            canvas.bind("<Button-3>", lambda e, idx=i: self._toggleBatchSelection(idx))
             canvas.bind("<Double-Button-1>", lambda e, idx=i: self._openEnlarged(idx))
             self.cells.append(canvas)
 
         # Resize handler (update thumbs) - debounced to avoid redraw storms
         self.master.bind("<Configure>", debounce(self.master, 150)(lambda e: self._redrawAllThumbs()))
+
+    def _onSampleNameChanged(self, *_args):
+        new_name = self.sampleNameVar.get().strip() or "Untitled Sample"
+        if self.project.sample_name != new_name:
+            self.project.sample_name = new_name
+            self.master.title(f"PyRo-FOAMS — {new_name}")
+            self._markUnsaved()
+
+    def _markUnsaved(self):
+        self.unsavedChanges = True
+
+    def _refreshProjectBackedLists(self):
+        self.images = [img.working_image.copy() for img in self.project.images if img.working_image is not None]
+        self.previews = [makePreview(img) for img in self.images]
+        self.paths = [img.display_name for img in self.project.images]
+        self.imagePaths = [img.source_filename for img in self.project.images]
+
+        self.scales = []
+        self.imageRevisions = []
+        self.calibrationRevisions = []
+        self.maskRevisions = []
+        self.labelRevisions = []
+        self.masks = []
+        self.labels = []
+        self.acceptedMasks = []
+        self.acceptedLabels = []
+        self.acceptedSnapshotIds = []
+        self.acceptedChecksums = []
+        self.acceptedProvenance = []
+        self.inclusionFlags = []
+
+        for image in self.project.images:
+            if image.calibration.units_per_px is not None and image.calibration.unit_name is not None:
+                self.scales.append({"unitsPerPx": float(image.calibration.units_per_px), "unitName": str(image.calibration.unit_name)})
+            else:
+                self.scales.append(None)
+            self.imageRevisions.append(int(image.source_revision))
+            self.calibrationRevisions.append(int(image.calibration_revision))
+            self.maskRevisions.append(int(image.draft_revision))
+            self.labelRevisions.append(int(image.draft_revision))
+            self.masks.append(image.draft_mask.copy() if image.draft_mask is not None else None)
+            self.labels.append(image.draft_labels.copy() if image.draft_labels is not None else None)
+            self.acceptedMasks.append(image.accepted_mask.copy() if image.accepted_mask is not None else None)
+            self.acceptedLabels.append(image.accepted_labels.copy() if image.accepted_labels is not None else None)
+            self.acceptedSnapshotIds.append(image.accepted_snapshot.snapshot_id if image.accepted_snapshot is not None else None)
+            self.acceptedChecksums.append(image.accepted_snapshot.checksum_sha256 if image.accepted_snapshot is not None else None)
+            self.acceptedProvenance.append(dict(image.accepted_snapshot.source_details) if image.accepted_snapshot is not None else None)
+            self.inclusionFlags.append(bool(image.analysis_included))
+
+        if self.project.images:
+            if self.selectedIndex is None or self.selectedIndex >= len(self.project.images):
+                self.selectedIndex = 0
+            self.batchSelection = {index for index in self.batchSelection if 0 <= index < len(self.project.images)}
+            if not self.batchSelection:
+                self.batchSelection = {self.selectedIndex}
+        else:
+            self.selectedIndex = None
+            self.batchSelection = set()
+
+    def _syncProjectFromLists(self):
+        for i, image in enumerate(self.project.images):
+            mask = self.masks[i] if i < len(self.masks) else None
+            labels = self.labels[i] if i < len(self.labels) else None
+            scale = self.scales[i] if i < len(self.scales) else None
+            update_draft(
+                image,
+                mask=mask,
+                labels=labels,
+                settings=dict(image.draft_processing_settings),
+            )
+            if scale is None:
+                set_calibration(image, None, None)
+            else:
+                set_calibration(image, float(scale["unitsPerPx"]), str(scale["unitName"]))
+
+    def _promptSaveIfDirty(self) -> bool:
+        if not self.unsavedChanges:
+            return True
+        response = messagebox.askyesnocancel("Unsaved changes", "Save changes before continuing?")
+        if response is None:
+            return False
+        if response:
+            self.onSaveProject()
+            return not self.unsavedChanges
+        return True
+
+    def _resetProject(self, sample_name: str = "Untitled Sample"):
+        self.project = create_project(sample_name)
+        self.projectPath = None
+        self.sampleNameVar.set(self.project.sample_name)
+        self.unsavedChanges = False
+        self.selectedIndex = None
+        self.batchSelection = set()
+        self._refreshProjectBackedLists()
+        self._renderGrid()
+
+    def onNewProject(self):
+        if not self._promptSaveIfDirty():
+            return
+        self._resetProject()
+
+    def onSaveProject(self):
+        if self.projectPath is None:
+            chosen = filedialog.askdirectory(title="Choose folder for project")
+            if not chosen:
+                return
+            self.projectPath = Path(chosen)
+        try:
+            save_project(self.project, self.projectPath)
+        except Exception as exc:
+            messagebox.showerror("Save Project", f"Save failed: {exc}")
+            return
+        self.unsavedChanges = False
+        self.statusVar.set(f"Project saved: {self.projectPath}")
+
+    def onOpenProject(self):
+        if not self._promptSaveIfDirty():
+            return
+        chosen = filedialog.askdirectory(title="Select project folder")
+        if not chosen:
+            return
+        try:
+            loaded = open_project(Path(chosen))
+        except Exception as exc:
+            messagebox.showerror("Open Project", f"Could not open project: {exc}")
+            return
+        self.project = loaded
+        self.projectPath = Path(chosen)
+        self.sampleNameVar.set(self.project.sample_name)
+        self.unsavedChanges = False
+        self._refreshProjectBackedLists()
+        self._renderGrid()
+
+    def _selectedProjectImage(self):
+        if self.selectedIndex is None or not (0 <= self.selectedIndex < len(self.project.images)):
+            return None
+        return self.project.images[self.selectedIndex]
+
+    def _onCloseRequested(self):
+        if not self._promptSaveIfDirty():
+            return
+        self.master.destroy()
 
     def onBatchCropClick(self):
         """Open enlarged viewer on the selected image and start crop mode."""
@@ -228,15 +423,46 @@ class PreprocessApp:
             messagebox.showwarning("Processing", "Load images first.")
             return
 
-        def _receive_from_processing(binaries):
+        def _receive_from_processing(binaries, labels=None, settings=None, target_indices=None):
             # Normalize to uint8 {0,255} for OpenCV compatibility
             normalized = [
                 ensure_mask_uint8(b, self.images[i].shape[:2]) if b is not None else None
                 for i, b in enumerate(binaries)
             ]
-            self.masks[:] = normalized
+            if labels is not None:
+                normalized_labels = [
+                    labels[i].astype(np.int32, copy=True) if labels[i] is not None else None
+                    for i in range(len(self.images))
+                ]
+            else:
+                normalized_labels = self.labels
+            selected_targets = (
+                list(target_indices)
+                if target_indices is not None
+                else (sorted(self.batchSelection) if self.batchSelection else list(range(len(self.images))))
+            )
+            for i in selected_targets:
+                self.masks[i] = normalized[i]
+                self.labels[i] = normalized_labels[i]
+                image = self.project.images[i]
+                update_draft(
+                    image,
+                    mask=self.masks[i],
+                    labels=self.labels[i] if i < len(self.labels) else None,
+                    settings=dict(settings or image.draft_processing_settings),
+                    source_kind="processing",
+                    source_details={"operation": "automatic_segmentation"},
+                )
+                self.maskRevisions[i] = image.draft_revision
+                self.labelRevisions[i] = image.draft_revision
             self._redrawAllThumbs()
-            self.statusVar.set("Received masks from Processing.")
+            self._markUnsaved()
+            self.statusVar.set(f"Updated drafts for {len(selected_targets)} selected image(s).")
+
+        if not self.batchSelection:
+            messagebox.showwarning("Processing", "Select one or more batch target images first.")
+            return
+        targets = sorted(self.batchSelection)
 
         win = processing.ProcessingWindow(
             parent=self.master,
@@ -248,6 +474,14 @@ class PreprocessApp:
             binaries=self.masks,
             labels=self.labels,
             labelRevisions=self.labelRevisions,
+            targetIndices=targets,
+            startIndex=self.selectedIndex or 0,
+            processingSettings=(
+                self.project.images[self.selectedIndex].draft_processing_settings
+                if self.selectedIndex is not None
+                else None
+            ),
+            analysisCallback=self.onAnalyzeIncluded,
         )
         # Set it after construction (works no matter which version is imported)
         setattr(win, "resultsCallback", _receive_from_processing)
@@ -262,16 +496,20 @@ class PreprocessApp:
         """Open up to MAX_IMAGES images, create previews, render grid."""
         from tkinter import messagebox
         paths = filedialog.askopenfilenames(
-            title=f"Select up to {MAX_IMAGES} images",
+            title=f"Add images to sample (up to {MAX_IMAGES} total)",
             filetypes=[("Images", "*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp")]
         )
         if not paths:
             return
 
         # Cap count
-        paths = paths[:MAX_IMAGES]
+        remaining = MAX_IMAGES - len(self.project.images)
+        if remaining <= 0:
+            messagebox.showwarning("Add Images", f"A project can contain at most {MAX_IMAGES} images.")
+            return
+        paths = paths[:remaining]
 
-        imgs, thumbs, ok_paths, errs = [], [], [], []
+        imgs, ok_paths, errs = [], [], []
         dlg = None
         try:
             dlg = BusyDialog(self.root, title="Loading images…", mode="indeterminate")
@@ -279,7 +517,6 @@ class PreprocessApp:
                 try:
                     im = safeReadImage(p)
                     imgs.append(im)
-                    thumbs.append(makePreview(im))
                     ok_paths.append(p)
                 except Exception as e:
                     errs.append(f"{os.path.basename(p)}: {e}")
@@ -292,19 +529,15 @@ class PreprocessApp:
         if errs:
             messagebox.showwarning("Some images skipped", "Problems:\n" + "\n".join(errs[:8]))
 
-        # Store
-        self.images = imgs
-        self.previews = thumbs
-        self.imagePaths = ok_paths
-        self.paths = ok_paths
-        self.currentIndex = 0
-        self.scales = [None] * len(self.images) if not hasattr(self, "scales") or len(getattr(self, "scales", [])) != len(self.images) else self.scales
-        self.imageRevisions = [0] * len(self.images)
-        self.calibrationRevisions = [0] * len(self.images)
-        self.maskRevisions = [0] * len(self.images)
-        self.labelRevisions = [0] * len(self.images)
-        self.masks = [None] * len(self.images)   # start with no masks
-        self.labels = [None] * len(self.images)
+        # Store in project state using stable IDs unrelated to file names.
+        first_added_index = len(self.project.images)
+        for path, image in zip(ok_paths, imgs):
+            display = os.path.basename(path)
+            add_image(self.project, image, source_filename=path, display_name=display)
+        self.selectedIndex = first_added_index if self.project.images else None
+        self.batchSelection = set(range(first_added_index, len(self.project.images)))
+        self._refreshProjectBackedLists()
+        self._markUnsaved()
 
         # Render grid
         self._renderGrid()
@@ -318,6 +551,7 @@ class PreprocessApp:
         def _receive_masks(new_masks: List[Optional[np.ndarray]]):
             self._acceptEditedMasks(new_masks)
             self._redrawAllThumbs()
+            self._markUnsaved()
             self.statusVar.set("Masks updated.")
 
         postprocessing.PostprocessWindow(
@@ -351,8 +585,273 @@ class PreprocessApp:
             self.maskRevisions[index] += 1
             self.labels[index] = None
             self.labelRevisions[index] += 1
+            if hasattr(self, "project") and index < len(self.project.images):
+                update_draft(
+                    self.project.images[index],
+                    mask=new_mask,
+                    labels=None,
+                    settings=dict(self.project.images[index].draft_processing_settings),
+                    source_kind="manual_edit",
+                    source_details={"operation": "mask_editor"},
+                )
+                self.labels[index] = (
+                    self.project.images[index].draft_labels.copy()
+                    if self.project.images[index].draft_labels is not None
+                    else None
+                )
+                self.maskRevisions[index] = self.project.images[index].draft_revision
             changed.append(index)
         return changed
+
+    def onAcceptDraft(self):
+        image = self._selectedProjectImage()
+        if image is None:
+            messagebox.showwarning("Accept", "Select an image first.")
+            return
+        if image.draft_mask is None:
+            messagebox.showwarning("Accept", "No draft segmentation available for this image.")
+            return
+        source_details = {
+            "display_name": image.display_name,
+            "accepted_at": now_utc_iso(),
+        }
+        snapshot = accept_draft(image, source_details=source_details)
+        index = self.selectedIndex if self.selectedIndex is not None else 0
+        self.acceptedMasks[index] = image.accepted_mask.copy() if image.accepted_mask is not None else None
+        self.acceptedLabels[index] = image.accepted_labels.copy() if image.accepted_labels is not None else None
+        self.acceptedSnapshotIds[index] = snapshot.snapshot_id
+        self.acceptedChecksums[index] = snapshot.checksum_sha256
+        self.acceptedProvenance[index] = dict(snapshot.source_details)
+        self.project.analysis_revision += 1
+        self._markUnsaved()
+        self._redrawThumb(index)
+        self.statusVar.set(f"Accepted segmentation for {image.display_name}.")
+
+    def onRenameImage(self):
+        image = self._selectedProjectImage()
+        if image is None or self.selectedIndex is None:
+            messagebox.showwarning("Rename Image", "Select an image first.")
+            return
+        name = simpledialog.askstring(
+            "Rename Image", "Display name:", initialvalue=image.display_name, parent=self.master
+        )
+        if name is None:
+            return
+        name = name.strip()
+        if not name:
+            messagebox.showwarning("Rename Image", "Display name cannot be empty.")
+            return
+        image.display_name = name
+        self.paths[self.selectedIndex] = name
+        self._markUnsaved()
+        self.statusVar.set(f"Renamed image to {name}.")
+        self._redrawThumb(self.selectedIndex)
+
+    def onSetCalibration(self):
+        if self.selectedIndex is None:
+            messagebox.showwarning("Calibration", "Select an image first.")
+            return
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Set Calibration")
+        dialog.transient(self.master)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Spatial units per pixel").grid(row=0, column=0, sticky="w", pady=4)
+        value_var = tk.StringVar(value="0.005")
+        ttk.Entry(frame, textvariable=value_var, width=16).grid(row=0, column=1, sticky="w", pady=4)
+        ttk.Label(frame, text="Unit").grid(row=1, column=0, sticky="w", pady=4)
+        unit_var = tk.StringVar(value="mm")
+        ttk.Combobox(
+            frame,
+            textvariable=unit_var,
+            values=("m", "cm", "mm", "um", "nm"),
+            state="readonly",
+            width=12,
+        ).grid(row=1, column=1, sticky="w", pady=4)
+
+        target_var = tk.StringVar(value="active")
+        ttk.Radiobutton(frame, text="Active image", value="active", variable=target_var).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=3
+        )
+        ttk.Radiobutton(
+            frame,
+            text=f"Selected images ({len(self.batchSelection)})",
+            value="selected",
+            variable=target_var,
+            state="normal" if self.batchSelection else "disabled",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=3)
+
+        def apply_calibration():
+            try:
+                value = float(value_var.get())
+                if not np.isfinite(value) or value <= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Calibration", "Enter a finite positive units-per-pixel value.", parent=dialog)
+                return
+            indices = (
+                sorted(self.batchSelection)
+                if target_var.get() == "selected"
+                else [self.selectedIndex]
+            )
+            unit = unit_var.get()
+            for index in indices:
+                set_calibration(self.project.images[index], value, unit)
+                self.scales[index] = {"unitsPerPx": value, "unitName": unit}
+                self.calibrationRevisions[index] = self.project.images[index].calibration_revision
+            self.project.analysis_revision += 1
+            self._markUnsaved()
+            self._redrawAllThumbs()
+            dialog.destroy()
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(10, 0))
+        ttk.Button(buttons, text="Apply", command=apply_calibration).pack(side="left", padx=(0, 6))
+        ttk.Button(buttons, text="Cancel", command=dialog.destroy).pack(side="left")
+
+    def onImportMask(self):
+        image = self._selectedProjectImage()
+        if image is None or self.selectedIndex is None:
+            messagebox.showwarning("Import Mask", "Select an image first.")
+            return
+        path = filedialog.askopenfilename(
+            title=f"Import segmentation for {image.display_name}",
+            filetypes=[("Mask or label image", "*.png;*.tif;*.tiff;*.bmp;*.npy"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+
+        try:
+            if Path(path).suffix.lower() == ".npy":
+                imported = np.load(path, allow_pickle=False)
+                if imported.ndim != 2 or not np.issubdtype(imported.dtype, np.number):
+                    raise SampleProjectError("NumPy mask must be a two-dimensional numeric array")
+                if not np.all(np.isfinite(imported)) or not np.all(imported == np.floor(imported)):
+                    raise SampleProjectError("NumPy object labels must be finite integers")
+                if image.working_image is None or imported.shape != image.working_image.shape[:2]:
+                    raise SampleProjectError("mask dimensions must match the full-resolution source image")
+                mask = np.where(imported > 0, 255, 0).astype(np.uint8)
+                disclosure = "Object-label values were converted to foreground with labels > 0."
+            else:
+                encoded = np.fromfile(path, dtype=np.uint8)
+                imported = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+                if imported is None:
+                    raise SampleProjectError("file could not be decoded as a supported raster mask")
+                if image.working_image is None or imported.shape[:2] != image.working_image.shape[:2]:
+                    raise SampleProjectError("mask dimensions must match the full-resolution source image")
+                if imported.ndim == 3:
+                    if imported.shape[2] == 4:
+                        imported = imported[:, :, :3]
+                    if imported.shape[2] != 3 or not (
+                        np.array_equal(imported[:, :, 0], imported[:, :, 1])
+                        and np.array_equal(imported[:, :, 1], imported[:, :, 2])
+                    ):
+                        raise SampleProjectError(
+                            "color or phase masks are ambiguous; import a grayscale binary mask or numeric label array"
+                        )
+                    imported = imported[:, :, 0]
+                unique_values = np.unique(imported)
+                if not set(unique_values.tolist()).issubset({0, 1, 255}):
+                    raise SampleProjectError(
+                        "raster import must be binary (0/1/255); use a numeric .npy label map for object IDs"
+                    )
+                mask = np.where(imported > 0, 255, 0).astype(np.uint8)
+                disclosure = "Binary foreground values were normalized to 255."
+
+            update_draft(
+                image,
+                mask=mask,
+                labels=labels_from_mask(mask),
+                settings={},
+                source_kind="imported_mask",
+                source_details={"source_filename": path, "conversion": disclosure},
+            )
+            self.masks[self.selectedIndex] = image.draft_mask.copy()
+            self.labels[self.selectedIndex] = image.draft_labels.copy()
+            self.maskRevisions[self.selectedIndex] = image.draft_revision
+            self.labelRevisions[self.selectedIndex] = image.draft_revision
+            self._markUnsaved()
+            self._redrawThumb(self.selectedIndex)
+            messagebox.showinfo("Import Mask", f"Segmentation imported as an unaccepted draft.\n{disclosure}")
+        except (OSError, ValueError, SampleProjectError) as exc:
+            messagebox.showerror("Import Mask", f"Could not import segmentation: {exc}")
+
+    def onToggleInclude(self):
+        image = self._selectedProjectImage()
+        if image is None or self.selectedIndex is None:
+            messagebox.showwarning("Include", "Select an image first.")
+            return
+        target_state = not image.analysis_included
+        try:
+            set_analysis_included(image, target_state)
+        except SampleProjectError as exc:
+            messagebox.showwarning("Include", str(exc))
+            return
+        self.inclusionFlags[self.selectedIndex] = image.analysis_included
+        self.project.analysis_revision += 1
+        self._markUnsaved()
+        self._redrawThumb(self.selectedIndex)
+        self.statusVar.set(
+            f"{'Included' if image.analysis_included else 'Excluded'} {image.display_name} for sample analysis."
+        )
+
+    def onAnalyzeIncluded(self):
+        picked = included_images(self.project)
+        if not picked:
+            messagebox.showwarning("Analyze", "No included images. Include accepted images first.")
+            return
+        unready = included_images_missing_calibration(self.project)
+        if unready:
+            names = "\n".join(f"- {img.display_name}" for img in unready)
+            messagebox.showwarning(
+                "Analyze",
+                "Physical analysis is blocked until included images have valid calibration:\n" + names,
+            )
+            return
+
+        images = []
+        labels = []
+        paths = []
+        scales = []
+        image_revisions = []
+        label_revisions = []
+        calibration_revisions = []
+        start_index = 0
+
+        for i, image in enumerate(self.project.images):
+            if not image.analysis_included:
+                continue
+            if image.working_image is None or image.accepted_labels is None:
+                continue
+            images.append(image.working_image)
+            labels.append(image.accepted_labels)
+            paths.append(image.display_name)
+            scales.append({"unitsPerPx": image.calibration.units_per_px, "unitName": image.calibration.unit_name})
+            image_revisions.append(image.source_revision)
+            label_revisions.append(image.accepted_revision)
+            calibration_revisions.append(image.calibration_revision)
+            if i == self.selectedIndex:
+                start_index = len(images) - 1
+
+        if not images:
+            messagebox.showwarning("Analyze", "Included images are missing accepted segmentation data.")
+            return
+
+        from . import stereology as stereology_gui
+
+        stereology_gui.StereologyWindow(
+            parent=self.master,
+            images=images,
+            labels=labels,
+            paths=paths,
+            scales=scales,
+            start_index=start_index,
+            image_revisions=image_revisions,
+            label_revisions=label_revisions,
+            calibration_revisions=calibration_revisions,
+        )
 
     # --------------------------- Grid rendering ---------------------------
 
@@ -360,10 +859,24 @@ class PreprocessApp:
         for i in range(GRID_ROWS * GRID_COLS):
             self._redrawThumb(i)
 
-    def _onThumbClick(self, idx: int):
-        """Select the clicked thumbnail and redraw the grid (adds blue outline)."""
+    def _onThumbClick(self, idx: int, event=None):
+        """Set the active image; Ctrl+click also toggles batch membership."""
         if 0 <= idx < len(self.images):
             self.selectedIndex = idx
+            ctrl_down = bool(event is not None and (event.state & 0x0004))
+            if ctrl_down:
+                self._toggleBatchIndex(idx)
+            self._redrawAllThumbs()
+
+    def _toggleBatchIndex(self, idx: int):
+        if idx in self.batchSelection:
+            self.batchSelection.remove(idx)
+        else:
+            self.batchSelection.add(idx)
+
+    def _toggleBatchSelection(self, idx: int):
+        if 0 <= idx < len(self.images):
+            self._toggleBatchIndex(idx)
             self._redrawAllThumbs()
 
 
@@ -376,7 +889,7 @@ class PreprocessApp:
         if n == 0:
             self.statusVar.set("No images loaded")
         else:
-            self.statusVar.set(f"Loaded {n} image(s)")
+            self.statusVar.set(f"Loaded {n} image(s). Batch targets: {len(self.batchSelection) or n}.")
 
 
     def _redrawThumb(self, idx: int):
@@ -425,8 +938,30 @@ class PreprocessApp:
         self._thumbPhotos[idx] = photo
         canvas.create_image((cw - new_w) // 2, (ch - new_h) // 2, anchor="nw", image=photo)
 
+        if idx in self.batchSelection:
+            canvas.create_rectangle(4, 4, cw - 4, ch - 4, outline="#5cc26d", width=2)
         if self.selectedIndex == idx:
             canvas.create_rectangle(2, 2, cw - 2, ch - 2, outline="#66b3ff", width=2)
+
+        if idx < len(self.project.images):
+            record = self.project.images[idx]
+            accepted = record.accepted_snapshot
+            state = "Unaccepted" if accepted is None else "Accepted"
+            if accepted is not None and record.draft_revision > accepted.draft_revision:
+                state = "Accepted; newer draft"
+            if record.calibration.is_calibrated:
+                calibration_text = f"{calibration_mm_per_px(record):.6g} mm/px"
+            else:
+                calibration_text = "Uncalibrated"
+            include_text = "Included" if record.analysis_included else "Excluded"
+            canvas.create_text(
+                8,
+                ch - 8,
+                anchor="sw",
+                fill="#f0f0f0",
+                text=f"{record.display_name} | {calibration_text} | {state} | {include_text}",
+                width=max(1, cw - 16),
+            )
 
 
     # --------------------------- Enlarged viewer ---------------------------
@@ -441,7 +976,8 @@ class PreprocessApp:
             parent=self.master,
             images=self.images,
             paths=self.paths,
-            scales=getattr(self, "scales", [None] * len(self.images)) if hasattr(self, "scales") else [None] * len(self.images),
+            scales=list(self.scales) if hasattr(self, "scales") else [None] * len(self.images),
+            processing_rois=[image.processing_roi for image in self.project.images],
             startIndex=idx,
             onImagesUpdated=self._onImagesUpdated,
             onScalesUpdated=getattr(self, "_onScalesUpdated", lambda s: None)  # no-op if not present
@@ -454,33 +990,60 @@ class PreprocessApp:
         return viewer
 
 
-    def _onImagesUpdated(self, newImages: List[np.ndarray]):
+    def _onImagesUpdated(self, newImages: List[np.ndarray], processing_rois=None):
         """Callback when batch operations (like crop) modify images."""
-        if len(self.imageRevisions) != len(newImages):
-            self.imageRevisions[:] = [0] * len(newImages)
-            self.maskRevisions[:] = [0] * len(newImages)
-            self.labelRevisions[:] = [0] * len(newImages)
-            self.masks[:] = [None] * len(newImages)
-            self.labels[:] = [None] * len(newImages)
-        else:
-            for index, (old, new) in enumerate(zip(self.images, newImages)):
-                if old is not new:
-                    self.imageRevisions[index] += 1
-                    self.masks[index] = None
-                    self.maskRevisions[index] += 1
-                    self.labels[index] = None
-                    self.labelRevisions[index] += 1
+        changed = False
+        if processing_rois is not None:
+            for index, (working, roi) in enumerate(zip(newImages, processing_rois)):
+                if index >= len(self.project.images) or roi is None:
+                    continue
+                image = self.project.images[index]
+                if tuple(roi) == image.processing_roi:
+                    continue
+                replace_working_image(image, working, tuple(roi))
+                changed = True
+                self.imageRevisions[index] += 1
+                self.masks[index] = None
+                self.maskRevisions[index] = image.draft_revision
+                self.labels[index] = None
+                self.labelRevisions[index] = image.draft_revision
+                self.inclusionFlags[index] = False
+                self.acceptedMasks[index] = None
+                self.acceptedLabels[index] = None
+                self.acceptedSnapshotIds[index] = None
+                self.acceptedChecksums[index] = None
+                self.acceptedProvenance[index] = None
+        if changed:
+            self.project.analysis_revision += 1
         self.images[:] = newImages
+        self.previews[:] = [makePreview(image) for image in newImages]
+        self._markUnsaved()
         self._redrawAllThumbs()
 
     def _onScalesUpdated(self, newScales: List[Optional[Dict[str, float | str]]]):
+        old_scales = list(self.scales)
+        changed = False
         if len(self.calibrationRevisions) != len(newScales):
             self.calibrationRevisions[:] = [0] * len(newScales)
         else:
             for index, (old, new) in enumerate(zip(self.scales, newScales)):
                 if old != new:
                     self.calibrationRevisions[index] += 1
+                    changed = True
         self.scales[:] = newScales
+        for index, scale in enumerate(newScales):
+            if index >= len(self.project.images):
+                continue
+            old_scale = old_scales[index] if index < len(old_scales) else None
+            if old_scale == scale:
+                continue
+            if scale is None:
+                set_calibration(self.project.images[index], None, None)
+            else:
+                set_calibration(self.project.images[index], float(scale["unitsPerPx"]), str(scale["unitName"]))
+        if changed:
+            self.project.analysis_revision += 1
+            self._markUnsaved()
         # Optional: reflect scale somewhere in main window if desired
 
     # --------------------------- Utilities ---------------------------
@@ -533,6 +1096,7 @@ class EnlargedViewer(tk.Toplevel):
         images: List[np.ndarray],
         paths: List[str],
         scales: List[Optional[Dict[str, float | str]]],
+        processing_rois,
         startIndex: int,
         onImagesUpdated,
         onScalesUpdated
@@ -545,6 +1109,7 @@ class EnlargedViewer(tk.Toplevel):
         self.images = images
         self.paths = paths
         self.scales = scales
+        self.processing_rois = [tuple(roi) for roi in processing_rois]
         self.index = startIndex
         self.onImagesUpdated = onImagesUpdated
         self.onScalesUpdated = onScalesUpdated
@@ -889,11 +1454,21 @@ class EnlargedViewer(tk.Toplevel):
             return
 
         # Apply
+        crop_rects = [None] * len(self.images)
         if apply_all:
             newImages = applyCropBatch(self.images, rect=rect_img, margins=None, useMargins=useMargins)
+            if useMargins:
+                base_rect = clampRectToImage(rect_img, self.images[0].shape)
+                crop_margins = rectToMargins(base_rect, self.images[0].shape) if base_rect is not None else None
+            else:
+                crop_margins = None
             # Replace only successful crops
             for i, cropped in enumerate(newImages):
                 if cropped is not None:
+                    if useMargins and crop_margins is not None:
+                        crop_rects[i] = marginsToRect(crop_margins, self.images[i].shape)
+                    else:
+                        crop_rects[i] = clampRectToImage(rect_img, self.images[i].shape)
                     self.images[i] = cropped
         else:
             img = self.images[self.index]
@@ -901,9 +1476,17 @@ class EnlargedViewer(tk.Toplevel):
             if rect_img is None:
                 messagebox.showwarning("Crop", "Crop is invalid for this image.")
                 return
+            crop_rects[self.index] = rect_img
             self.images[self.index] = cropWithRect(img, rect_img)
 
-        self.onImagesUpdated(self.images)
+        for index, crop_rect in enumerate(crop_rects):
+            if crop_rect is None:
+                continue
+            base_x0, base_y0, _base_x1, _base_y1 = self.processing_rois[index]
+            x0, y0, x1, y1 = crop_rect
+            self.processing_rois[index] = (base_x0 + x0, base_y0 + y0, base_x0 + x1, base_y0 + y1)
+
+        self.onImagesUpdated(self.images, self.processing_rois)
         self._cropMode = False
         self._cropRect = None
         self._render()
