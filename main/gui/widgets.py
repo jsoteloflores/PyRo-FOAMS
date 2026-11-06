@@ -128,12 +128,33 @@ def debounce(widget: tk.Misc, delay_ms: int = 150) -> Callable:
                     widget.after_cancel(prev_id)
                 except Exception:
                     pass
-            # Schedule the new call
-            new_id = widget.after(delay_ms, lambda: fn(*args, **kwargs))
+            def invoke() -> None:
+                setattr(widget, timer_id_attr, None)
+                fn(*args, **kwargs)
+
+            new_id = widget.after(delay_ms, invoke)
             setattr(widget, timer_id_attr, new_id)
 
         return _wrapper
     return _decorator
+
+
+def cancel_debounced_callbacks(widget: tk.Misc) -> None:
+    """Cancel this widget tree's pending debounce timers before teardown."""
+    for attribute, timer_id in tuple(vars(widget).items()):
+        if not attribute.startswith("_debounce_") or timer_id is None:
+            continue
+        try:
+            widget.after_cancel(timer_id)
+        except tk.TclError:
+            pass
+        setattr(widget, attribute, None)
+    try:
+        children = widget.winfo_children()
+    except tk.TclError:
+        return
+    for child in children:
+        cancel_debounced_callbacks(child)
 
 
 class BusyDialog(tk.Toplevel):

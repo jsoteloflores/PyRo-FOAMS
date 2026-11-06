@@ -7,7 +7,7 @@ case IDs. Final compressed SHA-256:
 SHA-256: `60ed38a96f05fd3dae301e788eda1f2f6fdab76ea411e5a34f5a2183c39b09b7`.
 # Original FOAMS completion tracker
 
-Last updated: 2026-11-05.
+Last updated: 2026-11-06.
 
 **Original FOAMS implementation: NOT COMPLETE.**
 
@@ -121,16 +121,10 @@ Historical MATLAB moment/perimeter equivalence is still not established.
 
 Brief 16 final validation fix extends strict scalar contracts to retained
 phase-measurement components before canonical replay uses nested IDs,
-coordinates, counts, and calibrated fields. Fractional/Boolean/nonfinite and
-Configured Ruff passes. The full local unittest suite passes 646 tests with no
-skips. An
-automated live-Tk smoke on Windows passed 12 workflow gates covering duplicate
-basenames, selected batch drafts, editor changes, acceptance/inclusion,
-calibration, stereology, save, and reopen. A non-fatal Tk callback warning was
-printed during window teardown. This is widget-level automation, not a
-user-driven visual acceptance session; headless tests do not substitute for
-that final review.
-historical MATLAB equivalence, and derived shape statistics are still pending.
+coordinates, counts, and calibrated fields. Fractional, Boolean, nonfinite,
+and structurally invalid values fail with typed validation errors. This does
+not establish historical MATLAB equivalence; derived shape statistics remain
+pending.
 
 friendly MATLAB TSV capture runner, Python preparation/import/comparison
 Brief 16a adds perimeter reference capture/comparison tooling rather than a
@@ -397,33 +391,48 @@ be truthfully reported as run. Hosted CI remains a release blocker.
 
 ## Brief 20 Sample-Project Foundation
 
-The current Brief 20 implementation adds a Tk-independent, versioned sample
-project model and folder persistence, stable project/image/snapshot IDs,
-source and working-image assets, source-coordinate crop ROIs, draft and
-accepted masks/labels, calibration, inclusion, provenance, and per-image
-revisions. Assets are written atomically before the manifest; loading rejects
-unsupported schemas, missing/corrupt assets, invalid dimensions, inconsistent
-labels, and paths outside the project folder. Original source pixels remain
-separate from cropped working images.
+Brief 20a adds a Tk-independent, schema-2 sample-project model with stable
+project/image/snapshot IDs, exact uint8/uint16 grayscale/BGR/BGRA source arrays,
+separate compatible uint8 working images, explicit conversion IDs, source
+checksums, and source-coordinate crop ROIs. Source arrays use
+`np.save(..., allow_pickle=False)`; schema-1 projects migrate only on explicit
+save and are marked `legacy_derived_unknown`, without claiming lost precision
+was recovered. Interrupted migration tests retain the previous schema-1
+manifest and assets. Accepted masks/labels, calibration, inclusion, provenance,
+and per-image revisions remain persisted. Load/save validation checks source
+and working pixels, dimensions, checksums, conversion provenance, labels, and
+portable relative paths.
 
-The existing thumbnail workflow now supports adding images to one sample,
-display renaming, independent active-image and batch-target selection,
-selected-only draft processing, binary raster or explicit NumPy label-map
-import, manual draft editing, acceptance, inclusion, project save/reopen, and
-accepted-input modern stereology. Physical analysis is blocked until every
-included image has a supported calibration. Draft processing settings and
-import/manual/automatic provenance are retained. The nine original-compatible
-table exports and scientific formulas were not changed.
+One project-owned accepted-input snapshot adapter now feeds Analyze Included
+and the processing window's **Export accepted measurements** action. It
+validates every included image, retains stable image/snapshot mapping and
+revision provenance, snapshots owned accepted masks/labels and working images,
+and normalizes supported units to mm/px. Project export fails before opening a
+file picker if inputs are absent or calibration is invalid. Preview filenames
+use stable image IDs. Standalone processing windows expose a separate draft
+export; project mode never falls back to drafts.
 
-The workflow guide is `main/SAMPLE_PROJECT_WORKFLOW.md`. This is a foundation,
-not completed sample analysis or full FOAMS GUI integration. Original FOAMS
-analysis setup, method-specific resolution grouping and nesting, immutable
-analysis-run history, final joinable export tables, performance/usability
-acceptance, and same-real-image MATLAB comparison remain future handoffs.
-Configured Ruff passes. The full local unittest suite passes 645 tests. An
-automated live-Tk smoke on Windows passed 12 workflow gates covering duplicate
-basenames, selected batch drafts, editor changes, acceptance/inclusion,
-calibration, stereology, save, and reopen. A non-fatal Tk callback warning was
-printed during window teardown. This is widget-level automation, not a
-user-driven visual acceptance session; headless tests do not substitute for
-that final review.
+Selected batch jobs now run through a background coordinator with queue-based
+progress, cancellation, per-target errors, stable project/session/image IDs,
+and source/draft/settings revision checks before UI-thread commits. Successful
+results update drafts only; failures retain prior drafts. The main workspace
+toolbar is split into project, preparation, acceptance/analysis, and
+display/status rows. A committed live-Tk runner covers the real processing,
+editor, acceptance, calibration, analysis, accepted export, save/reopen, and
+layout controls at both target sizes.
+
+The workflow guide is `main/SAMPLE_PROJECT_WORKFLOW.md`. The live GUI test is
+`main/tests/test_sample_project_gui.py`; set `PYRO_FOAMS_LIVE_TK=1` to execute
+it on a display-capable host. Local Windows execution passes the 11 workflow
+checkpoints with no Tk callback exceptions and captures 1280x800/1400x900
+screenshots in `main/tests/gui_smoke_artifacts/`. GitHub Actions now has a
+dedicated Windows Python 3.12 GUI job that requires live Tk and uploads those
+screenshots; this job has not yet run on the unpushed worktree. Original FOAMS
+analysis setup, method-specific grouping/nesting, immutable run history, final
+joinable exports, hosted CI evidence, and same-real-image MATLAB comparison
+remain future handoffs. Configured headless unittest discovery passes 660 tests
+with the three display-gated Tk tests explicitly skipped; the dedicated live
+Windows run passes all three Tk tests with no callback exceptions. Configured
+Ruff passes with zero findings. Hosted Linux/Windows matrix and the new
+Windows GUI CI job remain pending because this worktree is not pushed.
+Original FOAMS remains NOT COMPLETE.

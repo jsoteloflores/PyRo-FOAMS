@@ -13,6 +13,8 @@ import numpy as np
 
 from .sample_project import (
     PROJECT_SCHEMA_VERSION,
+    SOURCE_FIDELITY_LEGACY_UNKNOWN,
+    SOURCE_FIDELITY_PRESERVED,
     AcceptedSnapshot,
     Calibration,
     SampleProject,
@@ -20,6 +22,7 @@ from .sample_project import (
     add_image,
     checksum_ndarray,
     create_project,
+    derive_working_image,
     labels_from_mask,
     normalize_mask,
 )
@@ -80,6 +83,30 @@ def _write_labels(path: Path, labels: np.ndarray) -> None:
             temporary_path.unlink()
 
 
+def _write_source_array(path: Path, source: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f"{path.stem}.{uuid.uuid4().hex}.tmp.npy")
+    try:
+        with temporary_path.open("wb") as handle:
+            np.save(handle, source, allow_pickle=False)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
+
+
+def _read_source_array(path: Path) -> np.ndarray:
+    try:
+        source = np.load(path, allow_pickle=False)
+    except (OSError, ValueError) as exc:
+        raise SampleProjectIoError(f"missing or corrupt source asset: {path}") from exc
+    try:
+        derive_working_image(source)
+    except SampleProjectError as exc:
+        raise SampleProjectIoError(f"unsupported source asset {path}: {exc}") from exc
+    return source
+
+
 def _load_labels(root: Path, relative_path: Optional[str], mask: Optional[np.ndarray]) -> Optional[np.ndarray]:
     if not relative_path:
         return labels_from_mask(mask) if mask is not None else None
@@ -115,9 +142,9 @@ def save_project(project: SampleProject, project_root: Path) -> Path:
         if image.source_image is None:
             raise SampleProjectIoError(f"image {image.image_id} has no source array in memory")
 
-        source_relpath = f"{SOURCES_DIR}/{image.source_checksum_sha256}.png"
+        source_relpath = f"{SOURCES_DIR}/{image.source_checksum_sha256}.npy"
         source_path = root / source_relpath
-        _write_image(source_path, image.source_image)
+        _write_source_array(source_path, image.source_image)
         image.source_asset_path = source_relpath
 
         if image.working_image is None:
@@ -172,10 +199,11 @@ def _validate_project_for_save(project: SampleProject) -> None:
         working = image.working_image
         if source is None or working is None:
             raise SampleProjectIoError(f"image {image.image_id} has no source or working image")
-        if source.dtype != np.uint8 or source.shape[:2] != (image.height, image.width):
-            raise SampleProjectIoError(f"image {image.image_id} source dimensions or dtype are invalid")
+        if source.shape[:2] != (image.height, image.width):
+            raise SampleProjectIoError(f"image {image.image_id} source dimensions are invalid")
         if checksum_ndarray(source) != image.source_checksum_sha256:
             raise SampleProjectIoError(f"image {image.image_id} source checksum does not match its pixels")
+        derived_working, conversion_id = derive_working_image(source)
         if image.processing_roi is None:
             raise SampleProjectIoError(f"image {image.image_id} processing ROI is missing")
         x0, y0, x1, y1 = image.processing_roi
@@ -183,6 +211,10 @@ def _validate_project_for_save(project: SampleProject) -> None:
             raise SampleProjectIoError(f"image {image.image_id} processing ROI is outside source dimensions")
         if working.dtype != np.uint8 or working.shape[:2] != (y1 - y0, x1 - x0):
             raise SampleProjectIoError(f"image {image.image_id} working image does not match its ROI")
+        if image.processing_conversion_id != conversion_id:
+            raise SampleProjectIoError(f"image {image.image_id} processing conversion ID does not match its source")
+        if not np.array_equal(working, derived_working[y0:y1, x0:x1]):
+            raise SampleProjectIoError(f"image {image.image_id} working pixels do not match its source conversion and ROI")
         if image.calibration.units_per_px is not None:
             value = image.calibration.units_per_px
             if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
@@ -279,7 +311,7 @@ def open_project(project_root: Path) -> SampleProject:
     if (
         isinstance(schema_version, bool)
         or not isinstance(schema_version, int)
-        or schema_version != PROJECT_SCHEMA_VERSION
+        or schema_version not in (1, PROJECT_SCHEMA_VERSION)
     ):
         raise SampleProjectIoError(
             f"unsupported project schema version: {schema_version}; expected {PROJECT_SCHEMA_VERSION}"
@@ -317,7 +349,10 @@ def open_project(project_root: Path) -> SampleProject:
         if not isinstance(source_asset_path, str) or not source_asset_path:
             raise SampleProjectIoError(f"image {image_id} is missing source asset path")
 
-        source = _read_image(_asset_path(root, source_asset_path))
+        if schema_version == 1:
+            source = _read_image(_asset_path(root, source_asset_path))
+        else:
+            source = _read_source_array(_asset_path(root, source_asset_path))
         loaded = add_image(
             project,
             source,
@@ -339,12 +374,21 @@ def open_project(project_root: Path) -> SampleProject:
         if checksum and checksum != actual_checksum:
             raise SampleProjectIoError(f"image {image_id} source checksum mismatch")
         loaded.source_checksum_sha256 = checksum or actual_checksum
+        derived_working, conversion_id = derive_working_image(source)
+        loaded.source_fidelity = (
+            SOURCE_FIDELITY_LEGACY_UNKNOWN if schema_version == 1
+            else str(image_data.get("source_fidelity", SOURCE_FIDELITY_PRESERVED))
+        )
+        persisted_conversion_id = image_data.get("processing_conversion_id", conversion_id)
+        if schema_version == 2 and persisted_conversion_id != conversion_id:
+            raise SampleProjectIoError(f"image {image_id} processing conversion ID is unsupported")
+        loaded.processing_conversion_id = conversion_id
 
         working_asset_path = image_data.get("working_asset_path")
         if working_asset_path:
             working_image = _read_image(_asset_path(root, working_asset_path))
         else:
-            working_image = source.copy()
+            working_image = derived_working.copy()
         processing_roi_data = image_data.get("processing_roi")
         if processing_roi_data is None:
             processing_roi = (0, 0, width, height)
@@ -357,6 +401,8 @@ def open_project(project_root: Path) -> SampleProject:
             raise SampleProjectIoError(f"image {image_id} processing ROI is outside source dimensions")
         if (x1 - x0, y1 - y0) != (working_image.shape[1], working_image.shape[0]):
             raise SampleProjectIoError(f"image {image_id} working dimensions do not match processing ROI")
+        if not np.array_equal(working_image, derived_working[y0:y1, x0:x1]):
+            raise SampleProjectIoError(f"image {image_id} working pixels do not match source conversion and ROI")
         if working_asset_path and Path(working_asset_path).stem != checksum_ndarray(working_image):
             raise SampleProjectIoError(f"image {image_id} working image checksum mismatch")
         loaded.working_image = working_image.copy()

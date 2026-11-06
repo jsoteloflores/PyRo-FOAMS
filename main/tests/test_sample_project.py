@@ -16,7 +16,9 @@ from core.sample_project import (
     add_image,
     calibration_mm_per_px,
     checksum_ndarray,
+    create_analysis_snapshot,
     create_project,
+    derive_working_image,
     included_images_missing_calibration,
     replace_working_image,
     set_analysis_included,
@@ -33,6 +35,81 @@ from core.sample_project_io import (
 
 
 class TestSampleProjectModel(unittest.TestCase):
+    def test_analysis_snapshot_uses_only_included_accepted_inputs_and_normalizes_units(self):
+        project = create_project("Snapshot")
+        first = add_image(project, np.zeros((20, 20), dtype=np.uint8), "first.png", "duplicate.png")
+        second = add_image(project, np.zeros((20, 20), dtype=np.uint8), "second.png", "duplicate.png")
+        excluded = add_image(project, np.zeros((20, 20), dtype=np.uint8), "excluded.png")
+        accepted_a = np.zeros((20, 20), dtype=np.uint8)
+        accepted_a[2:7, 3:8] = 255
+        accepted_b = np.zeros((20, 20), dtype=np.uint8)
+        accepted_b[10:16, 11:17] = 255
+        for image, mask in ((first, accepted_a), (second, accepted_b), (excluded, accepted_a)):
+            update_draft(image, mask=mask, labels=None, settings={})
+            accept_draft(image)
+        set_calibration(first, 2.0, "um")
+        set_calibration(second, 0.003, "mm")
+        set_analysis_included(first, True)
+        set_analysis_included(second, True)
+        update_draft(first, mask=accepted_b, labels=None, settings={"newer": True})
+
+        snapshot = create_analysis_snapshot(project)
+
+        self.assertEqual([item.image_id for item in snapshot.images], [first.image_id, second.image_id])
+        self.assertEqual([item.snapshot_id for item in snapshot.images], [
+            first.accepted_snapshot.snapshot_id, second.accepted_snapshot.snapshot_id
+        ])
+        np.testing.assert_array_equal(snapshot.images[0].accepted_mask, accepted_a)
+        self.assertAlmostEqual(snapshot.scales[0]["unitsPerPx"], 0.002)
+        self.assertAlmostEqual(snapshot.scales[1]["unitsPerPx"], 0.003)
+        self.assertEqual({scale["unitName"] for scale in snapshot.scales}, {"mm"})
+        with self.assertRaises(ValueError):
+            snapshot.images[0].accepted_mask[0, 0] = 255
+
+    def test_analysis_snapshot_rejects_unaccepted_or_uncalibrated_inputs(self):
+        project = create_project("Not Ready")
+        image = add_image(project, np.zeros((8, 8), dtype=np.uint8), "not-ready.png", "Not Ready")
+        with self.assertRaisesRegex(SampleProjectError, "No accepted images"):
+            create_analysis_snapshot(project)
+
+        mask = np.zeros((8, 8), dtype=np.uint8)
+        mask[2:6, 2:6] = 255
+        update_draft(image, mask=mask, labels=None, settings={})
+        accept_draft(image)
+        set_analysis_included(image, True)
+        with self.assertRaisesRegex(SampleProjectError, "Not Ready.*calibration"):
+            create_analysis_snapshot(project)
+
+    def test_uint16_source_is_preserved_and_working_image_uses_compat_conversion(self):
+        source = np.array([[10, 11, 65535], [256, 257, 514]], dtype=np.uint16)
+        project = create_project("16-bit")
+        image = add_image(project, source, source_filename="16bit.tif")
+
+        np.testing.assert_array_equal(image.source_image, source)
+        np.testing.assert_array_equal(image.working_image, (source / 257.0).astype(np.uint8))
+        self.assertEqual(image.source_image.dtype, np.uint16)
+        self.assertEqual(image.processing_conversion_id, "uint16-div257-v1")
+        self.assertNotEqual(int(image.source_image[0, 0]), int(image.source_image[0, 1]))
+        self.assertEqual(int(image.working_image[0, 0]), int(image.working_image[0, 1]))
+
+    def test_bgra_source_retains_alpha_while_working_image_drops_it(self):
+        source = np.arange(4 * 5 * 4, dtype=np.uint16).reshape(4, 5, 4)
+        working, conversion = derive_working_image(source)
+
+        self.assertEqual(source.shape, (4, 5, 4))
+        self.assertEqual(working.shape, (4, 5, 3))
+        np.testing.assert_array_equal(working, (source / 257.0).astype(np.uint8)[:, :, :3])
+        self.assertEqual(conversion, "uint16-div257-drop-alpha-v1")
+
+    def test_unsupported_source_types_and_channels_are_rejected(self):
+        for source in (
+            np.zeros((4, 5), dtype=np.float32),
+            np.zeros((4, 5, 2), dtype=np.uint8),
+            np.zeros((4, 5, 5), dtype=np.uint8),
+        ):
+            with self.subTest(dtype=source.dtype, shape=source.shape), self.assertRaises(SampleProjectError):
+                derive_working_image(source)
+
     def test_duplicate_basenames_get_stable_distinct_ids(self):
         project = create_project("Sample")
         img = np.zeros((12, 16), dtype=np.uint8)
@@ -162,6 +239,75 @@ class TestSampleProjectPersistence(unittest.TestCase):
             self.assertTrue(np.array_equal(loaded.images[1].accepted_mask, mask2))
             np.testing.assert_array_equal(loaded.images[1].accepted_labels, labels2)
 
+    def test_uint16_and_bgra_source_assets_round_trip_exactly(self):
+        project = create_project("Source Fidelity")
+        uint16_source = np.array([[10, 11, 65535], [256, 257, 514]], dtype=np.uint16)
+        bgra_source = np.arange(4 * 5 * 4, dtype=np.uint8).reshape(4, 5, 4)
+        add_image(project, uint16_source, source_filename="16bit.tif")
+        add_image(project, bgra_source, source_filename="alpha.png")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            save_project(project, root)
+            loaded = open_project(root)
+
+        np.testing.assert_array_equal(loaded.images[0].source_image, uint16_source)
+        np.testing.assert_array_equal(loaded.images[0].working_image, (uint16_source / 257.0).astype(np.uint8))
+        np.testing.assert_array_equal(loaded.images[1].source_image, bgra_source)
+        np.testing.assert_array_equal(loaded.images[1].working_image, bgra_source[:, :, :3])
+        self.assertEqual(loaded.images[0].source_image.dtype, np.uint16)
+        self.assertEqual(loaded.images[1].source_image.shape[2], 4)
+
+    def test_schema1_migration_preserves_existing_state_and_marks_fidelity_unknown(self):
+        project = create_project("Legacy Schema One")
+        source = np.arange(20 * 20, dtype=np.uint8).reshape(20, 20)
+        image = add_image(project, source, source_filename="unavailable-original.tif")
+        mask = np.zeros((20, 20), dtype=np.uint8)
+        mask[4:14, 5:15] = 255
+        update_draft(image, mask=mask, labels=None, settings={"method": "otsu"})
+        accept_draft(image)
+        set_analysis_included(image, True)
+        set_calibration(image, 0.02, "mm")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            save_project(project, root)
+            manifest_path = root / MANIFEST_FILENAME
+            manifest = json_load(manifest_path)
+            record = manifest["images"][0]
+            source_array = np.load(root / record["source_asset_path"], allow_pickle=False)
+            legacy_source_path = "assets/sources/schema1-source.png"
+            sample_project_io._write_image(root / legacy_source_path, source_array)
+            record["source_asset_path"] = legacy_source_path
+            record.pop("source_fidelity", None)
+            record.pop("processing_conversion_id", None)
+            manifest["schema_version"] = 1
+            manifest_path.write_text(to_json(manifest), encoding="utf-8")
+
+            migrated = open_project(root)
+            self.assertEqual(migrated.schema_version, 2)
+            self.assertEqual(migrated.images[0].image_id, image.image_id)
+            self.assertEqual(migrated.images[0].source_fidelity, "legacy_derived_unknown")
+            self.assertTrue(migrated.images[0].analysis_included)
+            np.testing.assert_array_equal(migrated.images[0].accepted_mask, mask)
+            manifest_before_failed_upgrade = manifest_path.read_bytes()
+            with patch(
+                "core.sample_project_io._write_image",
+                side_effect=SampleProjectIoError("simulated migration interruption"),
+            ):
+                with self.assertRaises(SampleProjectIoError):
+                    save_project(migrated, root)
+            self.assertEqual(manifest_path.read_bytes(), manifest_before_failed_upgrade)
+            still_legacy = open_project(root)
+            self.assertEqual(still_legacy.images[0].source_fidelity, "legacy_derived_unknown")
+            np.testing.assert_array_equal(still_legacy.images[0].accepted_mask, mask)
+
+            save_project(migrated, root)
+            reopened = open_project(root)
+            self.assertEqual(reopened.images[0].source_fidelity, "legacy_derived_unknown")
+            np.testing.assert_array_equal(reopened.images[0].accepted_mask, mask)
+            self.assertTrue((root / legacy_source_path).is_file())
+
     def test_reopen_after_moving_project_folder(self):
         project = create_project("Portable")
         image = add_image(project, np.zeros((16, 16), dtype=np.uint8), source_filename="missing/original/path.png")
@@ -216,17 +362,10 @@ class TestSampleProjectPersistence(unittest.TestCase):
             replace_working_image(image, source[2:18, 1:17], (1, 2, 17, 18))
             project.sample_name = "After"
 
-            real_write = sample_project_io._write_image
-            writes = 0
-
-            def fail_second_write(path, array):
-                nonlocal writes
-                writes += 1
-                if writes == 2:
-                    raise SampleProjectIoError("simulated interrupted asset write")
-                return real_write(path, array)
-
-            with patch("core.sample_project_io._write_image", side_effect=fail_second_write):
+            with patch(
+                "core.sample_project_io._write_image",
+                side_effect=SampleProjectIoError("simulated interrupted asset write"),
+            ):
                 with self.assertRaises(SampleProjectIoError):
                     save_project(project, root)
 

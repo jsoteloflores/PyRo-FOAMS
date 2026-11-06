@@ -11,7 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-PROJECT_SCHEMA_VERSION = 1
+PROJECT_SCHEMA_VERSION = 2
+SOURCE_FIDELITY_PRESERVED = "preserved"
+SOURCE_FIDELITY_LEGACY_UNKNOWN = "legacy_derived_unknown"
 
 SUPPORTED_CALIBRATION_UNITS_TO_MM = {
     "m": 1000.0,
@@ -107,6 +109,8 @@ class ProjectImage:
     draft_source_kind: str = "processing"
     draft_source_details: Dict[str, Any] = field(default_factory=dict)
     accepted_snapshot: Optional[AcceptedSnapshot] = None
+    source_fidelity: str = SOURCE_FIDELITY_PRESERVED
+    processing_conversion_id: str = "uint8-native-v1"
 
     # Runtime arrays (not serialized inline in JSON manifest)
     source_image: Optional[np.ndarray] = None
@@ -130,6 +134,8 @@ class ProjectImage:
             "display_name": self.display_name,
             "source_filename": self.source_filename,
             "source_checksum_sha256": self.source_checksum_sha256,
+            "source_fidelity": self.source_fidelity,
+            "processing_conversion_id": self.processing_conversion_id,
             "width": self.width,
             "height": self.height,
             "processing_roi": list(self.processing_roi) if self.processing_roi is not None else None,
@@ -172,6 +178,53 @@ class SampleProject:
             "analysis_revision": self.analysis_revision,
             "images": [image.to_manifest_dict() for image in self.images],
         }
+
+
+@dataclass(frozen=True)
+class ProjectAnalysisImage:
+    image_id: str
+    display_name: str
+    snapshot_id: str
+    accepted_checksum_sha256: str
+    source_checksum_sha256: str
+    working_image_checksum_sha256: str
+    processing_roi: Tuple[int, int, int, int]
+    source_revision: int
+    accepted_revision: int
+    calibration_revision: int
+    units_per_px: float
+    unit_name: str
+    mm_per_px: float
+    working_image: np.ndarray
+    accepted_mask: np.ndarray
+    accepted_labels: np.ndarray
+
+    @property
+    def scale(self) -> Dict[str, float | str]:
+        return {"unitsPerPx": self.mm_per_px, "unitName": "mm"}
+
+
+@dataclass(frozen=True)
+class ProjectAnalysisSnapshot:
+    project_id: str
+    analysis_revision: int
+    images: Tuple[ProjectAnalysisImage, ...]
+
+    @property
+    def scales(self) -> List[Dict[str, float | str]]:
+        return [image.scale for image in self.images]
+
+    @property
+    def labels(self) -> List[np.ndarray]:
+        return [image.accepted_labels for image in self.images]
+
+    @property
+    def masks(self) -> List[np.ndarray]:
+        return [image.accepted_mask for image in self.images]
+
+    @property
+    def working_images(self) -> List[np.ndarray]:
+        return [image.working_image for image in self.images]
 
 
 
@@ -222,12 +275,35 @@ def create_project(sample_name: str, notes: str = "") -> SampleProject:
 
 
 
+def derive_working_image(source: np.ndarray) -> Tuple[np.ndarray, str]:
+    arr = np.asarray(source)
+    if arr.dtype not in (np.dtype(np.uint8), np.dtype(np.uint16)):
+        raise SampleProjectError(f"unsupported source dtype {arr.dtype}; expected uint8 or uint16")
+    if arr.ndim == 2:
+        channels = 1
+    elif arr.ndim == 3 and arr.shape[2] in (3, 4):
+        channels = arr.shape[2]
+    else:
+        raise SampleProjectError("source image must be grayscale, BGR, or BGRA")
+    if arr.shape[0] <= 0 or arr.shape[1] <= 0:
+        raise SampleProjectError("source image dimensions must be positive")
+
+    if arr.dtype == np.uint16:
+        working = (arr / 257.0).astype(np.uint8)
+        conversion = "uint16-div257-drop-alpha-v1" if channels == 4 else "uint16-div257-v1"
+    else:
+        working = arr.copy()
+        conversion = "uint8-drop-alpha-v1" if channels == 4 else "uint8-native-v1"
+    if channels == 4:
+        working = working[:, :, :3].copy()
+    else:
+        working = working.copy()
+    return working, conversion
+
+
 def add_image(project: SampleProject, image: np.ndarray, source_filename: str, display_name: Optional[str] = None) -> ProjectImage:
     arr = np.asarray(image)
-    if arr.ndim not in (2, 3):
-        raise SampleProjectError("source image must be grayscale or color")
-    if arr.dtype != np.uint8:
-        arr = cv2.normalize(arr.astype(np.float32), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    working_image, conversion_id = derive_working_image(arr)
     h, w = arr.shape[:2]
     project_image = ProjectImage(
         image_id=generate_stable_id("img"),
@@ -237,8 +313,9 @@ def add_image(project: SampleProject, image: np.ndarray, source_filename: str, d
         width=w,
         height=h,
         source_image=arr.copy(),
-        working_image=arr.copy(),
+        working_image=working_image,
         processing_roi=(0, 0, w, h),
+        processing_conversion_id=conversion_id,
     )
     project.images.append(project_image)
     return project_image
@@ -345,11 +422,12 @@ def accept_draft(
 
 def replace_source_image(image: ProjectImage, new_source: np.ndarray, source_filename: str) -> None:
     arr = np.asarray(new_source)
-    if arr.dtype != np.uint8:
-        arr = cv2.normalize(arr.astype(np.float32), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    working, conversion_id = derive_working_image(arr)
     h, w = arr.shape[:2]
     image.source_image = arr.copy()
-    image.working_image = arr.copy()
+    image.working_image = working
+    image.processing_conversion_id = conversion_id
+    image.source_fidelity = SOURCE_FIDELITY_PRESERVED
     image.source_filename = source_filename
     image.source_checksum_sha256 = checksum_ndarray(arr)
     image.width = w
@@ -418,3 +496,73 @@ def included_images(project: SampleProject) -> List[ProjectImage]:
 
 def included_images_missing_calibration(project: SampleProject) -> List[ProjectImage]:
     return [image for image in included_images(project) if not image.calibration.is_calibrated]
+
+
+def create_analysis_snapshot(project: SampleProject) -> ProjectAnalysisSnapshot:
+    selected = included_images(project)
+    if not selected:
+        raise SampleProjectError("No accepted images are included for sample analysis.")
+
+    snapshots = []
+    for image in selected:
+        if image.accepted_snapshot is None or image.accepted_mask is None or image.accepted_labels is None:
+            raise SampleProjectError(
+                f"Included image '{image.display_name}' has no complete accepted segmentation."
+            )
+        if not image.calibration.is_calibrated:
+            raise SampleProjectError(
+                f"Included image '{image.display_name}' has no valid supported calibration."
+            )
+        if image.working_image is None or image.processing_roi is None:
+            raise SampleProjectError(f"Included image '{image.display_name}' has no valid working-image context.")
+
+        mask = image.accepted_mask
+        labels = image.accepted_labels
+        shape = image.working_image.shape[:2]
+        if mask.dtype != np.uint8 or mask.shape != shape or not set(np.unique(mask)).issubset({0, 255}):
+            raise SampleProjectError(f"Included image '{image.display_name}' has an invalid accepted mask.")
+        if labels.dtype != np.int32 or labels.shape != shape or not np.array_equal(labels > 0, mask > 0):
+            raise SampleProjectError(f"Included image '{image.display_name}' has invalid accepted labels.")
+        if checksum_ndarray(mask) != image.accepted_snapshot.checksum_sha256:
+            raise SampleProjectError(f"Included image '{image.display_name}' accepted-mask checksum is stale.")
+        if image.accepted_snapshot.source_checksum_sha256 != image.source_checksum_sha256:
+            raise SampleProjectError(f"Included image '{image.display_name}' accepted source provenance is stale.")
+        working_checksum = checksum_ndarray(image.working_image)
+        if image.accepted_snapshot.working_image_checksum_sha256 != working_checksum:
+            raise SampleProjectError(f"Included image '{image.display_name}' accepted working-image provenance is stale.")
+        if image.accepted_snapshot.processing_roi != image.processing_roi:
+            raise SampleProjectError(f"Included image '{image.display_name}' accepted ROI provenance is stale.")
+
+        working_copy = image.working_image.copy()
+        mask_copy = mask.copy()
+        labels_copy = labels.copy()
+        for array in (working_copy, mask_copy, labels_copy):
+            array.flags.writeable = False
+        calibration = image.calibration
+        if calibration.units_per_px is None or calibration.unit_name is None:
+            raise SampleProjectError(f"Included image '{image.display_name}' calibration is incomplete.")
+        snapshots.append(
+            ProjectAnalysisImage(
+                image_id=image.image_id,
+                display_name=image.display_name,
+                snapshot_id=image.accepted_snapshot.snapshot_id,
+                accepted_checksum_sha256=image.accepted_snapshot.checksum_sha256,
+                source_checksum_sha256=image.source_checksum_sha256,
+                working_image_checksum_sha256=working_checksum,
+                processing_roi=tuple(image.processing_roi),
+                source_revision=image.source_revision,
+                accepted_revision=image.accepted_revision,
+                calibration_revision=image.calibration_revision,
+                units_per_px=float(calibration.units_per_px),
+                unit_name=str(calibration.unit_name),
+                mm_per_px=float(calibration_mm_per_px(image)),
+                working_image=working_copy,
+                accepted_mask=mask_copy,
+                accepted_labels=labels_copy,
+            )
+        )
+    return ProjectAnalysisSnapshot(
+        project_id=project.project_id,
+        analysis_revision=project.analysis_revision,
+        images=tuple(snapshots),
+    )

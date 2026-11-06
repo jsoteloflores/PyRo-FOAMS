@@ -14,6 +14,7 @@ from __future__ import annotations
 #     * Per-image scale is displayed and stored
 import os
 import tkinter as tk
+import uuid
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Dict, List, Optional, Set, Tuple
@@ -41,9 +42,8 @@ from ..core.sample_project import (
     accept_draft,
     add_image,
     calibration_mm_per_px,
+    create_analysis_snapshot,
     create_project,
-    included_images,
-    included_images_missing_calibration,
     labels_from_mask,
     now_utc_iso,
     replace_working_image,
@@ -53,7 +53,7 @@ from ..core.sample_project import (
 )
 from ..core.sample_project_io import open_project, save_project
 from . import postprocessing, processing  # sibling GUI modules
-from .widgets import debounce, ensure_mask_uint8
+from .widgets import cancel_debounced_callbacks, debounce, ensure_mask_uint8
 
 
 def _tk_parent(owner) -> tk.Misc:
@@ -122,17 +122,11 @@ class BusyDialog(tk.Toplevel):
         self.destroy()
 
 def safeReadImage(path: str) -> np.ndarray:
-    """Robust image reader: handles Windows paths, 16-bit tiffs, alpha."""
+    """Decode and retain supported source pixels without lossy conversion."""
     data = np.fromfile(path, dtype=np.uint8)         # avoids Unicode path issues
     img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise ValueError(f"Could not read image: {path}")
-    if img.dtype == np.uint16:                       # scale 16-bit → 8-bit
-        img = (img / 257.0).astype(np.uint8)
-    if img.ndim == 3 and img.shape[2] == 4:          # drop alpha
-        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-    if img.ndim == 3 and img.shape[2] == 1:          # squeeze single-channel
-        img = img[:, :, 0]
     return img
 
 def makePreview(img: np.ndarray, max_pixels: int = PREVIEW_MAX_PIXELS) -> np.ndarray:
@@ -158,6 +152,7 @@ class PreprocessApp:
         self.root = master
         self.master.title("PyFOAMS – Preprocessing")
         self.project = create_project("Untitled Sample")
+        self.projectSessionId = uuid.uuid4().hex
         self.projectPath: Optional[Path] = None
         self.unsavedChanges = False
 
@@ -167,6 +162,8 @@ class PreprocessApp:
         self.images: list[np.ndarray] = []
         self.previews: list[np.ndarray] = []
         self.imagePaths: list[str] = []
+        self.imageIds: List[str] = []
+        self.draftRevisions: List[int] = []
         self.thumbPhotos: list[ImageTk.PhotoImage] = []  # keep refs so Tk doesn’t GC
         self.currentIndex = 0
 
@@ -205,35 +202,56 @@ class PreprocessApp:
         ttk.Label(self.projectToolbar, text="Sample:").pack(side="left", padx=(6, 2), pady=6)
         self.sampleEntry = ttk.Entry(self.projectToolbar, textvariable=self.sampleNameVar, width=28)
         self.sampleEntry.pack(side="left", padx=(0, 8), pady=6)
-        ttk.Button(self.projectToolbar, text="New Project", command=self.onNewProject).pack(side="left", padx=4)
-        ttk.Button(self.projectToolbar, text="Open Project", command=self.onOpenProject).pack(side="left", padx=4)
-        ttk.Button(self.projectToolbar, text="Save Project", command=self.onSaveProject).pack(side="left", padx=4)
+        self.newProjectButton = ttk.Button(self.projectToolbar, text="New Project", command=self.onNewProject)
+        self.newProjectButton.pack(side="left", padx=4)
+        self.openProjectButton = ttk.Button(self.projectToolbar, text="Open Project", command=self.onOpenProject)
+        self.openProjectButton.pack(side="left", padx=4)
+        self.saveProjectButton = ttk.Button(self.projectToolbar, text="Save Project", command=self.onSaveProject)
+        self.saveProjectButton.pack(side="left", padx=4)
 
         self.toolbar = ttk.Frame(self.master)
         self.toolbar.pack(side="top", fill="x")
+        self.imagesToolbar = ttk.Frame(self.toolbar)
+        self.imagesToolbar.pack(side="top", fill="x")
+        self.acceptanceToolbar = ttk.Frame(self.toolbar)
+        self.acceptanceToolbar.pack(side="top", fill="x")
+        self.displayToolbar = ttk.Frame(self.toolbar)
+        self.displayToolbar.pack(side="top", fill="x")
+        self.statusToolbar = ttk.Frame(self.toolbar)
+        self.statusToolbar.pack(side="top", fill="x")
 
-        ttk.Button(self.toolbar, text="Load Images", command=self.onLoad).pack(side="left", padx=6, pady=6)
+        self.addImagesButton = ttk.Button(self.imagesToolbar, text="Add Images", command=self.onLoad)
+        self.addImagesButton.pack(side="left", padx=6, pady=4)
+        self.renameImageButton = ttk.Button(self.imagesToolbar, text="Rename Image", command=self.onRenameImage)
+        self.renameImageButton.pack(side="left", padx=4)
+        self.setCalibrationButton = ttk.Button(self.imagesToolbar, text="Set Calibration…", command=self.onSetCalibration)
+        self.setCalibrationButton.pack(side="left", padx=4)
+        self.cropButton = ttk.Button(self.imagesToolbar, text="Batch Crop", command=self.onBatchCropClick)
+        self.cropButton.pack(side="left", padx=4)
         self.cropAllVar = tk.BooleanVar(value=True)  # default apply to all
-        ttk.Button(self.toolbar, text="Batch Crop", command=self.onBatchCropClick).pack(side="left", padx=6)
-        ttk.Checkbutton(self.toolbar, text="Use relative margins", variable=self.cropAllVar).pack(side="left", padx=6)
-        ttk.Button(self.toolbar, text="Proceed with Processing", command=self.onProceedProcessing)\
-   .pack(side="left", padx=12)
-        ttk.Separator(self.toolbar, orient="vertical").pack(side="left", fill="y", padx=6)
+        ttk.Checkbutton(self.imagesToolbar, text="Relative crop margins", variable=self.cropAllVar).pack(side="left", padx=4)
+        self.processButton = ttk.Button(self.imagesToolbar, text="Process…", command=self.onProceedProcessing)
+        self.processButton.pack(side="left", padx=8)
+        self.editMasksButton = ttk.Button(self.imagesToolbar, text="Edit Masks…", command=self.onOpenEditor)
+        self.editMasksButton.pack(side="left", padx=4)
+        self.importMaskButton = ttk.Button(self.imagesToolbar, text="Import Mask…", command=self.onImportMask)
+        self.importMaskButton.pack(side="left", padx=4)
 
-        ttk.Label(self.toolbar, text="Thumbs:").pack(side="left")
+        self.acceptDraftButton = ttk.Button(self.acceptanceToolbar, text="Accept Draft", command=self.onAcceptDraft)
+        self.acceptDraftButton.pack(side="left", padx=6, pady=4)
+        self.includeButton = ttk.Button(self.acceptanceToolbar, text="Include", command=self.onToggleInclude)
+        self.includeButton.pack(side="left", padx=4)
+        self.analyzeIncludedButton = ttk.Button(self.acceptanceToolbar, text="Analyze Included", command=self.onAnalyzeIncluded)
+        self.analyzeIncludedButton.pack(side="left", padx=4)
+
+        ttk.Label(self.displayToolbar, text="Thumbnails:").pack(side="left", padx=(6, 2), pady=4)
         for txt, val in [("Original", "original"), ("Mask", "mask"), ("Overlay", "overlay")]:
-            ttk.Radiobutton(self.toolbar, text=txt, value=val, variable=self.displayModeVar, command=self._redrawAllThumbs).pack(side="left", padx=4)
-
-        ttk.Button(self.toolbar, text="Edit Masks…", command=self.onOpenEditor).pack(side="left", padx=10)
-        ttk.Button(self.toolbar, text="Import Mask…", command=self.onImportMask).pack(side="left", padx=4)
-        ttk.Button(self.toolbar, text="Rename Image", command=self.onRenameImage).pack(side="left", padx=4)
-        ttk.Button(self.toolbar, text="Set Calibration…", command=self.onSetCalibration).pack(side="left", padx=4)
-        ttk.Button(self.toolbar, text="Accept Draft", command=self.onAcceptDraft).pack(side="left", padx=4)
-        ttk.Button(self.toolbar, text="Toggle Include", command=self.onToggleInclude).pack(side="left", padx=4)
-        ttk.Button(self.toolbar, text="Analyze Included", command=self.onAnalyzeIncluded).pack(side="left", padx=4)
+            ttk.Radiobutton(self.displayToolbar, text=txt, value=val, variable=self.displayModeVar, command=self._redrawAllThumbs).pack(side="left", padx=4)
 
         self.statusVar = tk.StringVar(value="No images loaded")
-        ttk.Label(self.toolbar, textvariable=self.statusVar).pack(side="left", padx=12)
+        ttk.Label(self.statusToolbar, text="Blue outline: active image. Green outline: batch target; Ctrl-click or right-click toggles targets.").pack(side="left", padx=6, pady=(0, 4))
+        ttk.Label(self.statusToolbar, textvariable=self.statusVar).pack(side="left", padx=8, fill="x", expand=True)
+        self._updateWorkspaceActionLabels()
 
         # Grid frame
         self.gridFrame = ttk.Frame(self.master)
@@ -275,12 +293,14 @@ class PreprocessApp:
         self.previews = [makePreview(img) for img in self.images]
         self.paths = [img.display_name for img in self.project.images]
         self.imagePaths = [img.source_filename for img in self.project.images]
+        self.imageIds = [img.image_id for img in self.project.images]
 
         self.scales = []
         self.imageRevisions = []
         self.calibrationRevisions = []
         self.maskRevisions = []
         self.labelRevisions = []
+        self.draftRevisions = []
         self.masks = []
         self.labels = []
         self.acceptedMasks = []
@@ -299,6 +319,7 @@ class PreprocessApp:
             self.calibrationRevisions.append(int(image.calibration_revision))
             self.maskRevisions.append(int(image.draft_revision))
             self.labelRevisions.append(int(image.draft_revision))
+            self.draftRevisions.append(int(image.draft_revision))
             self.masks.append(image.draft_mask.copy() if image.draft_mask is not None else None)
             self.labels.append(image.draft_labels.copy() if image.draft_labels is not None else None)
             self.acceptedMasks.append(image.accepted_mask.copy() if image.accepted_mask is not None else None)
@@ -317,6 +338,19 @@ class PreprocessApp:
         else:
             self.selectedIndex = None
             self.batchSelection = set()
+        self._updateWorkspaceActionLabels()
+
+    def _updateWorkspaceActionLabels(self):
+        if not hasattr(self, "includeButton"):
+            return
+        image = self._selectedProjectImage()
+        if image is None:
+            self.includeButton.configure(text="Include", state="disabled")
+            return
+        self.includeButton.configure(
+            text="Exclude" if image.analysis_included else "Include",
+            state="normal" if image.accepted_snapshot is not None or image.analysis_included else "disabled",
+        )
 
     def _syncProjectFromLists(self):
         for i, image in enumerate(self.project.images):
@@ -347,6 +381,7 @@ class PreprocessApp:
 
     def _resetProject(self, sample_name: str = "Untitled Sample"):
         self.project = create_project(sample_name)
+        self.projectSessionId = uuid.uuid4().hex
         self.projectPath = None
         self.sampleNameVar.set(self.project.sample_name)
         self.unsavedChanges = False
@@ -386,6 +421,7 @@ class PreprocessApp:
             messagebox.showerror("Open Project", f"Could not open project: {exc}")
             return
         self.project = loaded
+        self.projectSessionId = uuid.uuid4().hex
         self.projectPath = Path(chosen)
         self.sampleNameVar.set(self.project.sample_name)
         self.unsavedChanges = False
@@ -400,6 +436,7 @@ class PreprocessApp:
     def _onCloseRequested(self):
         if not self._promptSaveIfDirty():
             return
+        cancel_debounced_callbacks(self.master)
         self.master.destroy()
 
     def onBatchCropClick(self):
@@ -455,6 +492,7 @@ class PreprocessApp:
                 )
                 self.maskRevisions[i] = image.draft_revision
                 self.labelRevisions[i] = image.draft_revision
+                self.draftRevisions[i] = image.draft_revision
             self._redrawAllThumbs()
             self._markUnsaved()
             self.statusVar.set(f"Updated drafts for {len(selected_targets)} selected image(s).")
@@ -482,9 +520,55 @@ class PreprocessApp:
                 else None
             ),
             analysisCallback=self.onAnalyzeIncluded,
+            projectMode=True,
+            projectMeasurementExportCallback=self.onExportAcceptedMeasurements,
+            includedImageCount=sum(image.analysis_included for image in self.project.images),
+            projectId=self.project.project_id,
+            projectSessionId=self.projectSessionId,
+            imageIds=[image.image_id for image in self.project.images],
+            draftRevisions=[image.draft_revision for image in self.project.images],
+            batchTargetCallback=self._acceptBatchDraftResult,
         )
         # Set it after construction (works no matter which version is imported)
         setattr(win, "resultsCallback", _receive_from_processing)
+
+    def _acceptBatchDraftResult(self, result) -> bool:
+        if result.project_id != self.project.project_id or result.session_id != self.projectSessionId:
+            return False
+        try:
+            index = next(i for i, image in enumerate(self.project.images) if image.image_id == result.image_id)
+        except StopIteration:
+            return False
+        image = self.project.images[index]
+        if (
+            result.source_revision != image.source_revision
+            or result.draft_revision != image.draft_revision
+            or image.working_image is None
+            or result.binary is None
+            or result.binary.shape != image.working_image.shape[:2]
+        ):
+            return False
+        settings = {
+            "threshold": dict(result.threshold),
+            "separation": dict(result.separation),
+        }
+        update_draft(
+            image,
+            mask=result.binary,
+            labels=result.labels,
+            settings=settings,
+            source_kind="processing",
+            source_details={"operation": "selected_batch"},
+        )
+        self.masks[index] = image.draft_mask.copy()
+        self.labels[index] = image.draft_labels.copy() if image.draft_labels is not None else None
+        self.maskRevisions[index] = image.draft_revision
+        self.labelRevisions[index] = image.draft_revision
+        self.draftRevisions[index] = image.draft_revision
+        self._markUnsaved()
+        self._redrawThumb(index)
+        self.statusVar.set(f"Updated draft for {image.display_name}; accepted inputs are unchanged.")
+        return True
 
     # --------------------------- Image loading ---------------------------
 
@@ -623,6 +707,7 @@ class PreprocessApp:
         self.acceptedChecksums[index] = snapshot.checksum_sha256
         self.acceptedProvenance[index] = dict(snapshot.source_details)
         self.project.analysis_revision += 1
+        self._updateWorkspaceActionLabels()
         self._markUnsaved()
         self._redrawThumb(index)
         self.statusVar.set(f"Accepted segmentation for {image.display_name}.")
@@ -646,6 +731,7 @@ class PreprocessApp:
         self._markUnsaved()
         self.statusVar.set(f"Renamed image to {name}.")
         self._redrawThumb(self.selectedIndex)
+        self._updateWorkspaceActionLabels()
 
     def onSetCalibration(self):
         if self.selectedIndex is None:
@@ -791,6 +877,7 @@ class PreprocessApp:
             return
         self.inclusionFlags[self.selectedIndex] = image.analysis_included
         self.project.analysis_revision += 1
+        self._updateWorkspaceActionLabels()
         self._markUnsaved()
         self._redrawThumb(self.selectedIndex)
         self.statusVar.set(
@@ -798,60 +885,73 @@ class PreprocessApp:
         )
 
     def onAnalyzeIncluded(self):
-        picked = included_images(self.project)
-        if not picked:
-            messagebox.showwarning("Analyze", "No included images. Include accepted images first.")
-            return
-        unready = included_images_missing_calibration(self.project)
-        if unready:
-            names = "\n".join(f"- {img.display_name}" for img in unready)
-            messagebox.showwarning(
-                "Analyze",
-                "Physical analysis is blocked until included images have valid calibration:\n" + names,
-            )
-            return
-
-        images = []
-        labels = []
-        paths = []
-        scales = []
-        image_revisions = []
-        label_revisions = []
-        calibration_revisions = []
-        start_index = 0
-
-        for i, image in enumerate(self.project.images):
-            if not image.analysis_included:
-                continue
-            if image.working_image is None or image.accepted_labels is None:
-                continue
-            images.append(image.working_image)
-            labels.append(image.accepted_labels)
-            paths.append(image.display_name)
-            scales.append({"unitsPerPx": image.calibration.units_per_px, "unitName": image.calibration.unit_name})
-            image_revisions.append(image.source_revision)
-            label_revisions.append(image.accepted_revision)
-            calibration_revisions.append(image.calibration_revision)
-            if i == self.selectedIndex:
-                start_index = len(images) - 1
-
-        if not images:
-            messagebox.showwarning("Analyze", "Included images are missing accepted segmentation data.")
+        try:
+            snapshot = create_analysis_snapshot(self.project)
+        except SampleProjectError as exc:
+            messagebox.showwarning("Analyze", str(exc))
             return
 
         from . import stereology as stereology_gui
 
         stereology_gui.StereologyWindow(
             parent=self.master,
-            images=images,
-            labels=labels,
-            paths=paths,
-            scales=scales,
-            start_index=start_index,
-            image_revisions=image_revisions,
-            label_revisions=label_revisions,
-            calibration_revisions=calibration_revisions,
+            images=snapshot.working_images,
+            labels=snapshot.labels,
+            paths=[f"{item.display_name} [{item.image_id}]" for item in snapshot.images],
+            scales=snapshot.scales,
+            start_index=0,
+            image_revisions=[item.source_revision for item in snapshot.images],
+            label_revisions=[item.accepted_revision for item in snapshot.images],
+            calibration_revisions=[item.calibration_revision for item in snapshot.images],
         )
+
+    def onExportAcceptedMeasurements(self):
+        try:
+            snapshot = create_analysis_snapshot(self.project)
+        except SampleProjectError as exc:
+            messagebox.showwarning("Export Accepted Measurements", str(exc))
+            return
+
+        out_csv = filedialog.asksaveasfilename(
+            title="Export accepted measurements",
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv")],
+        )
+        if not out_csv:
+            return
+
+        from ..core.stereology import measure_dataset, save_props_csv
+
+        try:
+            props = measure_dataset(snapshot.labels, snapshot.scales)
+            save_props_csv(out_csv, props)
+        except Exception as exc:
+            messagebox.showerror("Export Accepted Measurements", f"Measurement export failed:\n{exc}")
+            return
+
+        self.lastMeasurementExportSnapshot = snapshot
+        self.lastMeasurementExportImageIds = tuple(item.image_id for item in snapshot.images)
+        if messagebox.askyesno(
+            "Export Accepted Measurements",
+            f"Measurements for {len(snapshot.images)} included image(s) were exported.\n\nSave accepted-label previews too?",
+        ):
+            out_dir = filedialog.askdirectory(title="Choose folder for accepted-label previews")
+            if out_dir:
+                from ..core.stereology import colorize_labels
+
+                for item in snapshot.images:
+                    bg = self._grayForExport(item.working_image)
+                    colored = colorize_labels(item.accepted_labels, bg_gray=bg)
+                    cv2.imwrite(os.path.join(out_dir, f"{item.image_id}_accepted_labels.png"), colored)
+                messagebox.showinfo("Export Accepted Measurements", "Accepted-label previews saved.")
+
+    @staticmethod
+    def _grayForExport(image: np.ndarray) -> np.ndarray:
+        if image.ndim == 2:
+            return image.copy()
+        if image.shape[2] == 4:
+            image = image[:, :, :3]
+        return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # --------------------------- Grid rendering ---------------------------
 
@@ -866,6 +966,7 @@ class PreprocessApp:
             ctrl_down = bool(event is not None and (event.state & 0x0004))
             if ctrl_down:
                 self._toggleBatchIndex(idx)
+            self._updateWorkspaceActionLabels()
             self._redrawAllThumbs()
 
     def _toggleBatchIndex(self, idx: int):

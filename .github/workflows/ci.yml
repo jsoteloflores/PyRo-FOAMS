@@ -61,3 +61,30 @@ jobs:
           pip install numpy opencv-python-headless pillow matplotlib
       - name: Run tests
         run: python -m unittest discover -v main/tests
+
+  gui-smoke:
+    name: Live Tk GUI Smoke (Windows, Python 3.12)
+    runs-on: windows-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install GUI test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy opencv-python-headless pillow matplotlib
+      - name: Run live Tk workflow and capture layout screenshots
+        env:
+          PYRO_FOAMS_LIVE_TK: "1"
+          PYRO_FOAMS_GUI_ARTIFACTS: artifacts/gui-smoke
+        run: python -m unittest -v main.tests.test_sample_project_gui
+      - name: Upload GUI smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-live-tk-gui-smoke
+          path: artifacts/gui-smoke/*.png
+          if-no-files-found: warn

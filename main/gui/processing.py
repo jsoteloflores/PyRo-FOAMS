@@ -19,7 +19,6 @@ else:
     RESAMPLE_LANCZOS = getattr(Image, "LANCZOS", Image.BICUBIC)
 
 # Package imports
-from ..core.batch import process_batch_parallel
 from ..core.processing import (
     DEFAULTS,
     labelsToColor,
@@ -27,6 +26,7 @@ from ..core.processing import (
 )
 from ..core.stereology import colorize_labels
 from . import stereology as stereology_gui  # sibling GUI module
+from .batch_controller import BatchJobCoordinator, BatchTargetSnapshot
 from .preview_controller import (
     CommittedProcessingConfig,
     LatestPreviewWorker,
@@ -92,7 +92,15 @@ class ProcessingWindow(tk.Toplevel):
                  targetIndices=None,
                  startIndex=0,
                  processingSettings=None,
-                 analysisCallback=None):
+                 analysisCallback=None,
+                 projectMode=False,
+                 projectMeasurementExportCallback=None,
+                 includedImageCount=0,
+                 projectId=None,
+                 projectSessionId=None,
+                 imageIds=None,
+                 draftRevisions=None,
+                 batchTargetCallback=None):
         super().__init__(parent)
         self.title("PyFOAMS – Processing (Threshold + Separation)")
         self.transient(parent)
@@ -104,6 +112,14 @@ class ProcessingWindow(tk.Toplevel):
         self.scales = scales or [None] * len(images)
         self.resultsCallback = resultsCallback
         self.analysisCallback = analysisCallback
+        self.projectMode = bool(projectMode)
+        self.projectMeasurementExportCallback = projectMeasurementExportCallback
+        self.includedImageCount = int(includedImageCount)
+        self.projectId = projectId
+        self.projectSessionId = projectSessionId
+        self.imageIds = list(imageIds) if imageIds is not None else [f"standalone-{index}" for index in range(len(images))]
+        self.draftRevisions = draftRevisions if draftRevisions is not None else [0] * len(images)
+        self.batchTargetCallback = batchTargetCallback
         self.imageRevisions = imageRevisions if imageRevisions is not None else [0] * len(images)
         self.calibrationRevisions = calibrationRevisions if calibrationRevisions is not None else [0] * len(images)
         if targetIndices is None:
@@ -203,6 +219,13 @@ class ProcessingWindow(tk.Toplevel):
 
         self._ownership = PreviewOwnership()
         self._worker = LatestPreviewWorker(self._computePreviewRequest)
+        self._batchCoordinator = BatchJobCoordinator()
+        self._batchJobId = None
+        self._batchGeneration = 0
+        self._batchAfterId = None
+        self._batchWidgetStates = []
+        self._batchSuccessCount = 0
+        self._batchFailureCount = 0
 
         # Build UI, bind, and show
         self._buildUi()
@@ -436,18 +459,40 @@ class ProcessingWindow(tk.Toplevel):
         self._leftPhoto = None; self._rightPhoto = None
         self._leftScale = 1.0;   self._rightScale = 1.0
 
-        # Bottom actions
-        bottom = ttk.Frame(self); bottom.pack(side="bottom", fill="x", padx=6, pady=6)
+        # Bottom actions and asynchronous batch status
+        bottom = ttk.Frame(self)
+        bottom.pack(side="bottom", fill="x", padx=6, pady=6)
+        actions = ttk.Frame(bottom)
+        actions.pack(side="top", fill="x")
         self.applyCurrentButton = ttk.Button(
-            bottom, text="Apply to Current", command=self.applyToCurrent, state="disabled"
+            actions, text="Apply to Current", command=self.applyToCurrent, state="disabled"
         )
         self.applyCurrentButton.pack(side="left")
-        ttk.Button(bottom, text="Apply to selected", command=self.applyToAll).pack(side="left", padx=6)
-        ttk.Button(bottom, text="Save Masks…", command=self.saveMasks).pack(side="left", padx=6)
-        ttk.Button(bottom, text="Save Labels…", command=self.saveLabels).pack(side="left", padx=6)
-        ttk.Button(bottom, text="Stereology…", command=self.openStereology).pack(side="left", padx=6)
+        self.applySelectedButton = ttk.Button(actions, text="Apply to selected", command=self.applyToAll)
+        self.applySelectedButton.pack(side="left", padx=6)
+        self.saveDraftMasksButton = ttk.Button(actions, text="Save Draft Masks…", command=self.saveMasks)
+        self.saveDraftMasksButton.pack(side="left", padx=6)
+        self.saveDraftLabelsButton = ttk.Button(actions, text="Save Draft Labels…", command=self.saveLabels)
+        self.saveDraftLabelsButton.pack(side="left", padx=6)
+        self.stereologyButton = ttk.Button(actions, text="Stereology…", command=self.openStereology)
+        self.stereologyButton.pack(side="left", padx=6)
 
-        ttk.Button(bottom, text="Export Measurements…", command=self.exportMeasurements).pack(side="left", padx=6)
+        export_text = (
+            f"Export accepted measurements ({self.includedImageCount})…"
+            if self.projectMode
+            else "Export draft measurements…"
+        )
+        self.exportMeasurementsButton = ttk.Button(actions, text=export_text, command=self.exportMeasurements)
+        self.exportMeasurementsButton.pack(side="left", padx=6)
+
+        batch_status = ttk.Frame(bottom)
+        batch_status.pack(side="top", fill="x", pady=(6, 0))
+        self.batchStatusVar = tk.StringVar(value="")
+        ttk.Label(batch_status, textvariable=self.batchStatusVar).pack(side="left", padx=(0, 8))
+        self.batchProgress = ttk.Progressbar(batch_status, orient="horizontal", mode="determinate", length=180)
+        self.batchProgress.pack(side="left", fill="x", expand=True)
+        self.batchCancelButton = ttk.Button(batch_status, text="Cancel batch", command=self.cancelBatch, state="disabled")
+        self.batchCancelButton.pack(side="left", padx=(8, 0))
 
 
     def _bindEvents(self):
@@ -735,6 +780,15 @@ class ProcessingWindow(tk.Toplevel):
             self._showCurrent()
 
     def _onClose(self):
+        if self._batchJobId is not None:
+            self.cancelBatch()
+        self._batchCoordinator.close()
+        if self._batchAfterId is not None:
+            try:
+                self.after_cancel(self._batchAfterId)
+            except tk.TclError:
+                pass
+            self._batchAfterId = None
         ownership = getattr(self, "_ownership", None)
         if ownership is not None:
             ownership.invalidate()
@@ -1291,17 +1345,36 @@ class ProcessingWindow(tk.Toplevel):
 
     def exportMeasurements(self):
         """
-        Run stereology on current labels array(s) and export a CSV.
-        Also optionally save colorized label previews if user chooses a folder.
+        Dispatch to accepted project inputs or explicitly labeled standalone drafts.
         """
+        if self.projectMode:
+            callback = self.projectMeasurementExportCallback
+            if not callable(callback):
+                messagebox.showerror(
+                    "Export Accepted Measurements",
+                    "Project measurement export is unavailable; draft data will not be exported instead.",
+                )
+                return
+            try:
+                callback()
+            except Exception as exc:
+                messagebox.showerror(
+                    "Export Accepted Measurements",
+                    f"Project measurement export failed; draft data was not used.\n{exc}",
+                )
+            return
+        self.exportStandaloneDraftMeasurements()
+
+    def exportStandaloneDraftMeasurements(self):
+        """Export measurements from this standalone processing window's drafts."""
         # sanity
         if not any(L is not None for L in getattr(self, "labels", [])):
-            messagebox.showwarning("Stereology", "No labels available. Apply to current or all first.")
+            messagebox.showwarning("Draft Measurements", "No draft labels available. Apply processing first.")
             return
 
         # choose CSV path
         out_csv = filedialog.asksaveasfilename(
-            title="Save pore measurements CSV",
+            title="Save standalone draft measurements CSV",
             defaultextension=".csv",
             filetypes=[("CSV", "*.csv")]
         )
@@ -1330,8 +1403,10 @@ class ProcessingWindow(tk.Toplevel):
                     if self.overlayOnOriginalVar.get():
                         bg = self._prepGrayLocal(self.images[i])
                     color = colorize_labels(L, seed=123 + i, bg_gray=bg, alpha=float(self.overlayAlphaVar.get()))
-                    name = os.path.splitext(os.path.basename(self.paths[i]))[0]
-                    cv2.imwrite(os.path.join(out_dir, f"{name}_labels_color.png"), color)
+                    cv2.imwrite(
+                        os.path.join(out_dir, f"{self.imageIds[i]}_draft_labels_color.png"),
+                        color,
+                    )
                     saved += 1
                 messagebox.showinfo("Export", f"Saved {saved} colorized label image(s).")
             else:
@@ -1390,6 +1465,7 @@ class ProcessingWindow(tk.Toplevel):
             self.binaries[idx] = result.binary.copy() if result.binary is not None else None
             self.labels[idx] = result.labels.copy() if result.labels is not None else None
             self.labelRevisions[idx] += 1
+            self.draftRevisions[idx] += 1
 
             try:
                 self._emitResults([idx])
@@ -1411,8 +1487,14 @@ class ProcessingWindow(tk.Toplevel):
 
 
     def applyToAll(self):
-        """Apply current settings to all images using parallel processing."""
+        """Start a cancellable background job for only the selected target images."""
         if not self.images:
+            return
+        if self._batchJobId is not None:
+            messagebox.showwarning("Apply", "A batch is already running.")
+            return
+        if self.projectMode and not callable(self.batchTargetCallback):
+            messagebox.showerror("Apply", "Project draft controller is unavailable; no results were dispatched.")
             return
 
         n = len(self.images)
@@ -1430,71 +1512,176 @@ class ProcessingWindow(tk.Toplevel):
         tparams = self._committedConfig.threshold_dict()
         sparams = self._committedConfig.separation_dict()
 
-        # Determine worker count (use half of CPU cores for responsiveness)
         import os as _os
-        max_workers = max(1, (_os.cpu_count() or 4) // 2)
-        # For small batches, sequential is faster (no process spawn overhead)
-        if len(target_indices) <= 3:
-            max_workers = 1
 
-        dlg = BusyDialog(self, title=f"Applying to selected ({max_workers} workers)…", mode="determinate", maximum=len(target_indices))
-
-        def progress_cb(completed: int, total: int):
-            try:
-                dlg.set_progress(completed)
-                self.update_idletasks()
-            except Exception:
-                pass
-
-        try:
-            try: self.attributes("-disabled", True)
-            except Exception: pass
-            try: self.config(cursor="watch")
-            except Exception: pass
-
-            # Use parallel batch processing
-            source_images = [self.images[index] for index in target_indices]
-            source_scales = None
-            if getattr(self, "scales", None) is not None:
-                source_scales = [self.scales[index] for index in target_indices]
-
-            binaries, labels_list, _ = process_batch_parallel(
-                images=source_images,
-                thresh_params=tparams,
-                sep_params=sparams,
-                scales=source_scales,
-                measure=False,  # measurement done separately in stereology
-                max_workers=max_workers,
-                progress_callback=progress_cb
+        max_workers = max(1, min(len(target_indices), (_os.cpu_count() or 4) // 2))
+        targets = []
+        for index in target_indices:
+            snapshot_image = np.array(self.images[index], copy=True)
+            snapshot_image.flags.writeable = False
+            targets.append(
+                BatchTargetSnapshot(
+                    index=index,
+                    image_id=self.imageIds[index],
+                    source_revision=int(self.imageRevisions[index]),
+                    draft_revision=int(self.draftRevisions[index]),
+                    image=snapshot_image,
+                )
             )
 
-            # Copy results
-            for offset, image_index in enumerate(target_indices):
-                self.binaries[image_index] = binaries[offset]
-                self.labels[image_index] = labels_list[offset]
-                self.labelRevisions[image_index] += 1
-
-            saved = sum(1 for i in target_indices if self.binaries[i] is not None)
-
-        except Exception as e:
-            messagebox.showerror("Apply", f"Batch processing failed:\n{e}")
-            saved = 0
-        finally:
-            dlg.close()
-            try: self.config(cursor="")
-            except Exception: pass
-            try: self.attributes("-disabled", False)
-            except Exception: pass
-
+        self._batchGeneration += 1
         try:
-            self._emitResults(target_indices)
-        except Exception as e:
-            print("resultsCallback error:", e)
+            self._batchJobId = self._batchCoordinator.start(
+                project_id=self.projectId,
+                session_id=self.projectSessionId,
+                targets=targets,
+                threshold=tparams,
+                separation=sparams,
+                max_workers=max_workers,
+            )
+        except Exception as exc:
+            self._batchJobId = None
+            messagebox.showerror("Apply", f"Could not start batch processing:\n{exc}")
+            return
 
-        messagebox.showinfo(
-            "Apply",
-            f"Applied to {saved}/{len(target_indices)} selected image(s) (parallel, {max_workers} workers).",
-        )
+        self._batchSuccessCount = 0
+        self._batchFailureCount = 0
+        self._batchStaleCount = 0
+        self._batchTotal = len(targets)
+        self.batchProgress.configure(maximum=self._batchTotal, value=0)
+        self.batchStatusVar.set(f"Processing {self._batchTotal} selected image(s)…")
+        self.batchCancelButton.configure(state="normal")
+        self._setBatchBusy(True)
+        self._batchAfterId = self.after(30, self._pollBatchEvents)
+
+    def _setBatchBusy(self, busy: bool):
+        if busy:
+            self._batchWidgetStates = []
+            protected = {self.batchCancelButton, self.batchProgress}
+
+            def disable_children(parent):
+                for child in parent.winfo_children():
+                    if child not in protected and child is not self.batchStatusVar:
+                        try:
+                            original = child.cget("state")
+                            child.configure(state="disabled")
+                            self._batchWidgetStates.append((child, original))
+                        except (tk.TclError, TypeError):
+                            pass
+                    disable_children(child)
+
+            disable_children(self)
+            self.batchCancelButton.configure(state="normal")
+        else:
+            for widget, state in reversed(self._batchWidgetStates):
+                try:
+                    widget.configure(state=state)
+                except tk.TclError:
+                    pass
+            self._batchWidgetStates = []
+
+    def _pollBatchEvents(self):
+        self._batchAfterId = None
+        active_job = self._batchJobId
+        if active_job is None:
+            return
+        while True:
+            try:
+                event = self._batchCoordinator.events.get_nowait()
+            except Exception:
+                break
+            if (
+                event.job_id != active_job
+                or event.project_id != self.projectId
+                or event.session_id != self.projectSessionId
+            ):
+                continue
+            self.batchProgress.configure(value=event.completed)
+            if event.kind == "target" and event.result is not None:
+                self._commitBatchTarget(event.result)
+            elif event.kind == "finished":
+                cancelled = event.cancelled
+                self._batchJobId = None
+                self._batchGeneration += 1
+                self.batchCancelButton.configure(state="disabled")
+                self._setBatchBusy(False)
+                if cancelled:
+                    self.batchStatusVar.set(
+                        f"Batch cancelled: {self._batchSuccessCount} succeeded, {self._batchFailureCount} failed."
+                    )
+                else:
+                    self.batchStatusVar.set(
+                        f"Batch finished: {self._batchSuccessCount} succeeded, "
+                        f"{self._batchFailureCount} failed, {self._batchStaleCount} stale."
+                    )
+                    messagebox.showinfo("Apply", self.batchStatusVar.get())
+                return
+        if self._batchJobId == active_job:
+            self._batchAfterId = self.after(30, self._pollBatchEvents)
+
+    def _commitBatchTarget(self, result):
+        try:
+            index = self.imageIds.index(result.image_id)
+        except ValueError:
+            self._batchStaleCount += 1
+            return
+        if (
+            result.job_id != self._batchJobId
+            or result.project_id != self.projectId
+            or result.session_id != self.projectSessionId
+            or result.index != index
+            or result.source_revision != self.imageRevisions[index]
+            or result.draft_revision != self.draftRevisions[index]
+            or result.threshold != self._committedConfig.threshold
+            or result.separation != self._committedConfig.separation
+        ):
+            self._batchStaleCount += 1
+            return
+        if result.error is not None:
+            self._batchFailureCount += 1
+            self.batchStatusVar.set(
+                f"Batch {self.batchProgress['value']}/{self._batchTotal}: "
+                f"{self._batchFailureCount} failed ({result.image_id}: {result.error})"
+            )
+            return
+
+        if callable(self.batchTargetCallback):
+            try:
+                committed = self.batchTargetCallback(result)
+            except Exception as exc:
+                self._batchFailureCount += 1
+                self.batchStatusVar.set(f"Batch target {result.image_id} failed to commit: {exc}")
+                return
+            if committed is False:
+                self._batchStaleCount += 1
+                return
+        self.binaries[index] = result.binary.copy() if result.binary is not None else None
+        self.labels[index] = result.labels.copy() if result.labels is not None else None
+        self.labelRevisions[index] += 1
+        self.draftRevisions[index] += 1
+        self._batchSuccessCount += 1
+        if not self.projectMode:
+            try:
+                self._emitResults([index])
+            except Exception as exc:
+                print("resultsCallback error:", exc)
+
+    def cancelBatch(self):
+        job_id = self._batchJobId
+        if job_id is None:
+            return
+        self._batchGeneration += 1
+        self._batchJobId = None
+        self._batchCoordinator.cancel(job_id)
+        if self._batchAfterId is not None:
+            try:
+                self.after_cancel(self._batchAfterId)
+            except tk.TclError:
+                pass
+            self._batchAfterId = None
+        self.batchCancelButton.configure(state="disabled")
+        self._setBatchBusy(False)
+        self.batchStatusVar.set("Batch cancelled; completed results were retained.")
 
 
     def saveMasks(self):
@@ -1507,8 +1694,7 @@ class ProcessingWindow(tk.Toplevel):
         saved = 0
         for i, m in enumerate(self.binaries):
             if m is None: continue
-            name = os.path.splitext(os.path.basename(self.paths[i]))[0]
-            path = os.path.join(outDir, f"{name}_mask.png")
+            path = os.path.join(outDir, f"{self.imageIds[i]}_draft_mask.png")
             cv2.imwrite(path, m)
             saved += 1
         messagebox.showinfo("Save", f"Saved {saved} mask(s) to {outDir}.")
@@ -1523,11 +1709,10 @@ class ProcessingWindow(tk.Toplevel):
         saved = 0
         for i, L in enumerate(self.labels):
             if L is None: continue
-            name = os.path.splitext(os.path.basename(self.paths[i]))[0]
             # Save color preview and raw .npy
             color = labelsToColor(L, bgGray=None, alpha=0.0)
-            cv2.imwrite(os.path.join(outDir, f"{name}_labels_color.png"), color)
-            np.save(os.path.join(outDir, f"{name}_labels.npy"), L.astype(np.int32))
+            cv2.imwrite(os.path.join(outDir, f"{self.imageIds[i]}_draft_labels_color.png"), color)
+            np.save(os.path.join(outDir, f"{self.imageIds[i]}_draft_labels.npy"), L.astype(np.int32))
             saved += 1
         messagebox.showinfo("Save", f"Saved {saved} labeled file(s) to {outDir}.")
 
