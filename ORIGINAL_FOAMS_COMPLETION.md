@@ -438,12 +438,21 @@ Configured headless unittest discovery runs 661 tests: 657 pass and four
 live-Tk tests are explicitly skipped; these skips are not counted as GUI
 acceptance. The display-capable Windows live-Tk run passes all four tests with
 no Tk stderr or callback exceptions.
-Configured Ruff passes with zero findings. Previous hosted run `42244733714`
-had lint and all four unit-test jobs pass, but its Windows GUI job remained in
-`Install GUI test dependencies` after more than 54 minutes and never started
-the test step. The new GUI job omits pip self-upgrade, bounds install/job time,
-and fails if screenshot artifacts are absent. A new hosted CI run for this
-worktree is pending because it has not been committed or pushed. Original FOAMS
-analysis setup, method-specific grouping/nesting, immutable run history, final
-joinable exports, and same-real-image MATLAB comparison remain future handoffs.
-Original FOAMS remains NOT COMPLETE.
+Configured Ruff passes with zero findings. Brief 20b implementation commit is
+`4928e03f3844919ded6716d0f93075174e530ec9`. Hosted run `42262702398` completed
+successfully: Ruff, Linux/Windows Python 3.11/3.12 unit suites, and the Windows
+Python 3.12 live-Tk GUI job all passed. The GUI step installed dependencies in
+19 seconds, ran the four live tests without Tk stderr/callback errors, and
+uploaded artifact `windows-live-tk-gui-smoke` (artifact ID `13526245699`,
+SHA-256 `edb9507f061fe4679b7c6b735988371616ea2b9042809b019d59eb9ba2741791`,
+expires 2027-02-04). It contains the four empty 1280x800/1400x900 1x/2x font
+captures and the populated 1280x800 capture.
+
+Earlier run `42244733714` remained in dependency installation for over 54
+minutes. Run `42259395489` did not complete its GUI step; local reproduction
+identified an unmocked standalone-export success dialog in the live test. The
+runner now mocks that dialog, captures Tk stderr as a failure, and the passing
+run `42262702398` verifies the correction. Original FOAMS analysis setup,
+method-specific grouping/nesting, immutable run history, final joinable exports,
+and same-real-image MATLAB comparison remain future handoffs. Original FOAMS
+remains NOT COMPLETE.
