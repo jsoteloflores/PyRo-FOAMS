@@ -319,7 +319,9 @@ class PreprocessApp:
             self.analyzeIncludedButton,
             *self.displayModeButtons,
         )
-        for control in self.workspaceFocusControls + (
+        for control in (
+            self.imagesCanvas,
+            *self._preparationControls,
             self.imagesHorizontalScrollbar,
             self.imagesVerticalScrollbar,
         ):
@@ -369,17 +371,23 @@ class PreprocessApp:
         self.master.bind("<<ThemeChanged>>", debounce(self.master, 50)(lambda _event: self._reflowPreparationToolbar()))
         self._reflowPreparationToolbar()
 
-    def _workspaceFocusOrder(self):
-        controls = list(self.workspaceFocusControls)
+    def _preparationFocusOrder(self):
+        controls = [self.imagesCanvas, *self._preparationControls]
         for scrollbar in (self.imagesVerticalScrollbar, self.imagesHorizontalScrollbar):
             if scrollbar.winfo_ismapped():
-                canvas_index = controls.index(self.imagesCanvas)
-                controls.insert(canvas_index + 1, scrollbar)
+                controls.append(scrollbar)
         return [control for control in controls if str(control.cget("state")) != "disabled"]
 
     def _focusPreparationOffset(self, current, offset):
-        controls = self._workspaceFocusOrder()
+        controls = self._preparationFocusOrder()
         if not controls:
+            return "break"
+        first_action = self._preparationControls[0]
+        if offset > 0 and current is controls[-1]:
+            self.acceptDraftButton.focus_set()
+            return "break"
+        if offset < 0 and current in (self.imagesCanvas, first_action):
+            self.saveProjectButton.focus_set()
             return "break"
         if current not in controls:
             index = 0 if offset > 0 else len(controls) - 1

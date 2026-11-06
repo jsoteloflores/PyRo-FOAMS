@@ -115,6 +115,11 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             current.event_generate("<Tab>")
             self.root.update()
         self.assertTrue(expected.issubset(visited), "Tab traversal omitted a primary workspace control")
+        self.app.addImagesButton.focus_set()
+        self.root.update()
+        self.app.addImagesButton.event_generate("<Shift-Tab>")
+        self.root.update()
+        self.assertIs(self.root.focus_get(), self.app.saveProjectButton)
 
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self.root.geometry(f"{width}x{height}+0+0")
@@ -426,12 +431,16 @@ class TestLiveSampleProjectGui(unittest.TestCase):
 
             processing_window = None
             self.app._onThumbClick(0)
+            self._checkpoint("before-export-processing-window")
             self.app.processButton.invoke()
+            self._checkpoint("process-button-invoked-for-export")
             self.root.update()
+            self._checkpoint("root-updated-for-export")
             processing_window = next(
                 window for window in self._top_levels(self.root)
                 if isinstance(window, processing.ProcessingWindow)
             )
+            self._checkpoint("found-export-processing-window")
             self.assertIn("2", processing_window.exportMeasurementsButton.cget("text"))
             project_export_callback = processing_window.projectMeasurementExportCallback
             processing_window.projectMeasurementExportCallback = None
@@ -466,8 +475,12 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 processing.filedialog, "asksaveasfilename", return_value=str(csv_path)
             ), patch.object(processing.messagebox, "askyesno", return_value=True), patch.object(
                 processing.filedialog, "askdirectory", return_value=str(preview_path)
-            ), patch("main.core.stereology.colorize_labels", wraps=real_colorize_labels) as colorize:
+            ), patch.object(processing.messagebox, "showinfo"), patch(
+                "main.core.stereology.colorize_labels", wraps=real_colorize_labels
+            ) as colorize:
+                self._checkpoint("before-real-export-invoke")
                 processing_window.exportMeasurementsButton.invoke()
+                self._checkpoint("after-real-export-invoke")
             self.assertTrue(csv_path.is_file())
             self.assertEqual(len(captured["labels"]), 2)
             np.testing.assert_array_equal(captured["labels"][0], accepted_a.astype(np.int32) // 255)
@@ -597,7 +610,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             output = Path(temporary) / "draft.csv"
             with patch.object(processing.filedialog, "asksaveasfilename", return_value=str(output)), patch.object(
                 processing.messagebox, "askyesno", return_value=False
-            ):
+            ), patch.object(processing.messagebox, "showinfo"):
                 window.exportMeasurementsButton.invoke()
             self.assertTrue(output.is_file())
             window._onClose()

@@ -1773,7 +1773,10 @@ class ProcessingWindow(tk.Toplevel):
                 errors.append(f"raw label map failed: {exc}")
             finally:
                 if temporary_raw is not None and temporary_raw.exists():
-                    temporary_raw.unlink()
+                    try:
+                        temporary_raw.unlink()
+                    except OSError as exc:
+                        errors.append(f"temporary raw label cleanup failed: {exc}")
 
             if color_saved and raw_saved:
                 complete.append(index)
