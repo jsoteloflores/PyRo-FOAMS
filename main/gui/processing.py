@@ -5,6 +5,8 @@ from __future__ import annotations
 import inspect
 import os
 import tkinter as tk
+import uuid
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Dict
 
@@ -35,7 +37,7 @@ from .preview_controller import (
     ProcessingConfigError,
     make_processing_key,
 )
-from .widgets import debounce
+from .widgets import cancel_debounced_callbacks, debounce
 
 
 class BusyDialog(tk.Toplevel):
@@ -215,6 +217,8 @@ class ProcessingWindow(tk.Toplevel):
         self._invalidEntry = None
         self._dispatchAfterId = None
         self._resultPollAfterId = None
+        self._ownedAfterIds = set()
+        self._closing = False
         self._restorePersistedSettings(processingSettings)
 
         self._ownership = PreviewOwnership()
@@ -238,9 +242,33 @@ class ProcessingWindow(tk.Toplevel):
             self._currentThreshParams(), self._currentSepParams()
         )
         self.protocol("WM_DELETE_WINDOW", self._onClose)
-        self.after_idle(self._showCurrent)
+        self._scheduleOwnedAfter(None, self._showCurrent)
         self.geometry("1280x800")
         self.minsize(980, 640)
+
+    def _scheduleOwnedAfter(self, delay_ms, callback):
+        holder = {}
+
+        def invoke():
+            after_id = holder.get("id")
+            if after_id is not None:
+                self._ownedAfterIds.discard(after_id)
+            if not self._closing:
+                callback()
+
+        after_id = self.after_idle(invoke) if delay_ms is None else self.after(delay_ms, invoke)
+        holder["id"] = after_id
+        self._ownedAfterIds.add(after_id)
+        return after_id
+
+    def _cancelOwnedAfterCallbacks(self):
+        self._closing = True
+        for after_id in tuple(self._ownedAfterIds):
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                pass
+        self._ownedAfterIds.clear()
 
     def _restorePersistedSettings(self, processing_settings):
         if not isinstance(processing_settings, dict):
@@ -568,7 +596,7 @@ class ProcessingWindow(tk.Toplevel):
             self._onComputationChanged(event)
 
     def _commitSpinbox(self, widget):
-        widget.after_idle(lambda source=widget: self._onComputationChanged(source))
+        self._scheduleOwnedAfter(None, lambda source=widget: self._onComputationChanged(source))
 
     def _onDraftEdited(self, *_args):
         if self._updatingVars:
@@ -780,9 +808,11 @@ class ProcessingWindow(tk.Toplevel):
             self._showCurrent()
 
     def _onClose(self):
+        self._closing = True
         if self._batchJobId is not None:
             self.cancelBatch()
         self._batchCoordinator.close()
+        self._cancelOwnedAfterCallbacks()
         if self._batchAfterId is not None:
             try:
                 self.after_cancel(self._batchAfterId)
@@ -807,6 +837,7 @@ class ProcessingWindow(tk.Toplevel):
         worker = getattr(self, "_worker", None)
         if worker is not None:
             worker.close()
+        cancel_debounced_callbacks(self)
         self.destroy()
 
     # ----------------- Display -----------------
@@ -1092,7 +1123,7 @@ class ProcessingWindow(tk.Toplevel):
     def _schedulePreview(self):
         if not self.images or self._dispatchAfterId is not None:
             return
-        self._dispatchAfterId = self.after_idle(self._dispatchPreview)
+        self._dispatchAfterId = self._scheduleOwnedAfter(None, self._dispatchPreview)
 
     def _dispatchPreview(self):
         self._dispatchAfterId = None
@@ -1109,7 +1140,7 @@ class ProcessingWindow(tk.Toplevel):
         self.statusVar.set("Computing preview...")
         self._updateApplyState()
         if self._resultPollAfterId is None:
-            self._resultPollAfterId = self.after(20, self._pollPreviewResults)
+            self._resultPollAfterId = self._scheduleOwnedAfter(20, self._pollPreviewResults)
 
     def _pollPreviewResults(self):
         self._resultPollAfterId = None
@@ -1130,7 +1161,7 @@ class ProcessingWindow(tk.Toplevel):
                 self.statusVar.set("Preview ready.")
         self._updateApplyState()
         if self._worker.has_work or not self._worker.results.empty():
-            self._resultPollAfterId = self.after(20, self._pollPreviewResults)
+            self._resultPollAfterId = self._scheduleOwnedAfter(20, self._pollPreviewResults)
 
     def _renderAcceptedPreview(self):
         result = self._ownership.result
@@ -1552,7 +1583,7 @@ class ProcessingWindow(tk.Toplevel):
         self.batchStatusVar.set(f"Processing {self._batchTotal} selected image(s)…")
         self.batchCancelButton.configure(state="normal")
         self._setBatchBusy(True)
-        self._batchAfterId = self.after(30, self._pollBatchEvents)
+        self._batchAfterId = self._scheduleOwnedAfter(30, self._pollBatchEvents)
 
     def _setBatchBusy(self, busy: bool):
         if busy:
@@ -1617,7 +1648,7 @@ class ProcessingWindow(tk.Toplevel):
                     messagebox.showinfo("Apply", self.batchStatusVar.get())
                 return
         if self._batchJobId == active_job:
-            self._batchAfterId = self.after(30, self._pollBatchEvents)
+            self._batchAfterId = self._scheduleOwnedAfter(30, self._pollBatchEvents)
 
     def _commitBatchTarget(self, result):
         try:
@@ -1685,35 +1716,99 @@ class ProcessingWindow(tk.Toplevel):
 
 
     def saveMasks(self):
-        if not any(self.binaries):
+        present = [(index, mask) for index, mask in enumerate(self.binaries) if mask is not None]
+        if not present:
             messagebox.showwarning("Save", "No masks to save. Apply to current or all first.")
             return
         outDir = filedialog.askdirectory(title="Choose output folder for masks")
         if not outDir:
             return
-        saved = 0
-        for i, m in enumerate(self.binaries):
-            if m is None: continue
-            path = os.path.join(outDir, f"{self.imageIds[i]}_draft_mask.png")
-            cv2.imwrite(path, m)
-            saved += 1
-        messagebox.showinfo("Save", f"Saved {saved} mask(s) to {outDir}.")
+        saved = []
+        failed = []
+        for index, mask in present:
+            path = os.path.join(outDir, f"{self.imageIds[index]}_draft_mask.png")
+            try:
+                self._writeDraftPreview(path, mask)
+                saved.append(path)
+            except Exception as exc:
+                failed.append(f"{os.path.basename(path)}: {exc}")
+        self._showDraftWriteSummary(
+            "Save Draft Masks",
+            f"Saved {len(saved)} of {len(present)} draft mask(s).",
+            failed,
+        )
 
     def saveLabels(self):
-        if not any(self.labels):
+        present = [(index, labels) for index, labels in enumerate(self.labels) if labels is not None]
+        if not present:
             messagebox.showwarning("Save", "No labels to save. Apply first.")
             return
         outDir = filedialog.askdirectory(title="Choose output folder for labels")
         if not outDir:
             return
-        saved = 0
-        for i, L in enumerate(self.labels):
-            if L is None: continue
-            # Save color preview and raw .npy
-            color = labelsToColor(L, bgGray=None, alpha=0.0)
-            cv2.imwrite(os.path.join(outDir, f"{self.imageIds[i]}_draft_labels_color.png"), color)
-            np.save(os.path.join(outDir, f"{self.imageIds[i]}_draft_labels.npy"), L.astype(np.int32))
-            saved += 1
-        messagebox.showinfo("Save", f"Saved {saved} labeled file(s) to {outDir}.")
+        complete = []
+        partial = []
+        failed = []
+        for index, label_map in present:
+            color_path = os.path.join(outDir, f"{self.imageIds[index]}_draft_labels_color.png")
+            raw_path = os.path.join(outDir, f"{self.imageIds[index]}_draft_labels.npy")
+            errors = []
+            try:
+                color = labelsToColor(label_map, bgGray=None, alpha=0.0)
+                self._writeDraftPreview(color_path, color)
+                color_saved = True
+            except Exception as exc:
+                color_saved = False
+                errors.append(f"color preview failed: {exc}")
+            temporary_raw = None
+            try:
+                raw_file = Path(raw_path)
+                temporary_raw = raw_file.with_name(f"{raw_file.stem}.{uuid.uuid4().hex}.tmp{raw_file.suffix}")
+                with temporary_raw.open("wb") as handle:
+                    np.save(handle, label_map.astype(np.int32, copy=False), allow_pickle=False)
+                os.replace(temporary_raw, raw_file)
+                raw_saved = True
+            except Exception as exc:
+                raw_saved = False
+                errors.append(f"raw label map failed: {exc}")
+            finally:
+                if temporary_raw is not None and temporary_raw.exists():
+                    temporary_raw.unlink()
+
+            if color_saved and raw_saved:
+                complete.append(index)
+            elif color_saved or raw_saved:
+                partial.append(index)
+                failed.append(f"{self.imageIds[index]}: partial pair; " + "; ".join(errors))
+            else:
+                failed.append(f"{self.imageIds[index]}: both files failed; " + "; ".join(errors))
+
+        self._showDraftWriteSummary(
+            "Save Draft Labels",
+            f"Complete pairs: {len(complete)}. Partial pairs: {len(partial)}. "
+            f"Failed pairs: {len(present) - len(complete) - len(partial)}.",
+            failed,
+        )
+
+    @staticmethod
+    def _writeDraftPreview(path, image):
+        output = Path(path)
+        temporary = output.with_name(f"{output.stem}.{uuid.uuid4().hex}.tmp{output.suffix}")
+        try:
+            if not cv2.imwrite(str(temporary), image):
+                raise OSError("image writer returned failure")
+            os.replace(temporary, output)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+
+    @staticmethod
+    def _showDraftWriteSummary(title, summary, failures):
+        if failures:
+            details = "\n".join(failures[:8])
+            extra = f"\nAnd {len(failures) - 8} more failure(s)." if len(failures) > 8 else ""
+            messagebox.showwarning(title, f"{summary}\n\n{details}{extra}")
+        else:
+            messagebox.showinfo(title, summary)
 
 

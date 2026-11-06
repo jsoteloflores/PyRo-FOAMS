@@ -1,9 +1,12 @@
+import contextlib
+import io
 import os
 import sys
 import tempfile
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 import unittest
 from pathlib import Path
 from tkinter import ttk
@@ -15,7 +18,15 @@ from PIL import ImageGrab
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from main.core.sample_project import set_calibration
+from main.core.sample_project import (
+    accept_draft,
+    add_image,
+    create_analysis_snapshot,
+    create_project,
+    set_analysis_included,
+    set_calibration,
+    update_draft,
+)
 from main.core.stereology import colorize_labels as real_colorize_labels
 from main.gui import batch_controller, postprocessing, preprocessing, processing, stereology
 
@@ -27,6 +38,9 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         if not LIVE_TK:
             self.skipTest("Set PYRO_FOAMS_LIVE_TK=1 on a display-capable host to run live Tk integration.")
         self.callback_errors = []
+        self.tk_stderr = io.StringIO()
+        self.stderr_redirect = contextlib.redirect_stderr(self.tk_stderr)
+        self.stderr_redirect.__enter__()
         self.root = tk.Tk()
         self.root.report_callback_exception = self._report_callback_exception
         self.root.geometry("1280x800+0+0")
@@ -44,6 +58,11 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 self.root.destroy()
             except tk.TclError:
                 pass
+        self.stderr_redirect.__exit__(None, None, None)
+        self.assertNotRegex(
+            self.tk_stderr.getvalue(),
+            r"invalid command name|Exception in Tkinter callback|Traceback \(most recent call last\)",
+        )
 
     def _report_callback_exception(self, exception_type, exception, traceback):
         self.callback_errors.append((exception_type, exception, traceback))
@@ -66,12 +85,43 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             threading.Event().wait(0.005)
         self.assertTrue(predicate(), "timed out waiting for live Tk workflow state")
 
-    def _assert_workspace_controls_fit(self, width, height, artifact_dir):
-        self.root.geometry(f"{width}x{height}+0+0")
-        self.root.deiconify()
+    def _capture_workspace(self, artifact_dir, name):
+        artifact_dir.mkdir(parents=True, exist_ok=True)
         self.root.lift()
         self.root.attributes("-topmost", True)
         self.root.update_idletasks()
+        self.root.update()
+        left = self.root.winfo_rootx()
+        top = self.root.winfo_rooty()
+        right = left + self.root.winfo_width()
+        bottom = top + self.root.winfo_height()
+        ImageGrab.grab(bbox=(left, top, right, bottom)).save(artifact_dir / name)
+        self.root.attributes("-topmost", False)
+
+    def _assert_keyboard_traversal_reaches_primary_controls(self):
+        expected = set(self.app.workspaceFocusControls)
+        expected.discard(self.app.includeButton)
+        visited = set()
+        for scrollbar in (self.app.imagesVerticalScrollbar, self.app.imagesHorizontalScrollbar):
+            if scrollbar.winfo_ismapped():
+                expected.add(scrollbar)
+        self.app.sampleEntry.focus_set()
+        self.root.update()
+        for _ in range(len(expected) + 3):
+            current = self.root.focus_get()
+            self.assertIsNotNone(current)
+            if current in expected:
+                visited.add(current)
+            current.event_generate("<Tab>")
+            self.root.update()
+        self.assertTrue(expected.issubset(visited), "Tab traversal omitted a primary workspace control")
+
+    def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
+        self.root.geometry(f"{width}x{height}+0+0")
+        self.root.deiconify()
+        self.root.lift()
+        self.root.update_idletasks()
+        self.app._reflowPreparationToolbar()
         self.root.update()
         left = self.root.winfo_rootx()
         top = self.root.winfo_rooty()
@@ -92,18 +142,51 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             self.app.includeButton,
             self.app.analyzeIncludedButton,
         )
+        preparation_controls = {
+            self.app.addImagesButton,
+            self.app.renameImageButton,
+            self.app.setCalibrationButton,
+            self.app.cropButton,
+            self.app.cropMarginsCheckbutton,
+            self.app.processButton,
+            self.app.editMasksButton,
+            self.app.importMaskButton,
+        }
         for control in controls:
+            self.assertTrue(control.winfo_ismapped(), control.cget("text"))
             self.assertGreater(control.winfo_width(), 1, control.cget("text"))
-            self.assertGreaterEqual(control.winfo_rootx(), left, control.cget("text"))
-            self.assertLessEqual(control.winfo_rootx() + control.winfo_width(), right, control.cget("text"))
-            self.assertGreaterEqual(control.winfo_rooty(), top, control.cget("text"))
-            self.assertLessEqual(control.winfo_rooty() + control.winfo_height(), bottom, control.cget("text"))
+            if control in preparation_controls:
+                group = control.master
+                canvas = self.app.imagesCanvas
+                bounds = canvas.bbox("all") or (0, 0, canvas.winfo_width(), canvas.winfo_height())
+                canvas.xview_moveto(min(1.0, group.winfo_x() / max(1, bounds[2])))
+                canvas.yview_moveto(min(1.0, group.winfo_y() / max(1, bounds[3])))
+                self.root.update_idletasks()
+                self.root.update()
+                canvas_left = canvas.winfo_rootx()
+                canvas_top = canvas.winfo_rooty()
+                canvas_right = canvas_left + canvas.winfo_width()
+                canvas_bottom = canvas_top + canvas.winfo_height()
+                self.assertGreaterEqual(control.winfo_rootx(), canvas_left, control.cget("text"))
+                self.assertLessEqual(control.winfo_rootx() + control.winfo_width(), canvas_right, control.cget("text"))
+                self.assertGreaterEqual(control.winfo_rooty(), canvas_top, control.cget("text"))
+                self.assertLessEqual(control.winfo_rooty() + control.winfo_height(), canvas_bottom, control.cget("text"))
+            else:
+                self.assertGreaterEqual(control.winfo_rootx(), left, control.cget("text"))
+                self.assertLessEqual(control.winfo_rootx() + control.winfo_width(), right, control.cget("text"))
+                self.assertGreaterEqual(control.winfo_rooty(), top, control.cget("text"))
+                self.assertLessEqual(control.winfo_rooty() + control.winfo_height(), bottom, control.cget("text"))
+            if str(control.cget("state")) != "disabled":
+                control.focus_set()
+                self.root.update()
+                self.assertIs(self.root.focus_get(), control, f"{control.cget('text')} must be keyboard focusable")
 
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        ImageGrab.grab(bbox=(left, top, right, bottom)).save(
-            artifact_dir / f"workspace_{width}x{height}.png"
+        self.app.imagesCanvas.xview_moveto(0)
+        self.app.imagesCanvas.yview_moveto(0)
+        self._capture_workspace(
+            artifact_dir,
+            f"workspace_{width}x{height}_font{font_scale}x.png",
         )
-        self.root.attributes("-topmost", False)
 
     def _run_batch(self, window, root, target_indices, delayed=False):
         window.targetIndices = list(target_indices)
@@ -198,8 +281,33 @@ class TestLiveSampleProjectGui(unittest.TestCase):
 
     def test_project_workflow_export_responsive_batch_layout_and_round_trip(self):
         artifact_dir = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", tempfile.gettempdir()))
-        self._assert_workspace_controls_fit(1280, 800, artifact_dir)
-        self._assert_workspace_controls_fit(1400, 900, artifact_dir)
+        with patch("main.gui.processing.runSeparationPipeline") as pipeline, patch(
+            "main.core.stereology.measure_dataset"
+        ) as measure_dataset:
+            self._assert_workspace_controls_fit(1280, 800, artifact_dir, 1)
+            self._assert_workspace_controls_fit(1400, 900, artifact_dir, 1)
+            self._assert_keyboard_traversal_reaches_primary_controls()
+            fonts = []
+            for font_name in tkfont.names(self.root):
+                font = tkfont.nametofont(font_name, root=self.root)
+                original_size = int(font.cget("size"))
+                if original_size != 0:
+                    fonts.append((font, original_size))
+                    font.configure(size=original_size * 2)
+                    self.assertEqual(int(font.cget("size")), original_size * 2)
+            try:
+                self.app._reflowPreparationToolbar()
+                self._assert_workspace_controls_fit(1280, 800, artifact_dir, 2)
+                self._assert_workspace_controls_fit(1400, 900, artifact_dir, 2)
+                self._assert_keyboard_traversal_reaches_primary_controls()
+            finally:
+                for font, original_size in fonts:
+                    font.configure(size=original_size)
+                    self.assertEqual(int(font.cget("size")), original_size)
+                self.app._reflowPreparationToolbar()
+                self.root.update()
+            pipeline.assert_not_called()
+            measure_dataset.assert_not_called()
         self._checkpoint("layout-and-screenshots")
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -226,6 +334,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             with patch.object(preprocessing.filedialog, "askopenfilenames", return_value=tuple(source_paths)):
                 self.app.addImagesButton.invoke()
             self.root.update()
+            self._capture_workspace(artifact_dir, "workspace_populated_1280x800_font1x.png")
             self.assertEqual(len(self.app.project.images), 3)
             ids = [image.image_id for image in self.app.project.images]
             self.assertEqual(len(set(ids)), 3)
@@ -265,6 +374,9 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             accepted_a = self.app.project.images[0].accepted_mask.copy()
             self.app.includeButton.invoke()
             self.assertEqual(self.app.includeButton.cget("text"), "Exclude")
+            self.app.includeButton.focus_set()
+            self.root.update()
+            self.assertIs(self.root.focus_get(), self.app.includeButton)
             self._checkpoint("manual-edit-accept-include-first")
 
             self.app._onThumbClick(2)
@@ -489,6 +601,128 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 window.exportMeasurementsButton.invoke()
             self.assertTrue(output.is_file())
             window._onClose()
+
+    def test_draft_save_buttons_round_trip_and_report_failures(self):
+        project = create_project("Draft Save")
+        source = np.zeros((12, 12), dtype=np.uint8)
+        records = [
+            add_image(project, source, f"source-{index}.png", "duplicate.png")
+            for index in range(3)
+        ]
+        accepted = np.zeros((12, 12), dtype=np.uint8)
+        accepted[2:7, 2:7] = 255
+        for record in records[:2]:
+            update_draft(record, mask=accepted, labels=None, settings={})
+            accept_draft(record)
+            set_calibration(record, 0.01, "mm")
+            set_analysis_included(record, True)
+        project_snapshot = create_analysis_snapshot(project)
+        accepted_before = [record.accepted_mask.copy() if record.accepted_mask is not None else None for record in records]
+        inclusion_before = [record.analysis_included for record in records]
+        analysis_revision_before = project.analysis_revision
+
+        draft_masks = [np.zeros((12, 12), np.uint8), accepted.copy(), None]
+        draft_labels = [np.zeros((12, 12), np.int32), np.where(accepted > 0, 7, 0).astype(np.int32), None]
+        window = processing.ProcessingWindow(
+            parent=self.root,
+            images=[source.copy() for _ in records],
+            paths=[record.display_name for record in records],
+            binaries=draft_masks,
+            labels=draft_labels,
+            imageIds=[record.image_id for record in records],
+        )
+        self.root.update()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output_dir = Path(temporary)
+            with patch.object(processing.filedialog, "askdirectory", return_value=str(output_dir)), patch.object(
+                processing.messagebox, "showinfo"
+            ) as show_info, patch.object(processing.messagebox, "showwarning") as show_warning:
+                window.saveDraftMasksButton.invoke()
+                show_info.assert_called_once()
+                show_warning.assert_not_called()
+            mask_paths = [output_dir / f"{records[index].image_id}_draft_mask.png" for index in (0, 1)]
+            self.assertTrue(all(path.is_file() for path in mask_paths))
+            for index, path in enumerate(mask_paths):
+                saved_mask = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+                np.testing.assert_array_equal(saved_mask, draft_masks[index])
+            self.assertFalse((output_dir / f"{records[2].image_id}_draft_mask.png").exists())
+
+            with patch.object(processing.filedialog, "askdirectory", return_value=str(output_dir)), patch.object(
+                processing.messagebox, "showinfo"
+            ) as show_info, patch.object(processing.messagebox, "showwarning") as show_warning:
+                window.saveDraftLabelsButton.invoke()
+                show_info.assert_called_once()
+                show_warning.assert_not_called()
+            for index in (0, 1):
+                raw_path = output_dir / f"{records[index].image_id}_draft_labels.npy"
+                preview_path = output_dir / f"{records[index].image_id}_draft_labels_color.png"
+                self.assertTrue(raw_path.is_file())
+                self.assertTrue(preview_path.is_file())
+                np.testing.assert_array_equal(np.load(raw_path, allow_pickle=False), draft_labels[index])
+            self.assertEqual(len(list(output_dir.glob("*_draft_mask.png"))), 2)
+
+            contents_before_cancel = set(output_dir.iterdir())
+            with patch.object(processing.filedialog, "askdirectory", return_value="") as picker:
+                window.saveDraftMasksButton.invoke()
+                picker.assert_called_once()
+            self.assertEqual(set(output_dir.iterdir()), contents_before_cancel)
+
+            window.binaries = [None, None, None]
+            with patch.object(processing.filedialog, "askdirectory") as picker, patch.object(
+                processing.messagebox, "showwarning"
+            ) as warning:
+                window.saveDraftMasksButton.invoke()
+                warning.assert_called_once()
+                picker.assert_not_called()
+            window.binaries = [draft_masks[0], None, None]
+
+            window.labels = [None, None, None]
+            with patch.object(processing.filedialog, "askdirectory") as picker, patch.object(
+                processing.messagebox, "showwarning"
+            ) as warning:
+                window.saveDraftLabelsButton.invoke()
+                warning.assert_called_once()
+                picker.assert_not_called()
+            window.labels = [draft_labels[0], None, None]
+            contents_before_label_cancel = set(output_dir.iterdir())
+            with patch.object(processing.filedialog, "askdirectory", return_value="") as picker:
+                window.saveDraftLabelsButton.invoke()
+                picker.assert_called_once()
+            self.assertEqual(set(output_dir.iterdir()), contents_before_label_cancel)
+
+            with patch.object(processing.filedialog, "askdirectory", return_value=str(output_dir)), patch.object(
+                processing.cv2, "imwrite", return_value=False
+            ), patch.object(processing.messagebox, "showwarning") as warning:
+                window.saveDraftMasksButton.invoke()
+                warning.assert_called_once()
+                self.assertIn("Saved 0 of 1", warning.call_args.args[1])
+
+            partial_dir = output_dir / "partial"
+            partial_dir.mkdir()
+            with patch.object(processing.filedialog, "askdirectory", return_value=str(partial_dir)), patch.object(
+                processing.np, "save", side_effect=OSError("synthetic disk failure")
+            ), patch.object(processing.messagebox, "showwarning") as warning:
+                window.saveDraftLabelsButton.invoke()
+                warning.assert_called_once()
+                self.assertIn("Partial pairs: 1", warning.call_args.args[1])
+                self.assertIn("raw label map failed", warning.call_args.args[1])
+            self.assertTrue((partial_dir / f"{records[0].image_id}_draft_labels_color.png").is_file())
+            self.assertFalse((partial_dir / f"{records[0].image_id}_draft_labels.npy").exists())
+
+        self.assertEqual([record.analysis_included for record in records], inclusion_before)
+        self.assertEqual(project.analysis_revision, analysis_revision_before)
+        for record, prior in zip(records, accepted_before):
+            if prior is not None:
+                np.testing.assert_array_equal(record.accepted_mask, prior)
+            else:
+                self.assertIsNone(record.accepted_mask)
+        after = create_analysis_snapshot(project)
+        self.assertEqual(
+            [image.accepted_checksum_sha256 for image in after.images],
+            [image.accepted_checksum_sha256 for image in project_snapshot.images],
+        )
+        window._onClose()
 
 
 if __name__ == "__main__":

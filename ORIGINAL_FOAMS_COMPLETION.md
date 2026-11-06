@@ -419,20 +419,31 @@ results update drafts only; failures retain prior drafts. The main workspace
 toolbar is split into project, preparation, acceptance/analysis, and
 display/status rows. A committed live-Tk runner covers the real processing,
 editor, acceptance, calibration, analysis, accepted export, save/reopen, and
-layout controls at both target sizes.
+layout controls at both target sizes. Draft mask and label saves explicitly
+select non-None arrays, preserve zero-valued data, use stable-ID draft
+filenames, check image-writer return values, and report complete/partial/failed
+label pairs without changing accepted project inputs.
 
 The workflow guide is `main/SAMPLE_PROJECT_WORKFLOW.md`. The live GUI test is
 `main/tests/test_sample_project_gui.py`; set `PYRO_FOAMS_LIVE_TK=1` to execute
-it on a display-capable host. Local Windows execution passes the 11 workflow
-checkpoints with no Tk callback exceptions and captures 1280x800/1400x900
-screenshots in `main/tests/gui_smoke_artifacts/`. GitHub Actions now has a
-dedicated Windows Python 3.12 GUI job that requires live Tk and uploads those
-screenshots; this job has not yet run on the unpushed worktree. Original FOAMS
+it on a display-capable host. Windows live-Tk tests exercise real draft-save
+buttons, partial writer failures, responsive/cancelled batches, accepted
+measurement export, and toolbar keyboard traversal. Mapped bounds and
+screenshots are checked at 1280x800 and 1400x900 with ordinary and doubled Tk
+named-font sizes; the populated workspace is also captured. Local Windows live
+execution passes all four GUI tests with no captured Tk stderr or callback
+exceptions. Screenshots are in `main/tests/gui_smoke_artifacts/`.
+
+Configured headless unittest discovery runs 661 tests: 657 pass and four
+live-Tk tests are explicitly skipped; these skips are not counted as GUI
+acceptance. The display-capable Windows live-Tk run passes all four tests with
+no Tk stderr or callback exceptions.
+Configured Ruff passes with zero findings. Previous hosted run `42244733714`
+had lint and all four unit-test jobs pass, but its Windows GUI job remained in
+`Install GUI test dependencies` after more than 54 minutes and never started
+the test step. The new GUI job omits pip self-upgrade, bounds install/job time,
+and fails if screenshot artifacts are absent. A new hosted CI run for this
+worktree is pending because it has not been committed or pushed. Original FOAMS
 analysis setup, method-specific grouping/nesting, immutable run history, final
-joinable exports, hosted CI evidence, and same-real-image MATLAB comparison
-remain future handoffs. Configured headless unittest discovery passes 660 tests
-with the three display-gated Tk tests explicitly skipped; the dedicated live
-Windows run passes all three Tk tests with no callback exceptions. Configured
-Ruff passes with zero findings. Hosted Linux/Windows matrix and the new
-Windows GUI CI job remain pending because this worktree is not pushed.
+joinable exports, and same-real-image MATLAB comparison remain future handoffs.
 Original FOAMS remains NOT COMPLETE.

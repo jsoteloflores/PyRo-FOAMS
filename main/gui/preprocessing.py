@@ -211,8 +211,39 @@ class PreprocessApp:
 
         self.toolbar = ttk.Frame(self.master)
         self.toolbar.pack(side="top", fill="x")
-        self.imagesToolbar = ttk.Frame(self.toolbar)
-        self.imagesToolbar.pack(side="top", fill="x")
+        self.imagesViewport = ttk.Frame(self.toolbar)
+        self.imagesViewport.pack(side="top", fill="x")
+        self.imagesViewport.columnconfigure(0, weight=1)
+        self.imagesViewport.rowconfigure(0, weight=1)
+        self.imagesCanvas = tk.Canvas(self.imagesViewport, height=2, highlightthickness=0, borderwidth=0)
+        self.imagesVerticalScrollbar = ttk.Scrollbar(
+            self.imagesViewport, orient="vertical", command=self.imagesCanvas.yview
+        )
+        self.imagesHorizontalScrollbar = ttk.Scrollbar(
+            self.imagesViewport, orient="horizontal", command=self.imagesCanvas.xview
+        )
+        self.imagesCanvas.configure(
+            xscrollcommand=self.imagesHorizontalScrollbar.set,
+            yscrollcommand=self.imagesVerticalScrollbar.set,
+        )
+        self.imagesCanvas.grid(row=0, column=0, sticky="ew")
+        self.imagesVerticalScrollbar.grid(row=0, column=1, sticky="ns")
+        self.imagesHorizontalScrollbar.grid(row=1, column=0, sticky="ew")
+        self.imagesVerticalScrollbar.grid_remove()
+        self.imagesHorizontalScrollbar.grid_remove()
+        self.imagesToolbar = ttk.Frame(self.imagesCanvas)
+        self.imagesToolbarWindow = self.imagesCanvas.create_window(
+            0, 0, anchor="nw", window=self.imagesToolbar
+        )
+        self.imagesToolbarGroups = []
+        self._toolbarLayoutSignature = None
+        self._toolbarReflowing = False
+
+        def action_group():
+            group = ttk.Frame(self.imagesToolbar)
+            self.imagesToolbarGroups.append(group)
+            return group
+
         self.acceptanceToolbar = ttk.Frame(self.toolbar)
         self.acceptanceToolbar.pack(side="top", fill="x")
         self.displayToolbar = ttk.Frame(self.toolbar)
@@ -220,22 +251,41 @@ class PreprocessApp:
         self.statusToolbar = ttk.Frame(self.toolbar)
         self.statusToolbar.pack(side="top", fill="x")
 
-        self.addImagesButton = ttk.Button(self.imagesToolbar, text="Add Images", command=self.onLoad)
+        image_group = action_group()
+        self.addImagesButton = ttk.Button(image_group, text="Add Images", command=self.onLoad)
         self.addImagesButton.pack(side="left", padx=6, pady=4)
-        self.renameImageButton = ttk.Button(self.imagesToolbar, text="Rename Image", command=self.onRenameImage)
+        self.renameImageButton = ttk.Button(image_group, text="Rename Image", command=self.onRenameImage)
         self.renameImageButton.pack(side="left", padx=4)
-        self.setCalibrationButton = ttk.Button(self.imagesToolbar, text="Set Calibration…", command=self.onSetCalibration)
-        self.setCalibrationButton.pack(side="left", padx=4)
-        self.cropButton = ttk.Button(self.imagesToolbar, text="Batch Crop", command=self.onBatchCropClick)
+        self.calibration_group = action_group()
+        self.setCalibrationButton = ttk.Button(self.calibration_group, text="Set Calibration…", command=self.onSetCalibration)
+        self.setCalibrationButton.pack(side="left", padx=4, pady=4)
+        crop_group = action_group()
+        self.cropButton = ttk.Button(crop_group, text="Batch Crop", command=self.onBatchCropClick)
         self.cropButton.pack(side="left", padx=4)
         self.cropAllVar = tk.BooleanVar(value=True)  # default apply to all
-        ttk.Checkbutton(self.imagesToolbar, text="Relative crop margins", variable=self.cropAllVar).pack(side="left", padx=4)
-        self.processButton = ttk.Button(self.imagesToolbar, text="Process…", command=self.onProceedProcessing)
-        self.processButton.pack(side="left", padx=8)
-        self.editMasksButton = ttk.Button(self.imagesToolbar, text="Edit Masks…", command=self.onOpenEditor)
+        self.cropMarginsCheckbutton = ttk.Checkbutton(
+            crop_group, text="Relative crop margins", variable=self.cropAllVar
+        )
+        self.cropMarginsCheckbutton.pack(side="left", padx=4)
+        self.processing_group = action_group()
+        self.processButton = ttk.Button(self.processing_group, text="Process…", command=self.onProceedProcessing)
+        self.processButton.pack(side="left", padx=4, pady=4)
+        editing_group = action_group()
+        self.editMasksButton = ttk.Button(editing_group, text="Edit Masks…", command=self.onOpenEditor)
         self.editMasksButton.pack(side="left", padx=4)
-        self.importMaskButton = ttk.Button(self.imagesToolbar, text="Import Mask…", command=self.onImportMask)
-        self.importMaskButton.pack(side="left", padx=4)
+        self.importMaskButton = ttk.Button(editing_group, text="Import Mask…", command=self.onImportMask)
+        self.importMaskButton.pack(side="left", padx=4, pady=4)
+        self.imagesCanvas.configure(takefocus=True)
+        self._preparationControls = (
+            self.addImagesButton,
+            self.renameImageButton,
+            self.setCalibrationButton,
+            self.cropButton,
+            self.cropMarginsCheckbutton,
+            self.processButton,
+            self.editMasksButton,
+            self.importMaskButton,
+        )
 
         self.acceptDraftButton = ttk.Button(self.acceptanceToolbar, text="Accept Draft", command=self.onAcceptDraft)
         self.acceptDraftButton.pack(side="left", padx=6, pady=4)
@@ -245,12 +295,46 @@ class PreprocessApp:
         self.analyzeIncludedButton.pack(side="left", padx=4)
 
         ttk.Label(self.displayToolbar, text="Thumbnails:").pack(side="left", padx=(6, 2), pady=4)
+        self.displayModeButtons = []
         for txt, val in [("Original", "original"), ("Mask", "mask"), ("Overlay", "overlay")]:
-            ttk.Radiobutton(self.displayToolbar, text=txt, value=val, variable=self.displayModeVar, command=self._redrawAllThumbs).pack(side="left", padx=4)
+            button = ttk.Radiobutton(
+                self.displayToolbar,
+                text=txt,
+                value=val,
+                variable=self.displayModeVar,
+                command=self._redrawAllThumbs,
+            )
+            button.pack(side="left", padx=4)
+            self.displayModeButtons.append(button)
+
+        self.workspaceFocusControls = (
+            self.sampleEntry,
+            self.newProjectButton,
+            self.openProjectButton,
+            self.saveProjectButton,
+            self.imagesCanvas,
+            *self._preparationControls,
+            self.acceptDraftButton,
+            self.includeButton,
+            self.analyzeIncludedButton,
+            *self.displayModeButtons,
+        )
+        for control in self.workspaceFocusControls + (
+            self.imagesHorizontalScrollbar,
+            self.imagesVerticalScrollbar,
+        ):
+            control.bind("<Tab>", self._onPreparationTab, add="+")
+            control.bind("<Shift-Tab>", self._onPreparationShiftTab, add="+")
 
         self.statusVar = tk.StringVar(value="No images loaded")
-        ttk.Label(self.statusToolbar, text="Blue outline: active image. Green outline: batch target; Ctrl-click or right-click toggles targets.").pack(side="left", padx=6, pady=(0, 4))
-        ttk.Label(self.statusToolbar, textvariable=self.statusVar).pack(side="left", padx=8, fill="x", expand=True)
+        self.statusHintLabel = ttk.Label(
+            self.statusToolbar,
+            text="Blue outline: active image. Green outline: batch target; Ctrl/right-click toggles. Tab reaches preparation actions.",
+            wraplength=600,
+        )
+        self.statusHintLabel.pack(side="left", padx=6, pady=(0, 4))
+        self.statusLabel = ttk.Label(self.statusToolbar, textvariable=self.statusVar, wraplength=480)
+        self.statusLabel.pack(side="left", padx=8, fill="x", expand=True)
         self._updateWorkspaceActionLabels()
 
         # Grid frame
@@ -275,8 +359,139 @@ class PreprocessApp:
             canvas.bind("<Double-Button-1>", lambda e, idx=i: self._openEnlarged(idx))
             self.cells.append(canvas)
 
-        # Resize handler (update thumbs) - debounced to avoid redraw storms
-        self.master.bind("<Configure>", debounce(self.master, 150)(lambda e: self._redrawAllThumbs()))
+        self.imagesCanvas.bind(
+            "<Configure>", debounce(self.imagesCanvas, 50)(self._onImagesCanvasConfigure)
+        )
+        self.imagesToolbar.bind("<Configure>", self._onImagesToolbarContentConfigure)
+        self.imagesCanvas.bind("<MouseWheel>", self._onImagesToolbarMouseWheel)
+        self.imagesCanvas.bind("<Shift-MouseWheel>", self._onImagesToolbarHorizontalWheel)
+        self.master.bind("<Configure>", debounce(self.master, 100)(self._onWorkspaceConfigure))
+        self.master.bind("<<ThemeChanged>>", debounce(self.master, 50)(lambda _event: self._reflowPreparationToolbar()))
+        self._reflowPreparationToolbar()
+
+    def _workspaceFocusOrder(self):
+        controls = list(self.workspaceFocusControls)
+        for scrollbar in (self.imagesVerticalScrollbar, self.imagesHorizontalScrollbar):
+            if scrollbar.winfo_ismapped():
+                canvas_index = controls.index(self.imagesCanvas)
+                controls.insert(canvas_index + 1, scrollbar)
+        return [control for control in controls if str(control.cget("state")) != "disabled"]
+
+    def _focusPreparationOffset(self, current, offset):
+        controls = self._workspaceFocusOrder()
+        if not controls:
+            return "break"
+        if current not in controls:
+            index = 0 if offset > 0 else len(controls) - 1
+        else:
+            index = (controls.index(current) + offset) % len(controls)
+        target = controls[index]
+        for group in self.imagesToolbarGroups:
+            if target in group.winfo_children():
+                bounds = self.imagesCanvas.bbox("all") or (0, 0, 1, 1)
+                self.imagesCanvas.xview_moveto(min(1.0, group.winfo_x() / max(1, bounds[2])))
+                self.imagesCanvas.yview_moveto(min(1.0, group.winfo_y() / max(1, bounds[3])))
+                break
+        target.focus_set()
+        return "break"
+
+    def _onPreparationTab(self, event):
+        return self._focusPreparationOffset(event.widget, 1)
+
+    def _onPreparationShiftTab(self, event):
+        return self._focusPreparationOffset(event.widget, -1)
+
+    def _onWorkspaceConfigure(self, event):
+        if event.widget is self.master:
+            self._redrawAllThumbs()
+            self._reflowPreparationToolbar()
+
+    def _onImagesCanvasConfigure(self, _event):
+        self._reflowPreparationToolbar()
+
+    def _onImagesToolbarContentConfigure(self, _event):
+        if not self._toolbarReflowing:
+            self._reflowPreparationToolbar()
+
+    def _onImagesToolbarMouseWheel(self, event):
+        self.imagesCanvas.yview_scroll(int(-event.delta / 120), "units")
+        return "break"
+
+    def _onImagesToolbarHorizontalWheel(self, event):
+        self.imagesCanvas.xview_scroll(int(-event.delta / 120), "units")
+        return "break"
+
+    def _reflowPreparationToolbar(self):
+        if self._toolbarReflowing or not self.imagesToolbarGroups:
+            return
+        self._toolbarReflowing = True
+        try:
+            self.imagesCanvas.update_idletasks()
+            available_width = self.imagesCanvas.winfo_width()
+            if available_width <= 1:
+                available_width = max(1, self.master.winfo_width() - 8)
+
+            group_sizes = []
+            for group in self.imagesToolbarGroups:
+                group.update_idletasks()
+                group_sizes.append((group.winfo_reqwidth(), group.winfo_reqheight()))
+
+            positions = []
+            row_widths = [0]
+            row_heights = [0]
+            row = 0
+            column = 0
+            for group_width, group_height in group_sizes:
+                if column > 0 and row_widths[row] + group_width + 6 > available_width:
+                    row += 1
+                    column = 0
+                    row_widths.append(0)
+                    row_heights.append(0)
+                positions.append((row, column))
+                row_widths[row] += group_width + 6
+                row_heights[row] = max(row_heights[row], group_height)
+                column += 1
+
+            content_width = max(row_widths, default=1)
+            content_height = sum(row_heights) + max(0, len(row_heights) - 1) * 4
+            max_viewport_height = 150
+            canvas_height = min(max(1, content_height), max_viewport_height)
+            needs_horizontal = content_width > available_width
+            needs_vertical = content_height > max_viewport_height
+            signature = (
+                available_width,
+                tuple(group_sizes),
+                tuple(positions),
+                needs_horizontal,
+                needs_vertical,
+                canvas_height,
+            )
+            if signature == self._toolbarLayoutSignature:
+                return
+            self._toolbarLayoutSignature = signature
+
+            for group, (group_row, group_column) in zip(self.imagesToolbarGroups, positions):
+                group.grid_forget()
+                group.grid(row=group_row, column=group_column, sticky="nw", padx=2, pady=2)
+
+            inner_width = max(available_width, content_width)
+            self.imagesCanvas.itemconfigure(self.imagesToolbarWindow, width=inner_width, height=content_height)
+            self.imagesCanvas.configure(
+                height=canvas_height,
+                scrollregion=(0, 0, inner_width, content_height),
+            )
+            if needs_vertical:
+                self.imagesVerticalScrollbar.grid()
+            else:
+                self.imagesVerticalScrollbar.grid_remove()
+                self.imagesCanvas.yview_moveto(0)
+            if needs_horizontal:
+                self.imagesHorizontalScrollbar.grid()
+            else:
+                self.imagesHorizontalScrollbar.grid_remove()
+                self.imagesCanvas.xview_moveto(0)
+        finally:
+            self._toolbarReflowing = False
 
     def _onSampleNameChanged(self, *_args):
         new_name = self.sampleNameVar.get().strip() or "Untitled Sample"

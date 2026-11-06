@@ -12,6 +12,8 @@ The active image is outlined in blue. Batch targets are outlined in green. Click
 
 **Edit Masks…** edits the draft. **Import Mask…** accepts dimension-matched binary grayscale raster masks (0/1/255) or numeric integer `.npy` label maps; label maps are explicitly converted with `labels > 0`. Ambiguous color/phase rasters and non-binary grayscale rasters are rejected. Imported masks remain drafts and are recorded as imports.
 
+In a standalone processing window, **Save Draft Masks…** saves every available mask, including all-zero masks; **Save Draft Labels…** writes both the raw `.npy` label map and color preview. Filenames use stable image IDs, not display names. Failed/partial writes are reported per output. Canceling the folder picker writes nothing.
+
 **Accept Draft** creates/replaces the accepted full-resolution snapshot. Draft edits do not change the accepted snapshot. **Include** and **Exclude** are independent and inclusion requires acceptance. An included image can have a newer draft; analysis and measurement export continue to use the accepted snapshot until it is accepted again.
 
 Cropping preserves the owned original source pixels. The cropped working image and its source-coordinate ROI are saved separately. Changing the working ROI clears acceptance and inclusion because the prior segmentation no longer matches the processing image.
@@ -25,13 +27,15 @@ Use **Set Calibration…** for the active image or selected batch images. The va
 ## Current limitations
 
 - The workspace retains the existing thumbnail grid rather than a new dedicated image-list/editor layout.
+- Preparation actions wrap by measured group width; horizontal/vertical scrollbars appear only when content exceeds the viewport. Tab enters the preparation controls and cycles through actions/visible overflow controls; Shift+Tab reverses the order.
+- Layout was exercised at 1280×800 and 1400×900 using ordinary fonts and doubled Tk named-font sizes. This is not OS-DPI certification.
 - Batch threshold/separation runs use the active processing controls for every selected target. Background workers operate on one owned dispatch snapshot; only Tk's UI thread drains events and commits results.
 - No immutable analysis-run history or automatic result-cache persistence is implemented.
 - Original FOAMS setup, immutable analysis history, the future joinable export bundle, and same-real-image MATLAB comparison remain future work.
 
 ## Live GUI test
 
-On a display-capable Windows host, run the committed widget-level smoke and capture the 1280×800 and 1400×900 screenshots:
+On a display-capable Windows host, run the committed widget-level smoke and capture empty and populated workspace screenshots at both sizes and font settings:
 
 ```powershell
 $env:PYRO_FOAMS_LIVE_TK = "1"
@@ -39,5 +43,6 @@ $env:PYRO_FOAMS_GUI_ARTIFACTS = "artifacts/gui-smoke"
 python -m unittest -v main.tests.test_sample_project_gui
 ```
 
-The test drives real workspace and processing-window buttons, delays batch computation to verify Tk timer responsiveness, checks accepted-input export routing and cancellation-safe cleanup, and fails on Tk callback exceptions. GitHub Actions runs it in a dedicated Windows Python 3.12 job and uploads the screenshots. Without `PYRO_FOAMS_LIVE_TK=1`, ordinary headless suite discovery reports this integration test as skipped; that skip is not GUI acceptance.
-- Same-real-image comparison against MATLAB FOAMS remains future work; no scientific formulas were changed in this foundation.
+The test drives real workspace and processing-window buttons, delays batch computation to verify Tk timer responsiveness, checks accepted-input export routing, draft file round-trips and partial failures, cancellation-safe cleanup, keyboard traversal, and layout bounds. Screenshots are `workspace_1280x800_font1x.png`, `workspace_1280x800_font2x.png`, `workspace_1400x900_font1x.png`, `workspace_1400x900_font2x.png`, and `workspace_populated_1280x800_font1x.png`. GitHub Actions runs it in a dedicated Windows Python 3.12 job and uploads the screenshots. Run without `PYRO_FOAMS_LIVE_TK=1` only for discovery; the four live tests will be skipped, which is not GUI acceptance.
+
+The previous hosted GUI run `42244733714` was still in `Install GUI test dependencies` after more than 54 minutes and never reached the test step. The dedicated job now omits pip self-upgrade and has bounded install/job timeouts; a successful hosted run for the current implementation is still required. Same-real-image comparison against MATLAB FOAMS remains future work; no scientific formulas changed.

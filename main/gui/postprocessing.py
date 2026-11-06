@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageTk
 
 # Package imports
-from .widgets import debounce, ensure_mask_uint8
+from .widgets import cancel_debounced_callbacks, debounce, ensure_mask_uint8
 
 # Pillow resampling shim
 if hasattr(Image, "Resampling"):
@@ -204,6 +204,9 @@ class PostprocessWindow(tk.Toplevel):
         self._stroke_active = False
         self._pending_canvas_pt: Optional[Tuple[int,int]] = None
         self._motion_scheduled = False
+        self._motion_after_id = None
+        self._ownedAfterIds = set()
+        self._closing = False
 
         # Island / connectivity settings (also used by Flood-Fill)
         self.connVar = tk.IntVar(value=8)  # 4 or 8
@@ -483,7 +486,33 @@ class PostprocessWindow(tk.Toplevel):
     def _schedule_motion(self):
         if self._motion_scheduled: return
         self._motion_scheduled = True
-        self.after_idle(self._process_motion)
+        self._motion_after_id = self._scheduleOwnedAfter(None, self._process_motion)
+
+    def _scheduleOwnedAfter(self, delay_ms, callback):
+        holder = {}
+
+        def invoke():
+            after_id = holder.get("id")
+            if after_id is not None:
+                self._ownedAfterIds.discard(after_id)
+            if not self._closing:
+                callback()
+
+        after_id = self.after_idle(invoke) if delay_ms is None else self.after(delay_ms, invoke)
+        holder["id"] = after_id
+        self._ownedAfterIds.add(after_id)
+        return after_id
+
+    def _cancelOwnedAfterCallbacks(self):
+        self._closing = True
+        for after_id in tuple(self._ownedAfterIds):
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                pass
+        self._ownedAfterIds.clear()
+        self._motion_after_id = None
+        self._motion_scheduled = False
 
     def _on_stroke_motion(self, event):
         if not self._stroke_active: return
@@ -491,6 +520,7 @@ class PostprocessWindow(tk.Toplevel):
         self._schedule_motion()
 
     def _process_motion(self):
+        self._motion_after_id = None
         self._motion_scheduled = False
         if not self._stroke_active or self._pending_canvas_pt is None: return
         cx, cy = self._pending_canvas_pt
@@ -614,6 +644,8 @@ class PostprocessWindow(tk.Toplevel):
             self._load_current()
 
     def _on_close(self):
+        cancel_debounced_callbacks(self)
+        self._cancelOwnedAfterCallbacks()
         self._notify_parent()
         self.destroy()
 
