@@ -70,8 +70,10 @@ class ModernRunResult:
 
 @dataclass(frozen=True)
 class CompareRunResult:
-    legacy: LegacyRunResult
-    modern: ModernRunResult
+    legacy_result: Optional[LegacyRunResult]
+    legacy_error: Optional[BaseException]
+    modern_result: Optional[ModernRunResult]
+    modern_error: Optional[BaseException]
 
 
 @dataclass(frozen=True)
@@ -130,11 +132,16 @@ def _normalize_groups(snapshot: ProjectAnalysisSnapshot) -> Tuple[SnapshotGroup,
             )
         )
 
+    return tuple(groups)
+
+
+def _normalize_legacy_groups(snapshot: ProjectAnalysisSnapshot) -> Tuple[SnapshotGroup, ...]:
+    groups = _normalize_groups(snapshot)
     if len(groups) > 4:
         raise SampleAnalysisError(
             f"Original FOAMS supports up to 4 resolution groups; found {len(groups)}"
         )
-    return tuple(groups)
+    return groups
 
 
 def _phase_from_mask(mask: np.ndarray) -> np.ndarray:
@@ -145,7 +152,7 @@ def _phase_from_mask(mask: np.ndarray) -> np.ndarray:
 def build_legacy_group_inputs(
     snapshot: ProjectAnalysisSnapshot,
 ) -> Tuple[Tuple[Foams105PipelineGroupInput, ...], Tuple[SnapshotGroup, ...], Tuple[LegacySourceAssignment, ...]]:
-    groups = _normalize_groups(snapshot)
+    groups = _normalize_legacy_groups(snapshot)
     assignments: List[LegacySourceAssignment] = []
     group_inputs: List[Foams105PipelineGroupInput] = []
     source_order = 0
@@ -196,17 +203,20 @@ def build_legacy_group_inputs(
     return tuple(group_inputs), groups, tuple(assignments)
 
 
-def run_legacy_analysis(
+@dataclass(frozen=True)
+class LegacyPreparedContext:
+    prepared: Foams105PreparedAnalysisResult
+    source_assignments: Tuple[LegacySourceAssignment, ...]
+    groups: Tuple[SnapshotGroup, ...]
+
+
+def prepare_legacy_analysis(
     snapshot: ProjectAnalysisSnapshot,
     config: Optional[LegacyRunConfig] = None,
-) -> LegacyRunResult:
+) -> LegacyPreparedContext:
     active = config or LegacyRunConfig()
-    group_inputs, _groups, assignments = build_legacy_group_inputs(snapshot)
+    group_inputs, groups, assignments = build_legacy_group_inputs(snapshot)
     minimum = _finite_positive(active.minimum_diameter_px, "minimum_diameter_px")
-    shape_minimum = minimum if active.shape_minimum_diameter_px is None else _finite_positive(
-        active.shape_minimum_diameter_px, "shape_minimum_diameter_px"
-    )
-
     prepared = prepare_foams105_analysis(
         group_inputs,
         Foams105PreparationSettings(
@@ -215,17 +225,48 @@ def run_legacy_analysis(
         ),
         source_metadata=Foams105SourceMetadata(pyro_revision="sample-analysis-workspace"),
     )
+    return LegacyPreparedContext(
+        prepared=prepared,
+        source_assignments=assignments,
+        groups=groups,
+    )
 
-    if active.selection_mode == "manual":
-        if not active.manual_ranges:
-            raise SampleAnalysisError("manual selection mode requires at least one manual range")
-        by_group = {group_id: Foams105BinnedRange(group_id, lower, upper) for group_id, lower, upper in active.manual_ranges}
-        manual_ranges = tuple(by_group.get(group.group_id) for group in prepared.groups)
-    else:
-        manual_ranges = ()
+
+def _manual_ranges_for_prepared(
+    prepared: Foams105PreparedAnalysisResult,
+    config: LegacyRunConfig,
+) -> Tuple[Optional[Foams105BinnedRange], ...]:
+    if config.selection_mode != "manual":
+        return ()
+    if not config.manual_ranges:
+        raise SampleAnalysisError("manual selection mode requires at least one manual range")
+
+    by_group: Dict[str, Foams105BinnedRange] = {}
+    for group_id, lower, upper in config.manual_ranges:
+        if group_id in by_group:
+            raise SampleAnalysisError(f"duplicate manual range for group {group_id!r}")
+        by_group[group_id] = Foams105BinnedRange(group_id, lower, upper)
+
+    unknown = sorted(group_id for group_id in by_group if group_id not in {group.group_id for group in prepared.groups})
+    if unknown:
+        raise SampleAnalysisError(f"manual ranges reference unknown groups: {', '.join(unknown)}")
+
+    return tuple(by_group.get(group.group_id) for group in prepared.groups)
+
+
+def analyze_legacy_prepared(
+    context: LegacyPreparedContext,
+    config: Optional[LegacyRunConfig] = None,
+) -> LegacyRunResult:
+    active = config or LegacyRunConfig()
+    minimum = _finite_positive(active.minimum_diameter_px, "minimum_diameter_px")
+    shape_minimum = minimum if active.shape_minimum_diameter_px is None else _finite_positive(
+        active.shape_minimum_diameter_px, "shape_minimum_diameter_px"
+    )
+    manual_ranges = _manual_ranges_for_prepared(context.prepared, active)
 
     analysis = analyze_foams105_prepared(
-        prepared,
+        context.prepared,
         Foams105AnalysisSettings(
             selection_mode=active.selection_mode,
             manual_ranges=manual_ranges,
@@ -237,7 +278,20 @@ def run_legacy_analysis(
             shape_statistics_mode=active.shape_statistics_mode,
         ),
     )
-    return LegacyRunResult(prepared=prepared, analysis=analysis, source_assignments=assignments)
+    return LegacyRunResult(
+        prepared=context.prepared,
+        analysis=analysis,
+        source_assignments=context.source_assignments,
+    )
+
+
+def run_legacy_analysis(
+    snapshot: ProjectAnalysisSnapshot,
+    config: Optional[LegacyRunConfig] = None,
+) -> LegacyRunResult:
+    active = config or LegacyRunConfig()
+    context = prepare_legacy_analysis(snapshot, active)
+    return analyze_legacy_prepared(context, active)
 
 
 def _default_edges_from_measurements(measurements: Sequence[object], cfg: ModernRunConfig) -> Tuple[float, ...]:
@@ -315,7 +369,7 @@ def run_modern_analysis(
     for index, item in enumerate(snapshot.images):
         group = next(group for group in groups if index in group.image_indices)
         mm_per_px = _finite_positive(item.mm_per_px, f"mm_per_px for image {item.image_id}")
-        min_detectable_mm = active.min_detectable_mm if active.min_detectable_mm is not None else mm_per_px
+        min_detectable_mm = active.min_detectable_mm
         image_records.append(
             create_image_sampling_record(
                 sample_id=snapshot.project_id,
@@ -344,9 +398,18 @@ def run_modern_analysis(
     else:
         edges = _default_edges_from_measurements(all_measurements, active)
     spec = create_diameter_bin_spec(edges)
+
+    if active.min_detectable_mm is None:
+        raise SampleAnalysisError(
+            "modern analysis requires an explicit minimum detectable diameter to compute eligibility-aware N_A distributions"
+        )
     distribution = calculate_2d_number_densities(dataset, spec)
 
     group_ids = tuple(group.group_id for group in groups)
+    if len(group_ids) > 1 and not active.transition_bins:
+        raise SampleAnalysisError(
+            "modern analysis requires explicit transition bins for multi-group nesting"
+        )
     plan = _build_modern_plan(snapshot.project_id, group_ids, len(spec.bins), active.transition_bins)
     nested = nest_2d_distribution(distribution, plan)
 
@@ -372,6 +435,21 @@ def run_compare_analysis(
     legacy_config: Optional[LegacyRunConfig] = None,
     modern_config: Optional[ModernRunConfig] = None,
 ) -> CompareRunResult:
-    legacy = run_legacy_analysis(snapshot, legacy_config)
-    modern = run_modern_analysis(snapshot, modern_config)
-    return CompareRunResult(legacy=legacy, modern=modern)
+    legacy_result: Optional[LegacyRunResult] = None
+    legacy_error: Optional[BaseException] = None
+    modern_result: Optional[ModernRunResult] = None
+    modern_error: Optional[BaseException] = None
+    try:
+        legacy_result = run_legacy_analysis(snapshot, legacy_config)
+    except BaseException as exc:  # pylint: disable=broad-except
+        legacy_error = exc
+    try:
+        modern_result = run_modern_analysis(snapshot, modern_config)
+    except BaseException as exc:  # pylint: disable=broad-except
+        modern_error = exc
+    return CompareRunResult(
+        legacy_result=legacy_result,
+        legacy_error=legacy_error,
+        modern_result=modern_result,
+        modern_error=modern_error,
+    )

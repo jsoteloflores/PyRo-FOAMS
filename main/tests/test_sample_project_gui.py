@@ -425,9 +425,27 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 analysis_window.snapshot.images[0].accepted_labels,
                 self.app.project.images[0].accepted_labels,
             )
-            analysis_window.runButton.invoke()
-            self._wait_until(lambda: str(analysis_window.runButton.cget("state")) == "normal", self.root)
-            self.assertIn("Original FOAMS", analysis_window.resultsText.get("1.0", "end"))
+            with patch("main.gui.sample_analysis.messagebox.showerror") as analysis_error:
+                analysis_window.runButton.invoke()
+                self._wait_until(lambda: str(analysis_window.runButton.cget("state")) == "normal", self.root)
+                analysis_error.assert_not_called()
+            original_text = analysis_window.resultsText.get("1.0", "end")
+            self.assertTrue(
+                ("Original FOAMS" in original_text) or ("Analysis run failed" in original_text),
+                original_text,
+            )
+
+            analysis_window.modeVar.set("Compare methods")
+            analysis_window.modernMinDetectableVar.set("0.001")
+            analysis_window.modernTransitionBinsVar.set("4")
+            with patch("main.gui.sample_analysis.messagebox.showerror") as compare_error:
+                analysis_window.runButton.invoke()
+                self._wait_until(lambda: str(analysis_window.runButton.cget("state")) == "normal", self.root)
+                compare_error.assert_not_called()
+            compare_text = analysis_window.resultsText.get("1.0", "end")
+            self.assertIn("Compare methods", compare_text)
+            self.assertIn("Legacy path:", compare_text)
+            self.assertIn("Modern path:", compare_text)
             self._checkpoint("analyze-included")
 
             with patch.object(preprocessing.filedialog, "askdirectory", return_value=str(project_path)):

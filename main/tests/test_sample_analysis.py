@@ -5,8 +5,12 @@ import unittest
 import numpy as np
 
 from main.core.sample_analysis import (
+    CompareRunResult,
+    LegacyRunConfig,
+    ModernRunConfig,
     SampleAnalysisError,
     build_legacy_group_inputs,
+    run_compare_analysis,
     run_modern_analysis,
 )
 from main.core.sample_project import (
@@ -96,11 +100,28 @@ class TestSampleAnalysisAdapters(unittest.TestCase):
 
     def test_run_modern_analysis_returns_nested_distribution(self):
         _project, snapshot = self._snapshot_with_three_images()
-        result = run_modern_analysis(snapshot)
+        result = run_modern_analysis(
+            snapshot,
+            ModernRunConfig(min_detectable_mm=0.001, transition_bins=(4,)),
+        )
 
         self.assertGreaterEqual(len(result.bin_edges_mm), 2)
         self.assertGreaterEqual(len(result.nesting_result.selected_bin_indices), 1)
         self.assertEqual(result.nesting_result.sample_id, snapshot.project_id)
+
+    def test_run_compare_analysis_preserves_partial_success(self):
+        _project, snapshot = self._snapshot_with_three_images()
+        result = run_compare_analysis(
+            snapshot,
+            legacy_config=LegacyRunConfig(minimum_diameter_px=-1.0),
+            modern_config=ModernRunConfig(min_detectable_mm=0.001, transition_bins=(4,)),
+        )
+
+        self.assertIsInstance(result, CompareRunResult)
+        self.assertIsNone(result.legacy_result)
+        self.assertIsNotNone(result.legacy_error)
+        self.assertIsNotNone(result.modern_result)
+        self.assertIsNone(result.modern_error)
 
 
 if __name__ == "__main__":
