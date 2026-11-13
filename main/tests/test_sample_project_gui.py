@@ -53,7 +53,11 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             try:
                 for child in tuple(self.root.winfo_children()):
                     if isinstance(child, tk.Toplevel):
-                        child.destroy()
+                        close = getattr(child, "_on_close", None)
+                        if callable(close):
+                            close()
+                        else:
+                            child.destroy()
                 preprocessing.cancel_debounced_callbacks(self.root)
                 self.root.destroy()
             except tk.TclError:
@@ -342,6 +346,199 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         self.assertEqual(window._last_completed_snapshot.images[0].snapshot_id, image.accepted_snapshot.snapshot_id)
         self.assertIsNot(window._latest_modern, completed)
         window._on_close()
+
+    def test_schema1_null_method_setup_restores_runs_and_saves(self):
+        from main.core.legacy_perimeter import FOAMS105_PERIMETER_PROFILE_CURRENT
+        from main.core.sample_analysis import LegacyRunConfig, prepare_legacy_analysis
+        from main.core.sample_project_io import open_project, save_project
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        for mode in ("Original FOAMS 1.0.5", "Modern analysis"):
+            with self.subTest(mode=mode):
+                project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+                set_analysis_included(project.images[2], False)
+                snapshot = create_analysis_snapshot(project)
+                labels = prepare_legacy_analysis(snapshot, LegacyRunConfig(minimum_diameter_px=3.0)).prepared.label_preparation_result.bin_labels_mm
+                legacy = {"minimum_diameter_px": 3.0, "perimeter_profile": FOAMS105_PERIMETER_PROFILE_CURRENT,
+                    "selection_mode": "manual", "manual_ranges": [["group-1", labels[0], labels[-1]]],
+                    "size_lower_cutoff_mm": 0.3, "size_upper_cutoff_mm": 0.8}
+                modern = {"min_detectable_mm": 0.001, "max_reliable_mm": None,
+                          "bin_edges_mm": [0.001, 0.01, 0.1]}
+                project.analysis_setup = {"schema": 1, "mode": mode,
+                    "legacy": legacy if mode.startswith("Original") else None,
+                    "modern": modern if mode == "Modern analysis" else None}
+                window = sample_analysis.SampleAnalysisWorkspace(self.root, project, snapshot)
+                self.assertEqual(window.modeVar.get(), mode)
+                self.assertIsNone(window._displayed_request)
+                self.assertFalse(window._successful_results)
+                self.assertIsNone(project.analysis_setup["modern" if mode.startswith("Original") else "legacy"])
+                window.saveSetupButton.invoke()
+                self.assertEqual(window.statusVar.get(), "Setup saved; no calculation performed")
+                self.assertEqual(project.analysis_setup["schema"], 2)
+                self.assertIsInstance(project.analysis_setup["legacy"], dict)
+                self.assertIsInstance(project.analysis_setup["modern"], dict)
+                if mode.startswith("Original"):
+                    self.assertEqual(window.minimumDiameterVar.get(), "3.0")
+                    self.assertEqual(window.sizeLowerCutoffVar.get(), "0.3")
+                    self.assertEqual(window._parse_modern_config().min_detectable_mm, None)
+                else:
+                    self.assertEqual(window.modernMinDetectableVar.get(), "0.001")
+                    self.assertEqual(window.modernMaxReliableVar.get(), "")
+                    self.assertEqual(window.minimumDiameterVar.get(), "2.0")
+                window.runButton.invoke()
+                self._wait_until(lambda: not window._busy, self.root)
+                self.assertEqual(window.statusVar.get(), "Original run complete" if mode.startswith("Original") else "Modern run complete",
+                                 window.resultsText.get("1.0", "end"))
+                window.modeVar.set("Modern analysis" if mode.startswith("Original") else "Original FOAMS 1.0.5")
+                for variable in (window.minimumDiameterVar, window.sizeLowerCutoffVar, window.sizeUpperCutoffVar,
+                                 window.modernMinDetectableVar, window.modernMaxReliableVar):
+                    self.assertNotEqual(variable.get(), "None")
+                window.modeVar.set(mode)
+                window.saveSetupButton.invoke()
+                window._on_close()
+                with tempfile.TemporaryDirectory() as folder:
+                    save_project(project, Path(folder))
+                    restored = open_project(Path(folder))
+                self.assertEqual(restored.analysis_setup["schema"], 2)
+                if mode == "Modern analysis":
+                    self.assertIsNone(restored.analysis_setup["modern"]["max_reliable_mm"])
+                reopened = sample_analysis.SampleAnalysisWorkspace(self.root, restored, create_analysis_snapshot(restored))
+                self.assertEqual(reopened.modeVar.get(), mode)
+                self.assertIsNone(reopened._displayed_request)
+                self.assertFalse(reopened._successful_results)
+                reopened._on_close()
+
+    def test_comparison_current_and_previous_provenance_are_separate(self):
+        from main.core.sample_analysis import prepare_legacy_analysis, prepare_modern_analysis
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, snapshot = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, snapshot)
+        labels = prepare_legacy_analysis(snapshot).prepared.label_preparation_result.bin_labels_mm
+        window.selectionModeVar.set("manual")
+        window.manualRangesVar.set(f"group-1:{labels[0]!r}:{labels[-1]!r}")
+
+        def run():
+            window.runButton.invoke()
+            self._wait_until(lambda: not window._busy, self.root)
+            self.assertNotIn("Rendering failed", window.statusVar.get())
+
+        def table():
+            return [window.distributionTable.item(row_id, "values") for row_id in window.distributionTable.get_children()]
+
+        def capture(name):
+            artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
+            artifacts.mkdir(parents=True, exist_ok=True)
+            window.deiconify()
+            window.lift()
+            window.attributes("-topmost", True)
+            self.root.update()
+            left, top = window.winfo_rootx(), window.winfo_rooty()
+            ImageGrab.grab(bbox=(left, top, left + window.winfo_width(), top + window.winfo_height())).save(artifacts / name)
+            window.attributes("-topmost", False)
+
+        run()
+        self.assertEqual(window.statusVar.get(), "Original run complete", window.resultsText.get("1.0", "end"))
+        original_a = window._displayed_envelopes[0]
+        window.modeVar.set("Modern analysis")
+        window.modernMinDetectableVar.set("0.001")
+        window.modernSegmentsVar.set("group-2:0:4;group-1:4:8")
+        run()
+        self.assertEqual(window.statusVar.get(), "Modern run complete")
+        modern_a = window._displayed_envelopes[0]
+        table_a = table()
+        curves_a = [(line.get_label(), line.get_xdata().copy(), line.get_ydata().copy()) for line in window.plotAxes.lines]
+        label_a = next(label for label, envelope in window._successful_results.items() if envelope is modern_a)
+        self.assertNotEqual(original_a.request.request_id, modern_a.request.request_id)
+        set_calibration(project.images[0], 0.004, "mm")
+        set_calibration(project.images[1], 0.004, "mm")
+        window.modeVar.set("Compare methods")
+        for legacy_fails, modern_fails in ((False, False), (False, True), (True, False), (True, True)):
+            with self.subTest(legacy_fails=legacy_fails, modern_fails=modern_fails):
+                window.minimumDiameterVar.set("-1" if legacy_fails else "2")
+                window.modernMinDetectableVar.set("" if modern_fails else "0.001")
+                if not legacy_fails:
+                    labels = prepare_legacy_analysis(create_analysis_snapshot(project)).prepared.label_preparation_result.bin_labels_mm
+                    window.manualRangesVar.set(f"group-1:{labels[0]!r}:{labels[-1]!r}")
+                run()
+                request_b = window._displayed_request
+                self.assertNotEqual(request_b.request_id, modern_a.request.request_id)
+                self.assertEqual(window.resultViewVar.get(), "Current request")
+                self.assertEqual(len(window._displayed_envelopes), int(not legacy_fails) + int(not modern_fails))
+                self.assertTrue(all(envelope.request is request_b for envelope in window._displayed_envelopes))
+                self.assertEqual(request_b.snapshot.images[0].mm_per_px, 0.004)
+                for fails, method, label in ((legacy_fails, "legacy", "Original"), (modern_fails, "modern", "Modern")):
+                    self.assertIn(f"{method}: {'failed' if fails else 'success'}", window.resultProvenanceVar.get())
+                    method_rows = [row for row in table() if row[0].startswith(label)]
+                    legends = [line.get_label() for line in window.plotAxes.lines if line.get_label().startswith(label)]
+                    if fails:
+                        self.assertFalse(method_rows)
+                        self.assertFalse(legends)
+                    else:
+                        self.assertTrue(method_rows)
+                        self.assertTrue(legends)
+                if modern_fails and not legacy_fails:
+                    capture("analysis-21b-current-partial-failure.png")
+                window.resultViewVar.set(label_a)
+                window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+                self.root.update()
+                self.assertIs(window._displayed_request, modern_a.request)
+                self.assertEqual(window._displayed_envelopes, (modern_a,))
+                self.assertEqual(table(), table_a)
+                self.assertEqual(len(window.plotAxes.lines), len(curves_a))
+                for line, (label, diameters, values) in zip(window.plotAxes.lines, curves_a):
+                    self.assertEqual(line.get_label(), label)
+                    np.testing.assert_array_equal(line.get_xdata(), diameters)
+                    np.testing.assert_array_equal(line.get_ydata(), values)
+                self.assertIn("Previous successful result", window.resultProvenanceVar.get())
+                self.assertIn("Inputs changed", window.resultProvenanceVar.get())
+                self.assertIn(modern_a.request.request_id, window.resultsText.get("1.0", "end"))
+                self.assertEqual(modern_a.request.modern_config.min_detectable_mm, 0.001)
+                self.assertEqual(modern_a.request.snapshot.images[0].mm_per_px, 0.003)
+                if modern_fails and not legacy_fails:
+                    capture("analysis-21b-previous-success.png")
+                window.resultViewVar.set("Current request")
+                window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+                self.root.update()
+                self.assertIs(window._displayed_request, request_b)
+        window.resultViewVar.set(label_a)
+        window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+        self.root.update()
+        provenance_a = window.resultProvenanceVar.get()
+
+        def failed_render(_result):
+            window._clear_distribution()
+            raise RuntimeError("injected partial render failure")
+
+        with patch.object(window, "_render_compare", side_effect=failed_render):
+            window.runButton.invoke()
+            self._wait_until(lambda: not window._busy, self.root)
+        self.assertIs(window._displayed_request, modern_a.request)
+        self.assertEqual(window.resultViewVar.get(), label_a)
+        self.assertEqual(window.resultProvenanceVar.get(), provenance_a)
+        self.assertEqual(table(), table_a)
+        entered, release = threading.Event(), threading.Event()
+
+        def delayed(*args, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError("test worker timeout")
+            return prepare_modern_analysis(*args, **kwargs)
+
+        try:
+            with patch("main.gui.sample_analysis.prepare_modern_analysis", side_effect=delayed):
+                window.runButton.invoke()
+                self._wait_until(entered.is_set, self.root)
+                set_calibration(project.images[0], 0.006, "mm")
+                release.set()
+                self._wait_until(lambda: not window._busy, self.root)
+                self.assertIn("Discarded stale", window.statusVar.get())
+                self.assertIs(window._displayed_request, modern_a.request)
+                self.assertEqual(table(), table_a)
+                self.assertEqual(window.resultViewVar.get(), label_a)
+        finally:
+            release.set()
+            window._on_close()
 
     def _assert_keyboard_traversal_reaches_primary_controls(self):
         expected = set(self.app.workspaceFocusControls)
@@ -675,10 +872,9 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 self._wait_until(lambda: str(analysis_window.runButton.cget("state")) == "normal", self.root)
                 analysis_error.assert_not_called()
             original_text = analysis_window.resultsText.get("1.0", "end")
-            self.assertTrue(
-                ("Original FOAMS" in original_text) or ("Analysis run failed" in original_text),
-                original_text,
-            )
+            self.assertIsNone(analysis_window._latest_legacy)
+            self.assertIn("cannot analyze a group without positive phase-corrected area1 normalization", original_text)
+            self.assertIn("stage=binned_selection", original_text)
 
             analysis_window.modeVar.set("Compare methods")
             analysis_window.modernMinDetectableVar.set("0.001")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 import tkinter as tk
+import uuid
 from dataclasses import asdict, replace
 from tkinter import ttk
 from typing import Callable, Optional
@@ -18,15 +19,18 @@ from ..core.legacy_perimeter import (
 )
 from ..core.reconstruction import UPPER_TAIL_ASSUMPTION
 from ..core.sample_analysis import (
+    CapturedAnalysisRequest,
     CompareRunResult,
     LegacyPreparedContext,
     LegacyRunConfig,
+    MethodResultEnvelope,
     ModernPreparedResult,
     ModernRunConfig,
     SampleAnalysisError,
     analyze_legacy_prepared,
     analyze_modern_prepared,
     build_legacy_group_inputs,
+    normalize_analysis_setup,
     prepare_legacy_analysis,
     prepare_modern_analysis,
     validate_analysis_setup,
@@ -66,6 +70,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._mark_unsaved = mark_unsaved
         self._project_owner = getattr(mark_unsaved, "__self__", None)
         self._project_session = getattr(self._project_owner, "projectSessionId", None)
+        self._workspace_session = uuid.uuid4().hex
         self._closed = False
         self._owned_after_ids = set()
         self._result_queue: "queue.Queue[tuple[int, object, Optional[BaseException], ProjectAnalysisSnapshot]]" = queue.Queue()
@@ -86,6 +91,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._latest_legacy = None
         self._latest_modern = None
         self._latest_compare = None
+        self._successful_results = {}
+        self._current_view = None
+        self._displayed_request = None
+        self._displayed_envelopes = ()
+        self._displayed_outcomes = ()
+        self._diagnostic_inputs = None
 
         self.modeVar = tk.StringVar(value="Original FOAMS 1.0.5")
         self.minimumDiameterVar = tk.StringVar(value="2.0")
@@ -112,7 +123,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._build_ui()
         self._load_persisted_setup()
         self._variables = {
-            name: value for name, value in vars(self).items() if isinstance(value, tk.Variable) and name != "statusVar"
+            name: value for name, value in vars(self).items() if isinstance(value, tk.Variable)
+            and name not in ("statusVar", "resultViewVar", "resultProvenanceVar")
         }
         for variable in self._variables.values():
             variable.trace_add("write", self._settings_changed)
@@ -271,6 +283,13 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
         results = ttk.LabelFrame(root, text="Results", padding=8)
         results.pack(fill="both", expand=True, pady=(8, 0))
+        self.resultViewVar = tk.StringVar(value="Current request")
+        self.resultProvenanceVar = tk.StringVar(value="No completed result selected")
+        self.resultViewSelector = ttk.Combobox(results, textvariable=self.resultViewVar,
+            values=("Current request",), state="readonly", width=60)
+        self.resultViewSelector.pack(fill="x")
+        self.resultViewSelector.bind("<<ComboboxSelected>>", self._select_result_view)
+        ttk.Label(results, textvariable=self.resultProvenanceVar, wraplength=900).pack(fill="x", pady=4)
         views = ttk.Notebook(results)
         views.pack(fill="both", expand=True)
         table_frame = ttk.Frame(views)
@@ -323,17 +342,19 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             canvas.yview_moveto(max(0, top - 8) / max(1, content.winfo_height()))
 
     def _save_current_setup(self) -> None:
-        self._save_setup(self.modeVar.get(), None, None)
-        self.statusVar.set("Setup saved; no calculation performed")
+        try:
+            self._save_setup(self.modeVar.get(), None, None)
+            self.statusVar.set("Setup saved; no calculation performed")
+        except SampleAnalysisError as exc:
+            self._show_failure("Save setup", exc)
 
     def _load_persisted_setup(self) -> None:
-        setup = self.project.analysis_setup if isinstance(self.project.analysis_setup, dict) else {}
-        if not setup:
-            return
         try:
-            validate_analysis_setup(setup)
+            setup = normalize_analysis_setup(self.project.analysis_setup)
         except SampleAnalysisError as exc:
             self.statusVar.set(f"{exc}; defaults displayed, saved setup retained")
+            return
+        if not setup:
             return
         mode = setup.get("mode")
         if mode in ("Original FOAMS 1.0.5", "Modern analysis", "Compare methods"):
@@ -486,7 +507,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         return mode, snapshot, legacy_cfg, modern_cfg
 
     def _save_setup(self, mode: str, legacy_cfg: Optional[LegacyRunConfig], modern_cfg: Optional[ModernRunConfig]) -> None:
-        previous = self.project.analysis_setup or {}
+        previous = normalize_analysis_setup(self.project.analysis_setup)
         payload = {
             "schema": 2,
             "mode": mode,
@@ -533,23 +554,104 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         return tuple((name, variable.get()) for name, variable in self._variables.items() if name != "binGroupVar")
 
     def _settings_changed(self, *_args) -> None:
-        if self._completed_signature is not None and self._settings_signature() != self._completed_signature:
+        if self._displayed_request is not None and self._view_settings_stale():
             self.statusVar.set("Settings changed - rerun required; previous result retained")
+        self._refresh_result_provenance()
 
     def _manual_changed(self, *_args) -> None:
         if not self._setting_proposal:
             self.selectionModeVar.set("manual")
 
     def _watch_inputs(self) -> None:
-        if self._last_completed_snapshot is not None and self._completed_inputs != self._input_signature():
+        current_inputs = self._input_signature()
+        operation_diagnostic = self.statusVar.get().startswith(("Discarded stale", "Cancelled", "Rendering failed",
+            "legacy failed", "modern failed", "Validation failed", "Save setup failed")) and self._diagnostic_inputs == current_inputs
+        if (not self._busy and not operation_diagnostic and self._displayed_request is not None
+                and self._displayed_request.input_signature != current_inputs):
             self.statusVar.set("Inputs changed - rerun required; previous result retained")
+        self._refresh_result_provenance()
         self._schedule_after(200, self._watch_inputs)
+
+    def _method_settings_signature(self, method: str) -> tuple:
+        return tuple((name, variable.get()) for name, variable in self._variables.items()
+            if name not in ("modeVar", "binGroupVar") and name.startswith("modern") == (method == "modern"))
+
+    def _view_settings_stale(self) -> bool:
+        saved = dict(self._displayed_request.method_settings)
+        methods = tuple(envelope.method for envelope in self._displayed_envelopes)
+        if not methods:
+            methods = ("legacy", "modern") if self._displayed_request.mode == "Compare methods" else (
+                "modern" if self._displayed_request.mode == "Modern analysis" else "legacy",)
+        return any(saved[method] != self._method_settings_signature(method) for method in methods)
+
+    def _refresh_result_provenance(self) -> None:
+        request = self._displayed_request
+        if request is None:
+            return
+        previous = self.resultViewVar.get() != "Current request"
+        state = "Previous successful result" if previous else "Current request"
+        if request.input_signature != self._input_signature():
+            state += " | Inputs changed - rerun required"
+        elif self._view_settings_stale():
+            state += " | Settings changed - rerun required"
+        self.resultProvenanceVar.set(f"{state} | {request.mode} | request {request.request_id[:12]} | "
+            f"{len(request.snapshot.images)} accepted images | " + "; ".join(f"{method}: {status}" for method, status in self._displayed_outcomes))
+
+    def _append_request_details(self, request: CapturedAnalysisRequest) -> None:
+        self._append_details([f"Request ID: {request.request_id}", f"Session ID: {request.session_id}",
+            f"Captured request: {request.mode} / {request.action}",
+            f"Legacy settings: {request.legacy_config!r}", f"Modern settings: {request.modern_config!r}",
+            f"Captured editable settings: {request.draft_settings!r}", f"Project: {request.snapshot.project_id}"]
+            + [f"{item.image_id} snapshot={item.snapshot_id} calibration={item.mm_per_px!r} mm/px "
+               f"accepted_checksum={item.accepted_checksum_sha256}" for item in request.snapshot.images])
+
+    def _update_result_choices(self) -> None:
+        current_id = self._current_view[2].request_id if self._current_view is not None else None
+        options = ["Current request"] + [label for label, envelope in self._successful_results.items()
+                                         if envelope.request.request_id != current_id]
+        self.resultViewSelector.configure(values=options)
+
+    def _present_result(self, kind, result, request, envelopes, previous=False) -> None:
+        if not previous:
+            self.resultViewVar.set("Current request")
+        if kind == "compare":
+            self._render_compare(result)
+        elif kind == "legacy":
+            self._render_legacy(result)
+        elif kind == "modern":
+            self._render_modern(result)
+        else:
+            self._render_prepared(*result)
+        if previous:
+            self._append_details(["Previous successful result; not part of the current comparison"])
+        self._append_request_details(request)
+        self._displayed_request = request
+        self._displayed_envelopes = envelopes
+        self._displayed_outcomes = tuple((method, "success" if getattr(result, f"{method}_result") is not None else "failed")
+                        for method in ("legacy", "modern")) if kind == "compare" else ((kind, "prepared" if kind == "prepared" else "success"),)
+        self._selected_view_label = self.resultViewVar.get()
+        self._refresh_result_provenance()
+
+    def _select_result_view(self, _event=None) -> None:
+        view = self._capture_view()
+        selected_label = self.resultViewVar.get()
+        try:
+            if selected_label == "Current request":
+                if self._current_view is None:
+                    return
+                self._present_result(*self._current_view)
+            else:
+                envelope = self._successful_results[selected_label]
+                self._present_result(envelope.method, envelope.result, envelope.request, (envelope,), previous=True)
+        except Exception as exc:
+            self._restore_view(view)
+            self._show_failure("Rendering", exc)
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         if busy:
             self._control_states = []
-            pending = [self.setupControls, self.binGroupSelector, self.applyBinsButton]
+            pending = [self.setupControls, self.binGroupSelector, self.applyBinsButton, self.resultViewSelector]
             while pending:
                 widget = pending.pop()
                 pending.extend(widget.winfo_children())
@@ -569,6 +671,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._active_request = None
         self._set_busy(False)
         self.statusVar.set("Cancelled; previous result retained")
+        self._diagnostic_inputs = self._input_signature()
 
     def _open_measurements(self) -> None:
         from .stereology import StereologyWindow
@@ -624,6 +727,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._active_generation = generation
         request = dict(action=action, mode=mode, inputs=self._input_signature(), settings=self._settings_signature(),
                        snapshot=snapshot, legacy=legacy_cfg, modern=modern_cfg)
+        request["captured"] = CapturedAnalysisRequest(uuid.uuid4().hex, self._project_session or self._workspace_session,
+            mode, action, snapshot, request["inputs"], request["settings"],
+            tuple((method, self._method_settings_signature(method)) for method in ("legacy", "modern")),
+            legacy_cfg, modern_cfg)
         self._active_request = request
         self._set_busy(True)
         self.statusVar.set(f"{action.capitalize()}: {mode}...")
@@ -682,6 +789,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._set_busy(False)
         if request is None or request["inputs"] != self._input_signature() or request["settings"] != self._settings_signature():
             self.statusVar.set("Discarded stale completion; refresh and rerun required")
+            self._diagnostic_inputs = self._input_signature()
             return
         if error is not None:
             self._show_failure(request["mode"], error)
@@ -689,13 +797,18 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
         previous_view = self._capture_view()
         try:
+            captured = request["captured"]
+            envelopes = tuple(MethodResultEnvelope(method, captured, result[method])
+                              for method in ("legacy", "modern") if result[method] is not None)
+            new_view = None
             context = result["legacy_prepared"]
             if context is not None:
                 self._legacy_prepare_cache[result["key"]] = context
                 self._prepared_legacy = context
             self._prepared_modern = result["modern_prepared"]
             if request["action"] in ("prepare", "suggest"):
-                self._render_prepared(context, self._prepared_modern)
+                new_view = ("prepared", (context, self._prepared_modern), captured, ())
+                self._present_result(*new_view)
                 suggestion = result["suggestion"]
                 if suggestion is not None:
                     self._setting_proposal = True
@@ -706,28 +819,40 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 self.statusVar.set("Prepared distributions available" if suggestion is None else "Suggested ranges ready for review (Manual)")
             elif request["mode"] == "Compare methods":
                 comparison = CompareRunResult(result["legacy"], result["legacy_error"], result["modern"], result["modern_error"])
-                self._render_compare(comparison)
-                self._latest_compare = comparison
+                new_view = ("compare", comparison, captured, envelopes)
+                self._present_result(*new_view)
                 self.statusVar.set("Compare partial failure" if result["legacy_error"] or result["modern_error"] else "Compare run complete")
             elif result["legacy"] is not None:
-                self._render_legacy(result["legacy"])
-                self._latest_legacy = result["legacy"]
+                new_view = ("legacy", result["legacy"], captured, envelopes)
+                self._present_result(*new_view)
                 self.statusVar.set("Original run complete")
             elif result["modern"] is not None:
-                self._render_modern(result["modern"])
-                self._latest_modern = result["modern"]
+                new_view = ("modern", result["modern"], captured, envelopes)
+                self._present_result(*new_view)
                 self.statusVar.set("Modern run complete")
             elif result["modern_prepared"] is not None or context is not None:
                 if self._last_completed_snapshot is None:
-                    self._render_prepared(context, result["modern_prepared"])
+                    new_view = ("prepared", (context, result["modern_prepared"]), captured, ())
+                    self._present_result(*new_view)
+            if new_view is not None:
+                self._current_view = new_view
+                self.resultViewVar.set("Current request")
+                for envelope in envelopes:
+                    label = f"Previous successful result: {envelope.method} / {captured.request_id[:12]}"
+                    self._successful_results[label] = envelope
+                self._update_result_choices()
+                self._refresh_result_provenance()
+                if request["mode"] == "Compare methods" and request["action"] not in ("prepare", "suggest"):
+                    self._latest_compare = comparison
+                if result["legacy"] is not None:
+                    self._latest_legacy = result["legacy"]
+                if result["modern"] is not None:
+                    self._latest_modern = result["modern"]
             if result["legacy"] is not None or result["modern"] is not None:
                 self._last_completed_snapshot = snapshot
                 self._completed_inputs = request["inputs"]
                 self._completed_signature = request["settings"]
                 self._completed_request = request
-            self._append_details([f"Captured request: {request['mode']} / {request['action']}",
-                f"Legacy settings: {request['legacy']!r}", f"Modern settings: {request['modern']!r}",
-                f"Project: {snapshot.project_id}"] + [f"{item.image_id} snapshot={item.snapshot_id}" for item in snapshot.images])
             for method in ("legacy", "modern"):
                 if result[f"{method}_error"] is not None:
                     self._show_failure(method, result[f"{method}_error"])
@@ -746,6 +871,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
     def _show_failure(self, method, error) -> None:
         self.statusVar.set(f"{method} failed; previous results retained")
+        self._diagnostic_inputs = self._input_signature()
         self._append_details([f"{method}: Analysis run failed", str(error),
             f"stage={getattr(error, 'stage', method)} context={getattr(error, 'context', {})}"])
 
@@ -759,10 +885,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         return (self.resultsText.get("1.0", "end"),
                 [(self.distributionTable.item(row_id, "values"), self._table_rows.get(row_id))
                  for row_id in self.distributionTable.get_children()],
-                [(line.get_xdata(), line.get_ydata(), line.get_label()) for line in self.plotAxes.lines])
+                [(line.get_xdata(), line.get_ydata(), line.get_label()) for line in self.plotAxes.lines],
+                self._displayed_request, self._displayed_envelopes,
+                self.resultProvenanceVar.get(), getattr(self, "_selected_view_label", "Current request"), self._displayed_outcomes)
 
     def _restore_view(self, view) -> None:
-        text, rows, curves = view
+        text, rows, curves, request, envelopes, provenance, label, outcomes = view
         self._clear_distribution()
         self._set_results([text])
         for values, metadata in rows:
@@ -771,6 +899,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         for diameters, values, name in curves:
             self._plot_values(name, diameters, values)
         self._finish_plot()
+        self._displayed_request = request
+        self._displayed_envelopes = envelopes
+        self.resultProvenanceVar.set(provenance)
+        self.resultViewVar.set(label)
+        self._selected_view_label = label
+        self._displayed_outcomes = outcomes
 
     def _add_row(self, method, group, index, lower, upper, count, area, na, nv="", volume="", kind="selected") -> None:
         row_id = self.distributionTable.insert("", "end", values=(method, group, index, lower, upper, count, area, na, nv, volume))
@@ -960,7 +1094,6 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._finish_plot()
 
     def _render_compare(self, result: CompareRunResult) -> None:
-        previous_text = self.resultsText.get("1.0", "end")
         self._clear_distribution()
         lines = ["Compare methods", ""]
         if result.legacy_result is not None:
@@ -984,31 +1117,16 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             lines.append("Modern path: failed")
             lines.append(f" - error={result.modern_error}")
 
-        lines.append("")
-        lines.append("Shared accepted snapshot identities:")
-        for item in self.snapshot.images:
-            lines.append(f" - {item.image_id} snapshot={item.snapshot_id}")
         self._set_results(lines)
         self._render_append = True
         try:
             if result.legacy_result is not None:
                 self._render_legacy(result.legacy_result)
-            elif self._latest_legacy is not None:
-                self._append_details(["Previous Original result (not this request)"])
-                self._render_legacy(self._latest_legacy)
             if result.modern_result is not None:
                 self._render_modern(result.modern_result)
-            elif self._latest_modern is not None:
-                self._append_details(["Previous Modern result (not this request)"])
-                self._render_modern(self._latest_modern)
-            if result.legacy_result is None or result.modern_result is None:
-                self._append_details(["Earlier result metadata (not this request):", previous_text])
         finally:
             self._render_append = False
-        if result.legacy_result is not None:
-            self._latest_legacy = result.legacy_result
-        if result.modern_result is not None:
-            self._latest_modern = result.modern_result
+        self._finish_plot()
 
     def _set_results(self, lines) -> None:
         self.resultsText.configure(state="normal")

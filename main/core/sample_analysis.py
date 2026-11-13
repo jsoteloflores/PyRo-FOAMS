@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -30,6 +31,29 @@ from .stereology import measure_labels
 
 class SampleAnalysisError(ValueError):
     """Raised when sample analysis setup or execution is invalid."""
+
+
+def normalize_analysis_setup(setup: object) -> dict:
+    if not isinstance(setup, dict):
+        raise SampleAnalysisError("analysis setup must be a dictionary")
+    normalized = deepcopy(setup)
+    if not normalized:
+        return normalized
+    schema = normalized.get("schema")
+    if type(schema) is not int or schema not in (1, 2):
+        raise SampleAnalysisError("Saved setup schema is unsupported")
+    if schema == 1:
+        inactive = {"Modern analysis": "legacy", "Original FOAMS 1.0.5": "modern"}.get(normalized.get("mode"))
+        if inactive is not None and normalized.get(inactive) is None:
+            normalized[inactive] = {}
+        for method in ("legacy", "modern"):
+            normalized.setdefault(method, {})
+            if not isinstance(normalized[method], dict):
+                raise SampleAnalysisError(f"Saved {method} settings must be a dictionary")
+        normalized.setdefault("source_keys", normalized["legacy"].get("source_keys", ()))
+        normalized["schema"] = 2
+    validate_analysis_setup(normalized)
+    return normalized
 
 
 def validate_analysis_setup(setup: object) -> None:
@@ -144,6 +168,27 @@ class ModernPreparedResult:
     image_records: Tuple[object, ...]
     bin_edges_mm: Tuple[float, ...]
     group_ids: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CapturedAnalysisRequest:
+    request_id: str
+    session_id: str
+    mode: str
+    action: str
+    snapshot: ProjectAnalysisSnapshot
+    input_signature: tuple
+    draft_settings: tuple
+    method_settings: tuple
+    legacy_config: Optional[LegacyRunConfig]
+    modern_config: Optional[ModernRunConfig]
+
+
+@dataclass(frozen=True)
+class MethodResultEnvelope:
+    method: str
+    request: CapturedAnalysisRequest
+    result: object
 
 
 def _finite_positive(value: object, field: str) -> float:

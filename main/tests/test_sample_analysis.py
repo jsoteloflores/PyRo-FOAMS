@@ -11,6 +11,7 @@ from main.core.sample_analysis import (
     ModernRunConfig,
     SampleAnalysisError,
     build_legacy_group_inputs,
+    normalize_analysis_setup,
     prepare_modern_analysis,
     run_compare_analysis,
     run_modern_analysis,
@@ -29,6 +30,36 @@ from main.gui.sample_analysis import SampleAnalysisWorkspace
 
 
 class TestSampleAnalysisAdapters(unittest.TestCase):
+    def test_schema1_null_inactive_methods_migrate_without_mutation(self):
+        for mode, active, inactive in (("Modern analysis", "modern", "legacy"),
+                                      ("Original FOAMS 1.0.5", "legacy", "modern")):
+            settings = {"min_detectable_mm": 0.001, "max_reliable_mm": None} if active == "modern" else {
+                "minimum_diameter_px": 3.0, "manual_ranges": [["group-1", 0.1, 0.2]]}
+            old = {"schema": 1, "mode": mode, active: settings, inactive: None,
+                   "source_keys": [["image-a", "first"]]}
+            canonical = normalize_analysis_setup(old)
+            self.assertEqual(canonical["schema"], 2)
+            self.assertEqual(canonical[active], settings)
+            self.assertEqual(canonical[inactive], {})
+            self.assertEqual(canonical["source_keys"], old["source_keys"])
+            self.assertEqual(old["schema"], 1)
+            self.assertIsNone(old[inactive])
+            self.assertIsNot(canonical[active], settings)
+            workspace = SimpleNamespace(project=create_project("Migrated"), _mark_unsaved=None)
+            workspace.project.analysis_setup = old
+            SampleAnalysisWorkspace._save_setup(workspace, mode, None, None)
+            self.assertEqual(workspace.project.analysis_setup["schema"], 2)
+            self.assertEqual(workspace.project.analysis_setup[inactive], {})
+
+    def test_setup_migration_rejects_malformed_and_future_payloads(self):
+        for setup in ({"schema": 3, "mode": "Modern analysis"},
+                      {"schema": 1, "mode": "Modern analysis", "modern": None},
+                      {"schema": 1, "mode": "Modern analysis", "legacy": []},
+                      {"schema": 1, "mode": "Compare methods", "modern": None},
+                      {"schema": 2, "mode": "Modern analysis", "legacy": None}):
+            with self.subTest(setup=setup), self.assertRaises(SampleAnalysisError):
+                normalize_analysis_setup(setup)
+
     def test_setup_schema_rejects_future_versions_and_duplicate_sources(self):
         with self.assertRaisesRegex(SampleAnalysisError, "unsupported"):
             validate_analysis_setup({"schema": 99})
