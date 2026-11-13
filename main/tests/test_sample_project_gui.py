@@ -28,7 +28,7 @@ from main.core.sample_project import (
     update_draft,
 )
 from main.core.stereology import colorize_labels as real_colorize_labels
-from main.gui import batch_controller, postprocessing, preprocessing, processing, stereology
+from main.gui import batch_controller, postprocessing, preprocessing, processing, sample_analysis
 
 LIVE_TK = os.environ.get("PYRO_FOAMS_LIVE_TK") == "1"
 
@@ -418,10 +418,16 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             self.root.update()
             analysis_window = next(
                 window for window in self._top_levels(self.root)
-                if isinstance(window, stereology.StereologyWindow)
+                if isinstance(window, sample_analysis.SampleAnalysisWorkspace)
             )
-            self.assertEqual(len(analysis_window.labels), 2)
-            np.testing.assert_array_equal(analysis_window.labels[0], self.app.project.images[0].accepted_labels)
+            self.assertEqual(len(analysis_window.snapshot.images), 2)
+            np.testing.assert_array_equal(
+                analysis_window.snapshot.images[0].accepted_labels,
+                self.app.project.images[0].accepted_labels,
+            )
+            analysis_window.runButton.invoke()
+            self._wait_until(lambda: str(analysis_window.runButton.cget("state")) == "normal", self.root)
+            self.assertIn("Original FOAMS", analysis_window.resultsText.get("1.0", "end"))
             self._checkpoint("analyze-included")
 
             with patch.object(preprocessing.filedialog, "askdirectory", return_value=str(project_path)):
@@ -512,7 +518,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             self._checkpoint("calibration-blocked-export")
 
             processing_window._onClose()
-            analysis_window.destroy()
+            analysis_window._on_close()
             self.root.update()
             ids_before = [image.image_id for image in self.app.project.images]
             source_before = [image.source_image.copy() for image in self.app.project.images]

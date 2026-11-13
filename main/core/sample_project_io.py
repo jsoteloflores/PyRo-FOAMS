@@ -190,6 +190,8 @@ def save_project(project: SampleProject, project_root: Path) -> Path:
 def _validate_project_for_save(project: SampleProject) -> None:
     if project.schema_version != PROJECT_SCHEMA_VERSION or not project.project_id:
         raise SampleProjectIoError("project schema or stable project ID is invalid")
+    if not isinstance(project.analysis_setup, dict):
+        raise SampleProjectIoError("analysis_setup must be a dictionary")
     seen_ids = set()
     for image in project.images:
         if not image.image_id or image.image_id in seen_ids:
@@ -329,6 +331,10 @@ def open_project(project_root: Path) -> SampleProject:
     project = create_project(sample_name, notes=notes)
     project.project_id = project_id
     project.analysis_revision = int(manifest.get("analysis_revision", 0))
+    analysis_setup = manifest.get("analysis_setup", {})
+    if not isinstance(analysis_setup, dict):
+        raise SampleProjectIoError("analysis_setup must be a JSON object when present")
+    project.analysis_setup = dict(analysis_setup)
 
     images = manifest.get("images")
     if not isinstance(images, list):

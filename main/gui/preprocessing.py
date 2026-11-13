@@ -1113,19 +1113,13 @@ class PreprocessApp:
         except SampleProjectError as exc:
             messagebox.showwarning("Analyze", str(exc))
             return
+        from .sample_analysis import SampleAnalysisWorkspace
 
-        from . import stereology as stereology_gui
-
-        stereology_gui.StereologyWindow(
+        SampleAnalysisWorkspace(
             parent=self.master,
-            images=snapshot.working_images,
-            labels=snapshot.labels,
-            paths=[f"{item.display_name} [{item.image_id}]" for item in snapshot.images],
-            scales=snapshot.scales,
-            start_index=0,
-            image_revisions=[item.source_revision for item in snapshot.images],
-            label_revisions=[item.accepted_revision for item in snapshot.images],
-            calibration_revisions=[item.calibration_revision for item in snapshot.images],
+            project=self.project,
+            snapshot=snapshot,
+            mark_unsaved=self._markUnsaved,
         )
 
     def onExportAcceptedMeasurements(self):

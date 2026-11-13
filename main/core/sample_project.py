@@ -168,6 +168,7 @@ class SampleProject:
     schema_version: int = PROJECT_SCHEMA_VERSION
     images: List[ProjectImage] = field(default_factory=list)
     analysis_revision: int = 0
+    analysis_setup: Dict[str, Any] = field(default_factory=dict)
 
     def to_manifest_dict(self) -> Dict[str, Any]:
         return {
@@ -176,6 +177,7 @@ class SampleProject:
             "sample_name": self.sample_name,
             "notes": self.notes,
             "analysis_revision": self.analysis_revision,
+            "analysis_setup": dict(self.analysis_setup),
             "images": [image.to_manifest_dict() for image in self.images],
         }
 
