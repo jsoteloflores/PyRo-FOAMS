@@ -185,7 +185,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self.statusVar.set("Historical runs unavailable; see Details. Preparation remains usable")
 
     def _build_ui(self) -> None:
-        root = ttk.Frame(self, padding=10)
+        root = ttk.Frame(self, padding=(10, 4))
         root.pack(fill="both", expand=True)
         self._layout_root = root
         self._layout_pending = False
