@@ -63,7 +63,7 @@ jobs:
         run: python -m unittest discover -v main/tests
 
   gui-smoke:
-    name: Live Tk GUI Smoke (Windows, Python 3.12)
+    name: Live Tk GUI (Windows Available Display, Python 3.12)
     runs-on: windows-latest
     timeout-minutes: 20
     needs: lint
@@ -81,12 +81,50 @@ jobs:
         timeout-minutes: 10
         env:
           PYRO_FOAMS_LIVE_TK: "1"
+          PYRO_FOAMS_GUI_DISPLAY_MODE: available
           PYRO_FOAMS_GUI_ARTIFACTS: artifacts/gui-smoke
         run: python -m unittest -v main.tests.test_sample_project_gui
-      - name: Upload GUI smoke screenshots
+      - name: Upload GUI screenshots and display diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-live-tk-gui-smoke
-          path: artifacts/gui-smoke/*.png
+          name: windows-live-tk-available-display
+          path: |
+            artifacts/gui-smoke/*.png
+            artifacts/gui-smoke/*.json
+          if-no-files-found: error
+
+  gui-exact:
+    name: Live Tk GUI (Linux Exact 1920x1200 Display, Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install virtual display and GUI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb openbox scrot python3-tk x11-utils
+          pip install numpy opencv-python-headless pillow matplotlib
+      - name: Run all live Tk tests on the exact-size display
+        timeout-minutes: 10
+        env:
+          PYRO_FOAMS_LIVE_TK: "1"
+          PYRO_FOAMS_GUI_DISPLAY_MODE: exact
+          PYRO_FOAMS_GUI_REQUIRE_WM: "1"
+          PYRO_FOAMS_GUI_ARTIFACTS: artifacts/gui-exact
+        run: |
+          xvfb-run -a -s "-screen 0 1920x1200x24 -dpi 96" bash -c 'openbox > /tmp/pyro-openbox.log 2>&1 & python -m unittest -v main.tests.test_sample_project_gui'
+      - name: Upload exact-size screenshots and display diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-live-tk-exact-display
+          path: |
+            artifacts/gui-exact/*.png
+            artifacts/gui-exact/*.json
           if-no-files-found: error

@@ -1,7 +1,10 @@
 import contextlib
+import ctypes
 import io
 import json
 import os
+import platform
+import subprocess
 import sys
 import tempfile
 import threading
@@ -34,20 +37,86 @@ from main.gui import batch_controller, postprocessing, preprocessing, processing
 LIVE_TK = os.environ.get("PYRO_FOAMS_LIVE_TK") == "1"
 
 
+def review_client_sizes(info, mode):
+    targets = ((1280, 800), (1400, 900))
+    if mode == "exact":
+        return targets
+    if mode != "available":
+        raise ValueError("GUI display mode must be exact or available")
+    left, top, right, bottom = info["work_area"]
+    outer = info["decorated_outer_bounds"]
+    client_width, client_height = info["client_size"]
+    border_width = outer[2] - outer[0] - client_width if outer is not None else 0
+    border_height = outer[3] - outer[1] - client_height if outer is not None else 0
+    available_width = min(right - left - border_width, info["wm_max_size"][0])
+    available_height = min(bottom - top - border_height, info["wm_max_size"][1])
+    minimum_width = max(980, info["wm_min_size"][0])
+    minimum_height = max(640, info["wm_min_size"][1])
+    if available_width < minimum_width or available_height < minimum_height:
+        raise ValueError(f"Available client area {available_width}x{available_height} is below the supported minimum {minimum_width}x{minimum_height}")
+    return tuple(dict.fromkeys((min(width, available_width), min(height, available_height)) for width, height in targets))
+
+
+class TestGuiDisplayPolicy(unittest.TestCase):
+    def test_available_mode_accounts_for_decorations_and_wm_limits(self):
+        info = {"work_area": [0, 0, 1024, 728], "decorated_outer_bounds": [0, 0, 1016, 739],
+                "client_size": [1000, 700], "wm_min_size": [980, 640], "wm_max_size": [1028, 749]}
+        self.assertEqual(review_client_sizes(info, "available"), ((1008, 689),))
+        self.assertEqual(review_client_sizes(info, "exact"), ((1280, 800), (1400, 900)))
+
+    def test_available_mode_rejects_unsupported_display(self):
+        info = {"work_area": [0, 0, 800, 600], "decorated_outer_bounds": None,
+                "client_size": [800, 600], "wm_min_size": [980, 640], "wm_max_size": [800, 600]}
+        with self.assertRaisesRegex(ValueError, "below the supported minimum"):
+            review_client_sizes(info, "available")
+
+
 class TestLiveSampleProjectGui(unittest.TestCase):
     def setUp(self):
         if not LIVE_TK:
             self.skipTest("Set PYRO_FOAMS_LIVE_TK=1 on a display-capable host to run live Tk integration.")
         self.callback_errors = []
+        self._setup_ready = False
         self.tk_stderr = io.StringIO()
         self.stderr_redirect = contextlib.redirect_stderr(self.tk_stderr)
         self.stderr_redirect.__enter__()
+        self.addCleanup(self._cleanup_setup_failure)
         self.root = tk.Tk()
         self.root.report_callback_exception = self._report_callback_exception
+        self.display_mode = os.environ.get("PYRO_FOAMS_GUI_DISPLAY_MODE", "exact")
+        self.assertIn(self.display_mode, ("exact", "available"))
+        self.geometry_records = []
         self.root.geometry("1280x800+0+0")
         self.root.deiconify()
         self.app = preprocessing.PreprocessApp(self.root)
         self.root.update()
+        self.window_manager_probe = None
+        self._settle_geometry(self.root)
+        self._record_geometry(self.root, "environment", requested_size=[1280, 800], settled=True)
+        if os.environ.get("PYRO_FOAMS_GUI_REQUIRE_WM") == "1":
+            def manager_ready():
+                probe = subprocess.run(["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"],
+                                       capture_output=True, text=True, timeout=1)
+                self.window_manager_probe = probe.stdout.strip()
+                return probe.returncode == 0 and "window id # 0x" in probe.stdout
+            try:
+                self._wait_until(manager_ready, self.root)
+            finally:
+                self._record_geometry(self.root, "window-manager-readiness")
+        width, height = self._review_sizes(self.root)[0]
+        self._request_geometry(self.root, width, height)
+        self._setup_ready = True
+
+    def _cleanup_setup_failure(self):
+        if self._setup_ready:
+            return
+        if hasattr(self, "root"):
+            try:
+                preprocessing.cancel_debounced_callbacks(self.root)
+                self.root.destroy()
+            except tk.TclError:
+                pass
+        self.stderr_redirect.__exit__(None, None, None)
 
     def tearDown(self):
         if hasattr(self, "root"):
@@ -71,6 +140,130 @@ class TestLiveSampleProjectGui(unittest.TestCase):
 
     def _report_callback_exception(self, exception_type, exception, traceback):
         self.callback_errors.append((exception_type, exception, traceback))
+
+    def _geometry_info(self, window):
+        work_area = [0, 0, window.winfo_screenwidth(), window.winfo_screenheight()]
+        outer = None
+        if sys.platform == "win32":
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            rect = wintypes.RECT()
+            if user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):
+                work_area = [rect.left, rect.top, rect.right, rect.bottom]
+            handle = int(window.wm_frame(), 16)
+            user32.GetWindowRect.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.RECT))
+            if user32.GetWindowRect(handle, ctypes.byref(rect)):
+                outer = [rect.left, rect.top, rect.right, rect.bottom]
+        left, top = window.winfo_rootx(), window.winfo_rooty()
+        return {"platform": platform.platform(), "python": sys.version, "mode": self.display_mode,
+            "windowing_system": str(window.tk.call("tk", "windowingsystem")),
+            "display": os.environ.get("DISPLAY"), "window_manager_probe": self.window_manager_probe,
+            "focused_widget": str(window.focus_get()) if window.focus_get() is not None else None,
+                "screen": [window.winfo_screenwidth(), window.winfo_screenheight()],
+                "virtual_root": [window.winfo_vrootx(), window.winfo_vrooty(), window.winfo_vrootwidth(), window.winfo_vrootheight()],
+                "tk_scaling": float(window.tk.call("tk", "scaling")),
+                "tk_patchlevel": str(window.tk.call("info", "patchlevel")),
+                "wm_min_size": list(window.wm_minsize()), "wm_max_size": list(window.wm_maxsize()),
+                "client_size": [window.winfo_width(), window.winfo_height()],
+                "client_bounds": [left, top, left + window.winfo_width(), top + window.winfo_height()],
+                "decorated_outer_bounds": outer, "work_area": work_area}
+
+    def _record_geometry(self, window, state, **fields):
+        record = self._geometry_info(window)
+        record.update(state=state, **fields)
+        self.geometry_records.append(record)
+        artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / f"display-{self._testMethodName}-{self.display_mode}.json").write_text(
+            json.dumps(self.geometry_records, indent=2), encoding="utf-8")
+        print("GUI_DISPLAY: " + json.dumps(record), flush=True)
+        return record
+
+    def _review_sizes(self, window):
+        self._settle_geometry(window)
+        info = self._geometry_info(window)
+        try:
+            sizes = review_client_sizes(info, self.display_mode)
+        except ValueError:
+            self._record_geometry(window, "unsupported-available-display")
+            raise
+        self._record_geometry(window, "declared-matrix", tested_sizes=sizes)
+        return sizes
+
+    def _request_geometry(self, window, width, height):
+        work = self._geometry_info(window)["work_area"]
+        window.geometry(f"{width}x{height}+{work[0]}+{work[1]}")
+        window.deiconify()
+        self._settle_geometry(window)
+        info = self._record_geometry(window, "geometry-request", requested_size=[width, height])
+        if info["client_size"] != [width, height]:
+            outer = info["decorated_outer_bounds"]
+            border_width = outer[2] - outer[0] - info["client_size"][0] if outer else 0
+            border_height = outer[3] - outer[1] - info["client_size"][1] if outer else 0
+            work = info["work_area"]
+            self._record_geometry(window, "geometry-mismatch", requested_size=[width, height],
+                exceeds_wm_max=width > info["wm_max_size"][0] or height > info["wm_max_size"][1],
+                exceeds_work_area=width + border_width > work[2] - work[0] or height + border_height > work[3] - work[1])
+            self._capture_owned_window(window, f"geometry-mismatch-{width}x{height}.png", check_bounds=False)
+        self.assertEqual(info["client_size"], [width, height], json.dumps(info))
+
+    def _capture_owned_window(self, window, name, directory=None, check_bounds=True):
+        window.deiconify()
+        window.lift()
+        window.attributes("-topmost", True)
+        self._settle_geometry(window)
+        info = self._geometry_info(window)
+        if self.display_mode == "available" and check_bounds:
+            width, height = review_client_sizes(info, self.display_mode)[-1]
+            if window.winfo_width() > width or window.winfo_height() > height:
+                self._request_geometry(window, width, height)
+                info = self._geometry_info(window)
+        bounds = info["decorated_outer_bounds"] or info["client_bounds"]
+        directory = directory or Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
+        directory.mkdir(parents=True, exist_ok=True)
+        if self.display_mode == "available":
+            actual = f"{window.winfo_width()}x{window.winfo_height()}"
+            name = "available-" + name.replace("1280x800", actual).replace("1400x900", actual)
+        try:
+            image = ImageGrab.grab(bbox=tuple(bounds))
+            image.save(directory / name)
+            work = info["work_area"]
+            complete = bounds[0] >= work[0] and bounds[1] >= work[1] and bounds[2] <= work[2] and bounds[3] <= work[3]
+            self._record_geometry(window, "screenshot", screenshot=name, screenshot_bounds=bounds,
+                                  screenshot_size=list(image.size), complete_owned_window=complete,
+                                  screenshot_scope="decorated" if info["decorated_outer_bounds"] else "client")
+            self.assertEqual(image.size, (bounds[2] - bounds[0], bounds[3] - bounds[1]))
+            if check_bounds:
+                self.assertGreaterEqual(bounds[0], work[0], json.dumps(info))
+                self.assertGreaterEqual(bounds[1], work[1], json.dumps(info))
+                self.assertLessEqual(bounds[2], work[2], json.dumps(info))
+                self.assertLessEqual(bounds[3], work[3], json.dumps(info))
+        finally:
+            window.attributes("-topmost", False)
+
+    def _settle_geometry(self, window):
+        deadline = time.monotonic() + 3.0
+        last = None
+        stable_since = None
+        while time.monotonic() < deadline:
+            window.update()
+            self.assertFalse(self.callback_errors, repr(self.callback_errors))
+            geometry = (window.winfo_width(), window.winfo_height(), window.winfo_rootx(), window.winfo_rooty())
+            now = time.monotonic()
+            if geometry != last:
+                last, stable_since = geometry, now
+            elif now - stable_since >= 0.1 and window.winfo_ismapped():
+                return
+            tick = []
+            timer = window.after(10, lambda: tick.append(True))
+            try:
+                while not tick and time.monotonic() < deadline:
+                    window.update()
+            finally:
+                if not tick:
+                    window.after_cancel(timer)
+        self._record_geometry(window, "settling-timeout")
+        self.fail("Window geometry did not settle within the bounded event-loop deadline")
 
     def _checkpoint(self, name):
         print(f"LIVE_TK_GATE: {name}", flush=True)
@@ -112,14 +305,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 self.assertNotIn("Rendering failed", window.statusVar.get())
 
         def capture(name):
-            artifacts.mkdir(parents=True, exist_ok=True)
-            window.deiconify()
-            window.lift()
-            window.attributes("-topmost", True)
-            self.root.update()
-            left, top = window.winfo_rootx(), window.winfo_rooty()
-            ImageGrab.grab(bbox=(left, top, left + window.winfo_width(), top + window.winfo_height())).save(artifacts / name)
-            window.attributes("-topmost", False)
+            self._capture_owned_window(window, name, artifacts)
 
         with patch("tkinter.messagebox.showerror", side_effect=AssertionError("unexpected modal error")):
             with patch("main.gui.sample_analysis.prepare_legacy_analysis", wraps=prepare_legacy_analysis) as preparation:
@@ -219,8 +405,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 for scale in (1, 2):
                     for name, size in fonts.items():
                         tkfont.nametofont(name).configure(size=size * scale)
-                    for width, height in ((1280, 800), (1400, 900)):
-                        window.geometry(f"{width}x{height}+0+0")
+                    for width, height in self._review_sizes(window):
+                        self._request_geometry(window, width, height)
                         self.root.update()
                         window.plotCanvas.get_tk_widget().master.master.select(1)
                         self.root.update()
@@ -276,17 +462,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             window._on_close()
 
     def _capture_workspace(self, artifact_dir, name):
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        self.root.lift()
-        self.root.attributes("-topmost", True)
-        self.root.update_idletasks()
-        self.root.update()
-        left = self.root.winfo_rootx()
-        top = self.root.winfo_rooty()
-        right = left + self.root.winfo_width()
-        bottom = top + self.root.winfo_height()
-        ImageGrab.grab(bbox=(left, top, right, bottom)).save(artifact_dir / name)
-        self.root.attributes("-topmost", False)
+        self._capture_owned_window(self.root, name, artifact_dir)
 
     def test_analysis_explicit_modern_plan_and_cancellation(self):
         from main.core.sample_analysis import prepare_modern_analysis
@@ -432,15 +608,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             return [window.distributionTable.item(row_id, "values") for row_id in window.distributionTable.get_children()]
 
         def capture(name):
-            artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
-            artifacts.mkdir(parents=True, exist_ok=True)
-            window.deiconify()
-            window.lift()
-            window.attributes("-topmost", True)
-            self.root.update()
-            left, top = window.winfo_rootx(), window.winfo_rooty()
-            ImageGrab.grab(bbox=(left, top, left + window.winfo_width(), top + window.winfo_height())).save(artifacts / name)
-            window.attributes("-topmost", False)
+            self._capture_owned_window(window, name)
 
         run()
         self.assertEqual(window.statusVar.get(), "Original run complete", window.resultsText.get("1.0", "end"))
@@ -549,7 +717,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         window.deiconify()
         window.lift()
         window.attributes("-topmost", True)
-        self.root.update()
+        self._settle_geometry(window)
         window.plotCanvas.draw()
         plot = window.plotCanvas.get_tk_widget()
         metrics = {"state": state, "requested_size": [width, height],
@@ -558,14 +726,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                    "plot_height": plot.winfo_height(), "plot_width": plot.winfo_width(),
                    "setup_visible": window._setup_visible}
         print("ANALYSIS_LAYOUT: " + json.dumps(metrics), flush=True)
-        artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
-        artifacts.mkdir(parents=True, exist_ok=True)
-        left, top = window.winfo_rootx(), window.winfo_rooty()
-        try:
-            ImageGrab.grab(bbox=(left, top, left + window.winfo_width(), top + window.winfo_height())).save(
-                artifacts / f"analysis-21c-{state}-{width}x{height}-font{font_scale}x.png")
-        finally:
-            window.attributes("-topmost", False)
+        self._record_geometry(window, state, **{key: value for key, value in metrics.items() if key != "state"})
+        self._capture_owned_window(window, f"analysis-21c-{state}-{width}x{height}-font{font_scale}x.png")
         diagnostic = json.dumps(metrics)
         self.assertEqual(metrics["actual_size"], metrics["requested_size"], diagnostic)
         self.assertEqual(window._setup_visible, not focused, diagnostic)
@@ -628,8 +790,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                     for font_scale in (1, 2):
                         for name, size in font_sizes.items():
                             tkfont.nametofont(name).configure(size=size * font_scale)
-                        for width, height in ((1280, 800), (1400, 900)):
-                            window.geometry(f"{width}x{height}+0+0")
+                        for width, height in self._review_sizes(window):
+                            self._request_geometry(window, width, height)
                             window.statusVar.set("A long operational diagnostic, retained in the scrollable status area. " * 12)
                             self.root.update()
                             self._assert_analysis_results_layout(window, width, height, font_scale, state)
@@ -692,7 +854,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         self.assertIs(self.root.focus_get(), self.app.saveProjectButton)
 
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
-        self.root.geometry(f"{width}x{height}+0+0")
+        self._request_geometry(self.root, width, height)
+        self._record_geometry(self.root, "preparation-layout", requested_size=[width, height], font_scale=font_scale)
         self.root.deiconify()
         self.root.lift()
         self.root.update_idletasks()
@@ -859,8 +1022,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         with patch("main.gui.processing.runSeparationPipeline") as pipeline, patch(
             "main.core.stereology.measure_dataset"
         ) as measure_dataset:
-            self._assert_workspace_controls_fit(1280, 800, artifact_dir, 1)
-            self._assert_workspace_controls_fit(1400, 900, artifact_dir, 1)
+            for width, height in self._review_sizes(self.root):
+                self._assert_workspace_controls_fit(width, height, artifact_dir, 1)
             self._assert_keyboard_traversal_reaches_primary_controls()
             fonts = []
             for font_name in tkfont.names(self.root):
@@ -872,8 +1035,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                     self.assertEqual(int(font.cget("size")), original_size * 2)
             try:
                 self.app._reflowPreparationToolbar()
-                self._assert_workspace_controls_fit(1280, 800, artifact_dir, 2)
-                self._assert_workspace_controls_fit(1400, 900, artifact_dir, 2)
+                for width, height in self._review_sizes(self.root):
+                    self._assert_workspace_controls_fit(width, height, artifact_dir, 2)
                 self._assert_keyboard_traversal_reaches_primary_controls()
             finally:
                 for font, original_size in fonts:
@@ -1118,6 +1281,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             reopened_root.geometry("1280x800+0+0")
             reopened_app = preprocessing.PreprocessApp(reopened_root)
             reopened_root.update()
+            width, height = self._review_sizes(reopened_root)[0]
+            self._request_geometry(reopened_root, width, height)
             with patch.object(preprocessing.filedialog, "askdirectory", return_value=str(project_path)):
                 reopened_app.openProjectButton.invoke()
             reopened_root.update()
