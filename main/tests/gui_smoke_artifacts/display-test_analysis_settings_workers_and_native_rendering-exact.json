@@ -6,7 +6,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".",
+    "focused_widget": null,
     "screen": [
       3440,
       1440
@@ -63,7 +63,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".",
+    "focused_widget": null,
     "screen": [
       3440,
       1440

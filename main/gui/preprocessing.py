@@ -327,6 +327,8 @@ class PreprocessApp:
         ):
             control.bind("<Tab>", self._onPreparationTab, add="+")
             control.bind("<Shift-Tab>", self._onPreparationShiftTab, add="+")
+            if self.master.tk.call("tk", "windowingsystem") == "x11":
+                control.bind("<ISO_Left_Tab>", self._onPreparationShiftTab, add="+")
 
         self.statusVar = tk.StringVar(value="No images loaded")
         self.statusHintLabel = ttk.Label(
@@ -376,7 +378,10 @@ class PreprocessApp:
         for scrollbar in (self.imagesVerticalScrollbar, self.imagesHorizontalScrollbar):
             if scrollbar.winfo_ismapped():
                 controls.append(scrollbar)
-        return [control for control in controls if str(control.cget("state")) != "disabled"]
+        return [control for control in controls if not (
+            control.instate(("disabled",)) if isinstance(control, ttk.Widget)
+            else str(control.cget("state")) == "disabled"
+        )]
 
     def _focusPreparationOffset(self, current, offset):
         controls = self._preparationFocusOrder()

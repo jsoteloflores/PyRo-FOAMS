@@ -49,7 +49,12 @@
       3440,
       1392
     ],
-    "state": "environment"
+    "state": "environment",
+    "requested_size": [
+      1280,
+      800
+    ],
+    "settled": true
   },
   {
     "platform": "Windows-10-10.0.26200-SP0",

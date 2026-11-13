@@ -847,11 +847,108 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             current.event_generate("<Tab>")
             self.root.update()
         self.assertTrue(expected.issubset(visited), "Tab traversal omitted a primary workspace control")
-        self.app.addImagesButton.focus_set()
+        sequences = ["<Shift-Tab>"]
+        if self.root.tk.call("tk", "windowingsystem") == "x11":
+            sequences.append("<ISO_Left_Tab>")
+        for sequence in sequences:
+            for source in (self.app.addImagesButton, self.app.imagesCanvas):
+                self._assert_dispatched_preparation_tab(source, self.app.saveProjectButton, sequence)
+            self._assert_dispatched_preparation_tab(self.app.setCalibrationButton, self.app.renameImageButton, sequence)
+            previous = self.app.importMaskButton
+            for scrollbar in (self.app.imagesVerticalScrollbar, self.app.imagesHorizontalScrollbar):
+                if scrollbar.winfo_ismapped():
+                    self._assert_dispatched_preparation_tab(scrollbar, previous, sequence)
+                    previous = scrollbar
+            original_state = self.app.renameImageButton.cget("state")
+            try:
+                self.app.renameImageButton.configure(state="disabled")
+                self._assert_dispatched_preparation_tab(self.app.setCalibrationButton, self.app.addImagesButton, sequence)
+                self._assert_dispatched_preparation_tab(self.app.addImagesButton, self.app.setCalibrationButton, "<Tab>")
+            finally:
+                self.app.renameImageButton.configure(state=original_state)
+        original_groups = [(group, group.cget("width"), group.cget("height"), group.pack_propagate())
+                           for group in self.app.imagesToolbarGroups]
+        try:
+            width = self.app.imagesCanvas.winfo_width() + 100
+            for index, (group, _width, _height, _propagation) in enumerate(original_groups):
+                height = 200 if index == 0 else group.winfo_reqheight()
+                group.pack_propagate(False)
+                group.configure(width=width, height=height)
+            self.app._reflowPreparationToolbar()
+            self._settle_geometry(self.root)
+            self.assertTrue(self.app.imagesVerticalScrollbar.winfo_ismapped())
+            self.assertTrue(self.app.imagesHorizontalScrollbar.winfo_ismapped())
+            for sequence in sequences:
+                self._assert_dispatched_preparation_tab(self.app.imagesVerticalScrollbar, self.app.importMaskButton, sequence)
+                self._assert_dispatched_preparation_tab(self.app.imagesHorizontalScrollbar, self.app.imagesVerticalScrollbar, sequence)
+        finally:
+            for group, width, height, propagation in original_groups:
+                group.configure(width=width, height=height)
+                group.pack_propagate(propagation)
+            self.app._reflowPreparationToolbar()
+            self._settle_geometry(self.root)
+
+    def _assert_dispatched_preparation_tab(self, source, expected, sequence="<Shift-Tab>"):
+        source.focus_set()
         self.root.update()
-        self.app.addImagesButton.event_generate("<Shift-Tab>")
-        self.root.update()
-        self.assertIs(self.root.focus_get(), self.app.saveProjectButton)
+        original_tags = source.bindtags()
+        probe_tag = f"ReverseTabProbe{id(source)}"
+        events = []
+        transitions = []
+        focus_notifications = []
+
+        def record_key(event):
+            delivered_sequence = "<ISO_Left_Tab>" if event.keysym == "ISO_Left_Tab" else sequence
+            events.append({"keysym": event.keysym, "keycode": event.keycode, "state": event.state,
+                           "widget": str(event.widget), "focus_before": str(self.root.focus_get()),
+                           "bindtags": list(original_tags), "delivered_sequence": delivered_sequence,
+                           "widget_binding": source.bind(delivered_sequence),
+                           "shift_tab_binding": source.bind("<Shift-Tab>"),
+                           "native_reverse_binding": source.bind("<ISO_Left_Tab>") if self.root.tk.call("tk", "windowingsystem") == "x11" else None,
+                           "class_binding": source.bind_class(source.winfo_class(), delivered_sequence),
+                           "all_binding": source.bind_class("all", delivered_sequence)})
+
+        def record_focus(widget, detail):
+            focus_notifications.append({"widget": widget, "detail": detail})
+            if detail not in ("NotifyVirtual", "NotifyNonlinearVirtual"):
+                transitions.append(widget)
+
+        bindings = []
+        focus_command = self.root.register(record_focus)
+        try:
+            source.bindtags((probe_tag, *original_tags))
+            probe_binding = source.bind_class(probe_tag, "<KeyPress>", record_key)
+            for control in dict.fromkeys((*self.app.workspaceFocusControls,
+                                         self.app.imagesVerticalScrollbar, self.app.imagesHorizontalScrollbar)):
+                original_binding = control.bind("<FocusIn>")
+                self.root.tk.call("bind", str(control), "<FocusIn>", f"+{focus_command} %W %d")
+                bindings.append((control, original_binding))
+            source.event_generate(sequence, when="tail")
+            self.root.update()
+            self._record_geometry(self.root, "forward-tab" if sequence == "<Tab>" else "reverse-tab", generated_sequence=sequence,
+                                  source=str(source), expected=str(expected), delivered_events=events,
+                                  focus_transitions=transitions, final_focus=str(self.root.focus_get()),
+                                  focus_notifications=focus_notifications,
+                                  font_size=tkfont.nametofont("TkDefaultFont").cget("size"))
+            if self.root.focus_get() is not expected or transitions != [str(expected)]:
+                artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
+                self._capture_workspace(artifacts, "keyboard-navigation-failure.png")
+            self.assertEqual(len(events), 1, repr(events))
+            self.assertEqual(transitions, [str(expected)], repr(events))
+            self.assertIs(self.root.focus_get(), expected, repr(events))
+            if expected in self.app._preparationControls:
+                canvas = self.app.imagesCanvas
+                self.assertGreaterEqual(expected.winfo_rootx(), canvas.winfo_rootx(), repr(events))
+                self.assertGreaterEqual(expected.winfo_rooty(), canvas.winfo_rooty(), repr(events))
+                self.assertLessEqual(expected.winfo_rootx() + expected.winfo_width(), canvas.winfo_rootx() + canvas.winfo_width(), repr(events))
+                self.assertLessEqual(expected.winfo_rooty() + expected.winfo_height(), canvas.winfo_rooty() + canvas.winfo_height(), repr(events))
+        finally:
+            source.bindtags(original_tags)
+            source.unbind_class(probe_tag, "<KeyPress>")
+            source.deletecommand(probe_binding)
+            for control, binding in bindings:
+                self.root.tk.call("bind", str(control), "<FocusIn>", binding)
+            self.root.deletecommand(focus_command)
 
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self._request_geometry(self.root, width, height)
