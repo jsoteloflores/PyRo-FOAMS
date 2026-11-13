@@ -25,23 +25,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -49,7 +49,12 @@
       3440,
       1392
     ],
-    "state": "environment"
+    "state": "environment",
+    "requested_size": [
+      1280,
+      800
+    ],
+    "settled": true
   },
   {
     "platform": "Windows-10-10.0.26200-SP0",
@@ -77,23 +82,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -105,7 +110,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -135,23 +140,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -162,7 +167,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -191,23 +196,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -219,7 +224,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -249,23 +254,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -276,7 +281,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -305,23 +310,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -332,14 +337,14 @@
     "state": "original-success",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
-    "plot_height": 476,
+    "plot_height": 468,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -369,23 +374,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -394,16 +399,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-original-success-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-original-success-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -434,23 +439,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -461,11 +466,11 @@
     "state": "original-success-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
     "plot_height": 245,
@@ -498,23 +503,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -523,16 +528,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-original-success-setup-open-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-original-success-setup-open-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -563,23 +568,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -591,7 +596,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -621,23 +626,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -648,7 +653,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -677,23 +682,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -704,14 +709,14 @@
     "state": "original-success",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
-    "plot_height": 374,
+    "plot_height": 366,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -741,23 +746,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -766,16 +771,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-original-success-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-original-success-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -806,23 +811,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -833,11 +838,11 @@
     "state": "original-success-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
     "plot_height": 245,
@@ -870,23 +875,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -895,16 +900,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-original-success-setup-open-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-original-success-setup-open-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -935,23 +940,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -963,7 +968,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -993,23 +998,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1020,7 +1025,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -1049,23 +1054,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1076,14 +1081,14 @@
     "state": "modern-success",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
-    "plot_height": 476,
+    "plot_height": 468,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -1113,23 +1118,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1138,16 +1143,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-modern-success-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-modern-success-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -1178,23 +1183,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1205,11 +1210,11 @@
     "state": "modern-success-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
     "plot_height": 252,
@@ -1242,23 +1247,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1267,16 +1272,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-modern-success-setup-open-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-modern-success-setup-open-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -1307,23 +1312,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1335,7 +1340,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -1365,23 +1370,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1392,7 +1397,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -1421,23 +1426,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1448,14 +1453,14 @@
     "state": "modern-success",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
-    "plot_height": 374,
+    "plot_height": 366,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -1485,23 +1490,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1510,16 +1515,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-modern-success-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-modern-success-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -1550,23 +1555,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1577,11 +1582,11 @@
     "state": "modern-success-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
     "plot_height": 245,
@@ -1614,23 +1619,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1639,16 +1644,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-modern-success-setup-open-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-modern-success-setup-open-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -1679,23 +1684,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1707,7 +1712,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -1737,23 +1742,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1764,7 +1769,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -1793,23 +1798,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1820,14 +1825,14 @@
     "state": "compare-success",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
-    "plot_height": 476,
+    "plot_height": 468,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -1857,23 +1862,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1882,16 +1887,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-compare-success-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-compare-success-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -1922,23 +1927,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -1949,11 +1954,11 @@
     "state": "compare-success-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
     "plot_height": 252,
@@ -1986,23 +1991,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2011,16 +2016,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-compare-success-setup-open-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-compare-success-setup-open-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -2051,23 +2056,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2079,7 +2084,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -2109,23 +2114,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2136,7 +2141,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -2165,23 +2170,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2192,14 +2197,14 @@
     "state": "compare-success",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
-    "plot_height": 374,
+    "plot_height": 366,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -2229,23 +2234,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2254,16 +2259,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-compare-success-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-compare-success-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -2294,23 +2299,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2321,11 +2326,11 @@
     "state": "compare-success-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
     "plot_height": 245,
@@ -2358,23 +2363,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2383,16 +2388,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-compare-success-setup-open-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-compare-success-setup-open-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -2423,23 +2428,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2451,7 +2456,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -2481,23 +2486,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2508,7 +2513,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -2537,23 +2542,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2564,14 +2569,14 @@
     "state": "partial-failure",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
-    "plot_height": 476,
+    "plot_height": 468,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -2601,23 +2606,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2626,16 +2631,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-partial-failure-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-partial-failure-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -2666,23 +2671,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2693,11 +2698,11 @@
     "state": "partial-failure-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
     "plot_height": 252,
@@ -2730,23 +2735,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2755,16 +2760,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-partial-failure-setup-open-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-partial-failure-setup-open-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -2795,23 +2800,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2823,7 +2828,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -2853,23 +2858,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2880,7 +2885,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -2909,23 +2914,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2936,14 +2941,14 @@
     "state": "partial-failure",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
-    "plot_height": 374,
+    "plot_height": 366,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -2973,23 +2978,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -2998,16 +3003,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-partial-failure-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-partial-failure-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -3038,23 +3043,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3065,11 +3070,11 @@
     "state": "partial-failure-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
     "plot_height": 245,
@@ -3102,23 +3107,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3127,16 +3132,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-partial-failure-setup-open-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-partial-failure-setup-open-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -3167,23 +3172,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3195,7 +3200,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -3225,23 +3230,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3252,7 +3257,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -3281,23 +3286,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3308,14 +3313,14 @@
     "state": "both-failed",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
-    "plot_height": 476,
+    "plot_height": 468,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -3345,23 +3350,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3370,16 +3375,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-both-failed-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-both-failed-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -3410,23 +3415,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3437,11 +3442,11 @@
     "state": "both-failed-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
     "plot_height": 252,
@@ -3474,23 +3479,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3499,16 +3504,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-both-failed-setup-open-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-both-failed-setup-open-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -3539,23 +3544,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3567,7 +3572,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -3597,23 +3602,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3624,7 +3629,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -3653,23 +3658,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3680,14 +3685,14 @@
     "state": "both-failed",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
-    "plot_height": 374,
+    "plot_height": 366,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -3717,23 +3722,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3742,16 +3747,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-both-failed-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-both-failed-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -3782,23 +3787,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3809,11 +3814,11 @@
     "state": "both-failed-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
     "plot_height": 245,
@@ -3846,23 +3851,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3871,16 +3876,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-both-failed-setup-open-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-both-failed-setup-open-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -3911,23 +3916,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3939,7 +3944,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -3969,23 +3974,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -3996,7 +4001,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -4025,23 +4030,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4052,14 +4057,14 @@
     "state": "previous-inputs-changed",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
-    "plot_height": 508,
+    "plot_height": 500,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -4089,23 +4094,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4114,16 +4119,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-previous-inputs-changed-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-previous-inputs-changed-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -4154,23 +4159,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4181,11 +4186,11 @@
     "state": "previous-inputs-changed-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 1,
     "plot_height": 252,
@@ -4218,23 +4223,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4243,16 +4248,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-previous-inputs-changed-setup-open-1008x689-font1x.png",
+    "screenshot": "available-analysis-21c-previous-inputs-changed-setup-open-1008x681-font1x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -4283,23 +4288,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4311,7 +4316,7 @@
     "tested_sizes": [
       [
         1008,
-        689
+        681
       ]
     ]
   },
@@ -4341,23 +4346,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4368,7 +4373,7 @@
     "state": "geometry-request",
     "requested_size": [
       1008,
-      689
+      681
     ]
   },
   {
@@ -4397,23 +4402,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4424,14 +4429,14 @@
     "state": "previous-inputs-changed",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
-    "plot_height": 406,
+    "plot_height": 398,
     "plot_width": 984,
     "setup_visible": false
   },
@@ -4461,23 +4466,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4486,16 +4491,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-previous-inputs-changed-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-previous-inputs-changed-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -4526,23 +4531,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4553,11 +4558,11 @@
     "state": "previous-inputs-changed-setup-open",
     "requested_size": [
       1008,
-      689
+      681
     ],
     "actual_size": [
       1008,
-      689
+      681
     ],
     "font_scale": 2,
     "plot_height": 245,
@@ -4590,23 +4595,23 @@
     ],
     "wm_max_size": [
       1008,
-      689
+      681
     ],
     "client_size": [
       1008,
-      689
+      681
     ],
     "client_bounds": [
       8,
       31,
       1016,
-      720
+      712
     ],
     "decorated_outer_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "work_area": [
       0,
@@ -4615,16 +4620,16 @@
       1392
     ],
     "state": "screenshot",
-    "screenshot": "available-analysis-21c-previous-inputs-changed-setup-open-1008x689-font2x.png",
+    "screenshot": "available-analysis-21c-previous-inputs-changed-setup-open-1008x681-font2x.png",
     "screenshot_bounds": [
       0,
       0,
       1024,
-      728
+      720
     ],
     "screenshot_size": [
       1024,
-      728
+      720
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"

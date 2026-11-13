@@ -407,7 +407,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                     for width, height in self._review_sizes(window):
                         self._request_geometry(window, width, height)
                         self.root.update()
-                        window.plotCanvas.get_tk_widget().master.master.select(1)
+                        window.resultsNotebook.select(window.plotCanvas.get_tk_widget().master)
                         self.root.update()
                         capture(f"analysis-plot-{width}x{height}-font{scale}x.png")
                         self._assert_analysis_results_layout(window, width, height, scale, "existing-compare-success")
@@ -420,7 +420,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             finally:
                 for name, size in fonts.items():
                     tkfont.nametofont(name).configure(size=size)
-                window.plotCanvas.get_tk_widget().master.master.select(0)
+                window.resultsNotebook.select(window.distributionTable.master)
             previous_text = window.resultsText.get("1.0", "end")
             previous_values = [window.distributionTable.item(row_id, "values") for row_id in window.distributionTable.get_children()]
             with patch.object(window, "_render_compare", side_effect=RuntimeError("injected renderer failure")):
@@ -783,7 +783,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                         else:
                             self.assertEqual(window._latest_compare.legacy_result is None, state in ("partial-failure", "both-failed"))
                             self.assertEqual(window._latest_compare.modern_result is None, state == "both-failed")
-                    window.resultsNotebook.select(1)
+                    window.resultsNotebook.select(window.plotCanvas.get_tk_widget().master)
                     self.root.update()
                     self.assertFalse(window._setup_visible)
                     for font_scale in (1, 2):
@@ -979,6 +979,125 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         self.assertGreater(tkfont.nametofont("TkDefaultFont").metrics("linespace"), 0)
         self.assertGreater(tkfont.nametofont("TkDefaultFont", root=self.root).metrics("linespace"), 0)
         self.root.update()
+
+    def test_saved_runs_reopen_inspect_and_export_without_science(self):
+        from main.core.sample_analysis import prepare_legacy_analysis
+        from main.core.sample_project_io import open_project, save_project
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        set_analysis_included(project.images[2], False)
+        project.sample_name = 'Sample, "pore"\n\u00e9vidence'
+        snapshot = create_analysis_snapshot(project)
+        labels = prepare_legacy_analysis(snapshot).prepared.label_preparation_result.bin_labels_mm
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, snapshot)
+        window.manualRangesVar.set(f"group-1:{labels[0]!r}:{labels[-1]!r}")
+        window.modernMinDetectableVar.set("0.001")
+        window.modernEdgesVar.set("0.001,0.01,0.1")
+        for mode in ("Original FOAMS 1.0.5", "Modern analysis", "Compare methods"):
+            window.modeVar.set(mode)
+            window.runButton.invoke()
+            self._wait_until(lambda: not window._busy, self.root)
+            self.assertIsNotNone(window._displayed_request)
+            self.assertEqual(project.analysis_runs[-1].run_id, window._displayed_request.request_id)
+        record_a = project.analysis_runs[0]
+        before = tuple(run.payload for run in project.analysis_runs)
+        set_calibration(project.images[0], 0.004, "mm")
+        set_analysis_included(project.images[1], False)
+        project.sample_name = "Changed sample display name"
+        window.modeVar.set("Modern analysis")
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertEqual(tuple(run.payload for run in project.analysis_runs[:3]), before)
+        self.assertEqual(len(project.analysis_runs), 4)
+        window._on_close()
+        with tempfile.TemporaryDirectory() as folder:
+            project_folder = Path(folder) / "project"
+            save_project(project, project_folder)
+            with contextlib.ExitStack() as mocks:
+                for name in ("prepare_legacy_analysis", "prepare_modern_analysis", "analyze_legacy_prepared", "analyze_modern_prepared"):
+                    mocks.enter_context(patch("main.gui.sample_analysis." + name, side_effect=AssertionError("history reran science")))
+                restored = open_project(project_folder)
+                self.assertEqual(tuple(run.payload for run in restored.analysis_runs[:3]), before)
+                window = sample_analysis.SampleAnalysisWorkspace(self.root, restored, create_analysis_snapshot(restored))
+                self.root.update()
+                self.assertIsNone(window._displayed_request)
+                label = next(label for label, record in window._saved_labels.items() if record.run_id == record_a.run_id)
+                window.resultViewVar.set(label)
+                window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+                self._wait_until(lambda: window._selected_saved_run is not None, self.root)
+                self.assertEqual(window._selected_saved_run.payload, record_a.payload)
+                self.assertEqual(window._distribution_rows, record_a.data()["tables"]["distributions"])
+                self.assertEqual(window._object_rows, record_a.data()["tables"]["objects"])
+                self.assertIn("Inputs changed", window.resultProvenanceVar.get())
+                self.assertIn("Previous saved run", window.resultProvenanceVar.get())
+                inputs = tuple(image.accepted_snapshot.snapshot_id for image in restored.images if image.analysis_included)
+                window.useRunSettingsButton.invoke()
+                self.assertEqual(tuple(image.accepted_snapshot.snapshot_id for image in restored.images if image.analysis_included), inputs)
+                self.assertEqual(len(restored.analysis_runs), 4)
+                for tab in (window._overview_frame, window.objectsTable.master, window.distributionTable.master, window._plot_frame):
+                    window.resultsNotebook.select(tab)
+                    self.root.update()
+                artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
+                self._capture_owned_window(window, "analysis-22-reopened-stale-run.png", artifacts)
+                export_parent = Path(folder) / "exports"
+                export_parent.mkdir()
+                with patch("main.gui.sample_analysis.filedialog.askdirectory", return_value=str(export_parent)):
+                    window.exportRunButton.invoke()
+                self._wait_until(lambda: not window._exporting, self.root)
+                self.assertIn("Export complete", window.statusVar.get())
+                destination = export_parent / ("run-" + record_a.run_id)
+                manifest = json.loads((destination / "manifest.json").read_text())
+                self.assertEqual(manifest["run_id"], record_a.run_id)
+                self.assertEqual((destination / "original_compatible" / "manifest.json").read_bytes(),
+                    restored.analysis_assets[next(item["sha256"] for item in record_a.data()["canonical_original"] if item["filename"] == "manifest.json")])
+                self._capture_owned_window(window, "analysis-22-export-complete.png", artifacts)
+                window._on_close()
+
+    def test_large_saved_object_pages_and_history_cancel_do_not_rerun(self):
+        project = create_project("Large native object table")
+        image = add_image(project, np.zeros((128, 128), dtype=np.uint8), "large.png")
+        labels = np.zeros((128, 128), dtype=np.int32)
+        for index in range(900):
+            row, column = 2 + (index // 30) * 4, 2 + (index % 30) * 4
+            labels[row:row + 2, column:column + 2] = index + 1
+        update_draft(image, mask=(labels > 0).astype(np.uint8) * 255, labels=labels, settings={})
+        accept_draft(image)
+        set_calibration(image, 0.001, "mm")
+        set_analysis_included(image, True)
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, create_analysis_snapshot(project))
+        window.modeVar.set("Modern analysis")
+        window.modernMinDetectableVar.set("0.0001")
+        window.modernEdgesVar.set("0.0001,0.001,0.01")
+        responsive = []
+        self.root.after(10, lambda: responsive.append(True))
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertTrue(responsive)
+        self.assertEqual(len(window._object_rows), 900)
+        self.assertEqual(len(window.objectsTable.get_children()), 250)
+        record = project.analysis_runs[-1]
+        label = next(label for label, saved in window._saved_labels.items() if saved is record)
+        original_request = window._displayed_request
+        with patch("main.gui.sample_analysis.prepare_modern_analysis", side_effect=AssertionError("paging reran science")):
+            started = time.monotonic()
+            window._page_objects(1)
+            self.root.update()
+            self.assertLess(time.monotonic() - started, 2)
+            self.assertEqual(len(window.objectsTable.get_children()), 250)
+            window.resultViewVar.set(label)
+            window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+            window.cancelButton.invoke()
+            self.root.update()
+            self.assertIs(window._displayed_request, original_request)
+            self.assertIsNone(window._selected_saved_run)
+            self.assertEqual(len(project.analysis_runs), 1)
+            window.resultViewVar.set(label)
+            window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+            self._wait_until(lambda: window._selected_saved_run is not None, self.root)
+            self.assertEqual(window._selected_saved_run.run_id, record.run_id)
+            self.assertEqual(len(window.objectsTable.get_children()), 250)
+        window._on_close()
 
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self._request_geometry(self.root, width, height)

@@ -1,24 +1,28 @@
 from __future__ import annotations
 
+import json
 import queue
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
 import uuid
 from dataclasses import asdict, replace
-from tkinter import ttk
+from pathlib import Path
+from tkinter import filedialog, ttk
 from typing import Callable, Optional
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib.ticker import LogLocator, NullLocator
 
+from ..core.analysis_runs import append_run, create_run_projection, error_diagnostic
 from ..core.legacy_cutoffs import Foams105CutoffGroupInput, suggest_foams105_cutoffs
 from ..core.legacy_perimeter import (
     FOAMS105_PERIMETER_PROFILE_CURRENT,
     FOAMS105_PERIMETER_PROFILE_OLD,
 )
 from ..core.reconstruction import UPPER_TAIL_ASSUMPTION
+from ..core.run_exports import export_selected_run, run_tables
 from ..core.sample_analysis import (
     CapturedAnalysisRequest,
     CompareRunResult,
@@ -98,6 +102,23 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._displayed_envelopes = ()
         self._displayed_outcomes = ()
         self._diagnostic_inputs = None
+        self._selected_saved_run = None
+        self._saved_view_data = None
+        self._saved_labels = {}
+        self._history_queue = queue.Queue()
+        self._view_generation = 0
+        self._history_loading = False
+        self._object_page = 0
+        self._distribution_page = 0
+        self._distribution_rows = []
+        self._object_rows = []
+        self._object_row_by_id = {}
+        self._export_cancel = threading.Event()
+        self._export_queue = queue.Queue()
+        self._exporting = False
+        self._projection_views = {}
+        self._table_run_id = None
+        self._history_previous = None
 
         self.modeVar = tk.StringVar(value="Original FOAMS 1.0.5")
         self.minimumDiameterVar = tk.StringVar(value="2.0")
@@ -128,7 +149,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                for image in self.snapshot.images])
         self._variables = {
             name: value for name, value in vars(self).items() if isinstance(value, tk.Variable)
-            and name not in ("statusVar", "resultViewVar", "resultProvenanceVar")
+            and name not in ("statusVar", "resultViewVar", "resultProvenanceVar", "tableMethodVar", "tableGroupVar", "tableStageVar")
         }
         for variable in self._variables.values():
             variable.trace_add("write", self._settings_changed)
@@ -138,6 +159,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.minsize(980, 640)
         self._refresh_summary_banner()
         self._schedule_after(200, self._watch_inputs)
+        self._update_result_choices()
+        if self.project.unavailable_history:
+            self._append_details(["Unavailable historical runs:", json.dumps(self.project.unavailable_history, ensure_ascii=False, indent=2)])
+            self.statusVar.set("Historical runs unavailable; see Details. Preparation remains usable")
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=10)
@@ -299,6 +324,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.previewButton.pack(side="left")
         self.shapeUpdateButton = ttk.Button(actions, text="Update shape minimum", command=self._update_shape_minimum)
         self.shapeUpdateButton.pack(side="left", padx=8)
+        self.useRunSettingsButton = ttk.Button(actions, text="Use this run's settings", command=self._use_run_settings)
+        self.useRunSettingsButton.pack(side="left", padx=8)
+        self.exportRunButton = ttk.Button(actions, text="Export selected run", command=self._export_run)
+        self.exportRunButton.pack(side="left", padx=8)
         ttk.Button(actions, text="Measurements", command=self._open_measurements).pack(side="left", padx=8)
         status_frame = ttk.Frame(root)
         status_frame.grid(row=4, column=0, sticky="ew", pady=4)
@@ -334,6 +363,37 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         views.add(table_frame, text="Distributions")
         views.add(plot_frame, text="Plot")
         views.add(details_frame, text="Details / raw identities")
+        overview_frame = ttk.Frame(views)
+        objects_frame = ttk.Frame(views)
+        views.insert(0, overview_frame, text="Overview")
+        views.tab(details_frame, text="Details")
+        views.add(objects_frame, text="Objects / shape")
+        self._plot_frame = plot_frame
+        self._overview_frame = overview_frame
+        self.overviewText = tk.Text(overview_frame, wrap="word", height=10)
+        self.overviewText.pack(fill="both", expand=True)
+        self.objectsTable = ttk.Treeview(objects_frame, columns=("method", "image", "object", "diameter", "area", "selected", "shape"), show="headings", height=10)
+        for name, heading in zip(self.objectsTable.cget("columns"), ("Method", "Image ID", "Object ID", "Diameter mm", "Area mm^2", "Raw selected", "Shape population")):
+            self.objectsTable.heading(name, text=heading)
+            self.objectsTable.column(name, width=135, stretch=False)
+        objects_frame.columnconfigure(0, weight=1)
+        objects_frame.rowconfigure(0, weight=1)
+        self.objectsTable.grid(row=0, column=0, sticky="nsew")
+        object_scroll = ttk.Scrollbar(objects_frame, orient="vertical", command=self.objectsTable.yview)
+        object_scroll.grid(row=0, column=1, sticky="ns")
+        object_horizontal = ttk.Scrollbar(objects_frame, orient="horizontal", command=self.objectsTable.xview)
+        object_horizontal.grid(row=1, column=0, sticky="ew")
+        self.objectsTable.configure(yscrollcommand=object_scroll.set, xscrollcommand=object_horizontal.set)
+        object_actions = ttk.Frame(objects_frame)
+        object_actions.grid(row=2, column=0, sticky="ew")
+        ttk.Button(object_actions, text="Previous page", command=lambda: self._page_objects(-1)).pack(side="left")
+        ttk.Button(object_actions, text="Next page", command=lambda: self._page_objects(1)).pack(side="left", padx=8)
+        self.objectPageLabel = ttk.Label(object_actions)
+        self.objectPageLabel.pack(side="left")
+        ttk.Button(object_actions, text="Shape statistics", command=self._inspect_shape_statistics).pack(side="left", padx=8)
+        for column in self.objectsTable.cget("columns"):
+            self.objectsTable.heading(column, command=lambda name=column: self._sort_object_page(name))
+        self.objectsTable.bind("<<TreeviewSelect>>", self._inspect_object)
         views.bind("<<NotebookTabChanged>>", self._results_tab_changed)
         columns = ("method", "group", "bin", "lower", "upper", "count", "area", "na", "nv", "volume")
         self.distributionTable = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="extended")
@@ -354,6 +414,20 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.binGroupSelector.grid(row=2, column=0, sticky="w")
         self.applyBinsButton = ttk.Button(table_frame, text="Apply selected bins to group", command=self._apply_selected_bins)
         self.applyBinsButton.grid(row=3, column=0, sticky="w")
+        table_filters = ttk.Frame(table_frame)
+        table_filters.grid(row=4, column=0, sticky="ew")
+        self.tableMethodVar = tk.StringVar(value="All")
+        self.tableGroupVar = tk.StringVar(value="All")
+        self.tableStageVar = tk.StringVar(value="All")
+        self.tableFilters = []
+        for variable, options in ((self.tableMethodVar, ("All", "legacy", "modern")),
+                                  (self.tableGroupVar, ("All",)), (self.tableStageVar, ("All", "prepared", "selected"))):
+            control = ttk.Combobox(table_filters, textvariable=variable, values=options, state="readonly", width=12)
+            control.pack(side="left", padx=4)
+            control.bind("<<ComboboxSelected>>", lambda event: self._filter_saved_tables())
+            self.tableFilters.append(control)
+        ttk.Button(table_filters, text="Previous", command=lambda: self._page_distributions(-1)).pack(side="left", padx=4)
+        ttk.Button(table_filters, text="Next", command=lambda: self._page_distributions(1)).pack(side="left")
         self.figure = Figure(figsize=(6, 3), dpi=100, constrained_layout=True)
         self.plotAxes = self.figure.add_subplot(111)
         self.plotCanvas = FigureCanvasTkAgg(self.figure, master=plot_frame)
@@ -390,7 +464,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._queue_layout()
 
     def _results_tab_changed(self, _event=None) -> None:
-        if self.resultsNotebook.index(self.resultsNotebook.select()) == 1 and not self._plot_entered:
+        if self.resultsNotebook.select() == str(self._plot_frame) and not self._plot_entered:
             self._plot_entered = True
             self._set_setup_visible(False)
         self._queue_layout()
@@ -674,6 +748,20 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         return any(saved[method] != self._method_settings_signature(method) for method in methods)
 
     def _refresh_result_provenance(self) -> None:
+        if self._selected_saved_run is not None and self._saved_view_data is not None:
+            data = self._saved_view_data
+            captured = {(image["image_id"], image["snapshot_id"], image["mm_per_px"], tuple(image["processing_roi"])) for image in data["images"]}
+            current = {(image.image_id, image.accepted_snapshot.snapshot_id if image.accepted_snapshot else None,
+                        calibration_mm_per_px(image), image.processing_roi) for image in self.project.images if image.analysis_included}
+            prefix = "Saved run" if self.project.analysis_runs and self._selected_saved_run.run_id == self.project.analysis_runs[-1].run_id else "Previous saved run"
+            stale = " | Inputs changed - rerun required" if captured != current else ""
+            draft_changed = any(getattr(self, name).get() != value for name, value in data["draft_settings"].items()
+                                if name in self._variables and name != "binGroupVar")
+            if draft_changed:
+                stale += " | Settings changed"
+            self.resultProvenanceVar.set(prefix + stale + " | " + self._selected_saved_run.run_id[:8] + " | "
+                + "; ".join(f"{method['method_id']}: {method['outcome']}" for method in data["methods"]))
+            return
         request = self._displayed_request
         if request is None:
             return
@@ -687,8 +775,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             + "; ".join(f"{method}: {status}" for method, status in self._displayed_outcomes))
 
     def _append_request_details(self, request: CapturedAnalysisRequest) -> None:
+        saved = self._projection_views.get(request.request_id)
         self._append_details([f"Request ID: {request.request_id}", f"Session ID: {request.session_id}",
-            f"Sample: {self.project.sample_name}",
+            f"Sample: {saved['sample_name'] if saved else self.project.sample_name}",
             f"Captured request: {request.mode} / {request.action}",
             f"Legacy settings: {request.legacy_config!r}", f"Modern settings: {request.modern_config!r}",
             f"Captured editable settings: {request.draft_settings!r}", f"Project: {request.snapshot.project_id}"]
@@ -699,9 +788,14 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         current_id = self._current_view[2].request_id if self._current_view is not None else None
         options = ["Current request"] + [label for label, envelope in self._successful_results.items()
                                          if envelope.request.request_id != current_id]
+        self._saved_labels = {f"Saved #{index + 1} {run.completed_at_utc[:19]} | {run.preset} | "
+            f"{','.join(run.outcomes)} | {run.run_id[:8]}": run for index, run in enumerate(self.project.analysis_runs)}
+        options.extend(self._saved_labels)
         self.resultViewSelector.configure(values=options)
 
     def _present_result(self, kind, result, request, envelopes, previous=False) -> None:
+        self._selected_saved_run = None
+        self._saved_view_data = None
         if not previous:
             self.resultViewVar.set("Current request")
         if kind == "compare":
@@ -710,6 +804,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self._render_legacy(result)
         elif kind == "modern":
             self._render_modern(result)
+        elif kind == "failed":
+            self._clear_distribution()
+            self._set_results([request.mode, "Analysis failed; no numerical result for this request"])
+            self._finish_plot()
         else:
             self._render_prepared(*result)
         if previous:
@@ -718,15 +816,22 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._displayed_request = request
         self._displayed_envelopes = envelopes
         self._displayed_outcomes = tuple((method, "success" if getattr(result, f"{method}_result") is not None else "failed")
-                        for method in ("legacy", "modern")) if kind == "compare" else ((kind, "prepared" if kind == "prepared" else "success"),)
+                        for method in ("legacy", "modern")) if kind == "compare" else (
+                        (("modern" if request.mode == "Modern analysis" else "legacy"), "failed") if kind == "failed" else
+                        (kind, "prepared" if kind == "prepared" else "success"),)
         self._selected_view_label = self.resultViewVar.get()
         self._refresh_result_provenance()
+        data = self._projection_views.get(request.request_id)
+        if data is not None:
+            self._populate_saved_supplement(data, data["tables"])
 
     def _select_result_view(self, _event=None) -> None:
         view = self._capture_view()
         selected_label = self.resultViewVar.get()
         try:
-            if selected_label == "Current request":
+            if selected_label in self._saved_labels:
+                self._load_saved_run(self._saved_labels[selected_label])
+            elif selected_label == "Current request":
                 if self._current_view is None:
                     return
                 self._present_result(*self._current_view)
@@ -752,11 +857,17 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             for widget, state in self._control_states:
                 widget.configure(state=state)
             self._control_states = []
-        for button in (self.runButton, self.suggestButton, self.prepareButton, self.previewButton, self.shapeUpdateButton, self.saveSetupButton):
+        for button in (self.runButton, self.suggestButton, self.prepareButton, self.previewButton, self.shapeUpdateButton,
+                   self.saveSetupButton, self.useRunSettingsButton, self.exportRunButton):
             button.configure(state="disabled" if busy else "normal")
         self.cancelButton.configure(state="normal" if busy else "disabled")
 
     def _cancel_job(self) -> None:
+        if self._history_loading and self._history_previous is not None:
+            self._restore_view(self._history_previous)
+        self._view_generation += 1
+        self._history_loading = False
+        self._export_cancel.set()
         self._active_generation += 1
         self._active_request = None
         self._set_busy(False)
@@ -776,6 +887,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
     def _start_job(self, action: str) -> None:
         if self._busy:
             return
+        if self._history_loading:
+            self._view_generation += 1
+            self._history_loading = False
+            if self._history_previous is not None:
+                self._restore_view(self._history_previous)
         try:
             if not self._input_signature()[2]:
                 raise SampleAnalysisError("Project session changed; reopen analysis from the current project")
@@ -803,7 +919,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                     modern_cfg = self._parse_modern_config()
                 except Exception as exc:
                     modern_error = exc
-            if mode != "Compare methods" and (legacy_error or modern_error):
+            if action != "run" and mode != "Compare methods" and (legacy_error or modern_error):
                 raise legacy_error or modern_error
             if action == "suggest" and legacy_cfg is None:
                 raise SampleAnalysisError("Select Original or Compare before suggesting legacy cutoffs")
@@ -826,6 +942,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.statusVar.set(f"{action.capitalize()}: {mode}...")
         key = self._legacy_prepare_key(snapshot, legacy_cfg) if legacy_cfg is not None else None
         cached = self._legacy_prepare_cache.get(key)
+        sample_name = self.project.sample_name
+        source_arrays = tuple((image.image_id, image.source_image) for image in self.project.images)
 
         def worker() -> None:
             payload = dict(legacy=None, modern=None, legacy_error=legacy_error, modern_error=modern_error,
@@ -853,6 +971,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                             payload["modern"] = analyze_modern_prepared(snapshot, prepared, modern_cfg)
                     except Exception as exc:
                         payload["modern_error"] = exc
+                if action == "run":
+                    try:
+                        payload["run_projection"] = create_run_projection(request["captured"], payload, sample_name, source_arrays)
+                        payload["run_data"] = payload["run_projection"].record.data()
+                    except Exception as exc:
+                        payload["projection_error"] = exc
                 self._result_queue.put((generation, payload, None, snapshot))
             except Exception as exc:
                 self._result_queue.put((generation, None, exc, snapshot))
@@ -884,6 +1008,16 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         if error is not None:
             self._show_failure(request["mode"], error)
             return
+
+        projection = result.get("run_projection")
+        if projection is not None:
+            append_run(self.project, projection)
+            self._projection_views[projection.record.run_id] = result["run_data"]
+            self._update_result_choices()
+            if self._mark_unsaved is not None:
+                self._mark_unsaved()
+        if result.get("projection_error") is not None:
+            self._show_failure("Run projection", result["projection_error"])
 
         previous_view = self._capture_view()
         try:
@@ -924,6 +1058,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 if self._last_completed_snapshot is None:
                     new_view = ("prepared", (context, result["modern_prepared"]), captured, ())
                     self._present_result(*new_view)
+            if new_view is None and projection is not None:
+                new_view = ("failed", None, captured, ())
+                self._present_result(*new_view)
             if new_view is not None:
                 self._current_view = new_view
                 self.resultViewVar.set("Current request")
@@ -932,6 +1069,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                     self._successful_results[label] = envelope
                 self._update_result_choices()
                 self._refresh_result_provenance()
+                if projection is not None:
+                    data = result["run_data"]
+                    self._populate_saved_supplement(data, data["tables"])
+                    self.resultsNotebook.select(self._overview_frame)
                 if request["mode"] == "Compare methods" and request["action"] not in ("prepare", "suggest"):
                     self._latest_compare = comparison
                 if result["legacy"] is not None:
@@ -946,13 +1087,240 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             for method in ("legacy", "modern"):
                 if result[f"{method}_error"] is not None:
                     self._show_failure(method, result[f"{method}_error"])
+            if result.get("projection_error") is not None:
+                self._show_failure("Run projection", result["projection_error"])
             self._refresh_summary_banner()
         except Exception as exc:
             self._restore_view(previous_view)
+            if projection is not None:
+                self.project.analysis_presentation_errors.setdefault(projection.record.run_id, []).append(
+                    error_diagnostic("presentation", exc, "rendering"))
             self._show_failure("Rendering", exc)
 
     def _suggest_cutoffs(self) -> None:
         self._start_job("suggest")
+
+    def _load_saved_run(self, record):
+        self._history_previous = self._capture_view()
+        self._view_generation += 1
+        generation = self._view_generation
+        self._history_loading = True
+        self.cancelButton.configure(state="normal")
+        self.statusVar.set(f"Loading saved run {record.run_id[:8]}")
+
+        def worker():
+            try:
+                self._history_queue.put((generation, record, record.data(), run_tables(record), None))
+            except Exception as exc:
+                self._history_queue.put((generation, record, None, None, exc))
+        threading.Thread(target=worker, daemon=True).start()
+        self._schedule_after(20, self._poll_history)
+
+    def _poll_history(self):
+        if not self._history_loading:
+            return
+        try:
+            generation, record, data, tables, error = self._history_queue.get_nowait()
+        except queue.Empty:
+            self._schedule_after(20, self._poll_history)
+            return
+        if generation != self._view_generation:
+            self._schedule_after(20, self._poll_history)
+            return
+        self._history_loading = False
+        self.cancelButton.configure(state="disabled")
+        if error is not None:
+            self._show_failure("History load", error)
+            return
+        previous = self._capture_view()
+        try:
+            self._clear_distribution()
+            details = {key: value for key, value in data.items() if key not in ("tables", "methods")}
+            details["methods"] = [{key: value for key, value in method.items() if key != "native"} for method in data["methods"]]
+            self._set_results([json.dumps(details, ensure_ascii=False, indent=2)])
+            self._populate_saved_supplement(data, tables)
+            self._selected_saved_run = record
+            self._saved_view_data = data
+            self._displayed_request = None
+            self._displayed_envelopes = ()
+            self._selected_view_label = self.resultViewVar.get()
+            self._filter_saved_tables()
+            self._plot_saved_rows()
+            self._refresh_result_provenance()
+            self.statusVar.set(f"Saved run {record.run_id[:8]} loaded; no science rerun")
+        except Exception as exc:
+            self._restore_view(previous)
+            self._show_failure("History rendering", exc)
+
+    def _populate_saved_supplement(self, data, tables):
+        self._table_run_id = data["run_id"]
+        self.overviewText.configure(state="normal")
+        self.overviewText.delete("1.0", "end")
+        lines = [data["sample_name"], data["completed_at_utc"], f"{len(data['images'])} captured images", ""]
+        for method in data["methods"]:
+            lines.append(f"{method['method_id']}: {method['outcome']}")
+            if method["native"] is not None:
+                native = method["native"]
+                lines.append(f"Groups: {len(native['groups'])}; measured objects: {len(native['objects'])}")
+                if method["method_id"] == "legacy":
+                    lines.append(f"Raw selected objects: {native['raw_selection']['selected_count']}")
+                else:
+                    lines.append(f"Selected bin counts: {native['selected']['counts']}")
+            lines.extend(f"{diagnostic['stage']}: {diagnostic['message']}" for diagnostic in method["diagnostics"])
+        lines.extend(["", "Native summaries:"])
+        for diagnostic in self.project.analysis_presentation_errors.get(data["run_id"], ()):
+            lines.append(f"Presentation error: {diagnostic['message']}")
+        lines.extend(f"{row['method_id']} {row['metric_id']}: {row['value']} {row['unit']}"
+                     for row in tables["summary_metrics"][:100])
+        self.overviewText.insert("1.0", "\n".join(lines))
+        self.overviewText.configure(state="disabled")
+        self._distribution_rows = tables["distributions"]
+        self._object_rows = tables["objects"]
+        self._object_page = self._distribution_page = 0
+        self.tableFilters[1].configure(values=("All", *sorted({row["group_id"] for row in tables["groups"]})))
+        self._page_objects(0)
+
+    @staticmethod
+    def _display_cell(value):
+        if value is None:
+            return ""
+        if isinstance(value, dict):
+            return "unavailable: " + value.get("reason", "")
+        return value
+
+    def _filter_saved_tables(self):
+        if self._table_run_id is None:
+            return
+        self._clear_distribution()
+        filtered = [row for row in self._distribution_rows if
+                    (self.tableMethodVar.get() == "All" or row["method_id"] == self.tableMethodVar.get()) and
+                    (self.tableGroupVar.get() == "All" or row["group_id"] == self.tableGroupVar.get()) and
+                    (self.tableStageVar.get() == "All" or row["stage"] == self.tableStageVar.get())]
+        start = self._distribution_page * 250
+        for row in filtered[start:start + 250]:
+            method = "Original" if row["method_id"] == "legacy" else "Modern"
+            lower = row["label_mm"] if row["label_mm"] is not None else row["lower_mm"]
+            upper = row["label_mm"] if row["label_mm"] is not None else row["upper_mm"]
+            self._add_row(method + " " + row["stage"], row["group_id"], row["bin_index"], lower, upper,
+                self._display_cell(row["count"]), self._display_cell(row["area_mm2"]), self._display_cell(row["na_per_mm2"]),
+                self._display_cell(row["signed_nv_per_mm3"]), self._display_cell(row["volume_fraction"]),
+                kind=row["method_id"] if row["stage"] == "prepared" else "selected")
+        self._plot_saved_rows()
+
+    def _plot_saved_rows(self):
+        self.plotAxes.clear()
+        self._nonpositive_plot_count = 0
+        series = {}
+        for row in self._distribution_rows:
+            key = (row["method_id"], row["group_id"], row["stage"])
+            diameter = row["plot_diameter_mm"]
+            value = row["na_per_mm2"]
+            if isinstance(value, (int, float)):
+                series.setdefault(key, []).append((diameter, value))
+            else:
+                self._nonpositive_plot_count += 1
+        for key, pairs in series.items():
+            self._plot_values(" ".join(key), tuple(pair[0] for pair in pairs), tuple(pair[1] for pair in pairs))
+        self._finish_plot()
+
+    def _page_distributions(self, offset):
+        self._distribution_page = max(0, min(max(0, (len(self._distribution_rows) - 1) // 250), self._distribution_page + offset))
+        self._filter_saved_tables()
+
+    def _page_objects(self, offset):
+        self._object_page = max(0, min(max(0, (len(self._object_rows) - 1) // 250), self._object_page + offset))
+        self.objectsTable.delete(*self.objectsTable.get_children())
+        self._object_row_by_id = {}
+        for row in self._object_rows[self._object_page * 250:(self._object_page + 1) * 250]:
+            row_id = self.objectsTable.insert("", "end", values=tuple(self._display_cell(value) for value in (
+                row["method_id"], row["image_id"], row["object_id"], row.get("equivalent_diameter_mm", row.get("eq_diam_units")),
+                row.get("area_mm2", row.get("area_units2")), row.get("selected"), row.get("shape_population"))))
+            self._object_row_by_id[row_id] = row
+        self.objectPageLabel.configure(text=f"Page {self._object_page + 1} | {len(self._object_rows)} native objects")
+
+    def _inspect_object(self, _event=None):
+        selected = self.objectsTable.selection()
+        if selected:
+            row = self._object_row_by_id.get(selected[0])
+            if row is not None:
+                self._append_details([json.dumps(row, ensure_ascii=False, indent=2)])
+
+    def _inspect_shape_statistics(self):
+        data = self._saved_view_data or self._projection_views.get(self._table_run_id)
+        if data is not None:
+            values = {method["method_id"]: method["native"].get("shape_statistics", {"availability": "unavailable", "reason": "not supplied by this method"})
+                      for method in data["methods"] if method["native"] is not None}
+            self._append_details([json.dumps(values, ensure_ascii=False, indent=2)])
+            self.resultsNotebook.select(self.resultsText.master)
+
+    def _sort_object_page(self, column):
+        rows = list(self.objectsTable.get_children())
+        def key(row_id):
+            value = self.objectsTable.set(row_id, column)
+            try:
+                return (0, float(value))
+            except ValueError:
+                return (1, value)
+        for index, row_id in enumerate(sorted(rows, key=key)):
+            self.objectsTable.move(row_id, "", index)
+
+    def _use_run_settings(self):
+        data = self._saved_view_data
+        if data is None and self._displayed_request is not None:
+            data = self._projection_views.get(self._displayed_request.request_id)
+        if data is None:
+            return
+        for name, value in data["draft_settings"].items():
+            if name in self._variables:
+                self._variables[name].set(value)
+        legacy = next((method for method in data["methods"] if method["method_id"] == "legacy"), None)
+        if legacy is not None and legacy["settings"] is not None:
+            self._source_keys = tuple(tuple(item) for item in legacy["settings"].get("source_keys", ()))
+        self.statusVar.set("Saved run settings copied to editable setup; accepted inputs unchanged")
+
+    def _export_run(self):
+        if self._exporting:
+            return
+        record = self._selected_saved_run
+        if record is None and self._displayed_request is not None:
+            record = next((run for run in self.project.analysis_runs if run.run_id == self._displayed_request.request_id), None)
+        if record is None:
+            self._show_failure("Export", ValueError("Select a completed saved run"))
+            return
+        parent = filedialog.askdirectory(parent=self, title=f"Export run {record.run_id[:8]} into a fresh directory")
+        if not parent:
+            return
+        self._export_cancel = threading.Event()
+        cancellation = self._export_cancel
+        self._exporting = True
+        self.exportRunButton.configure(state="disabled")
+        self.cancelButton.configure(state="normal")
+        self.statusVar.set(f"Exporting selected run {record.run_id[:8]}")
+        errors = tuple(self.project.analysis_presentation_errors.get(record.run_id, ()))
+
+        def worker():
+            try:
+                destination = export_selected_run(record, self.project.analysis_assets,
+                    Path(parent) / ("run-" + record.run_id), cancellation, errors)
+                self._export_queue.put((record, destination, None))
+            except Exception as exc:
+                self._export_queue.put((record, None, exc))
+        threading.Thread(target=worker, daemon=True).start()
+        self._schedule_after(20, self._poll_export)
+
+    def _poll_export(self):
+        try:
+            record, destination, error = self._export_queue.get_nowait()
+        except queue.Empty:
+            self._schedule_after(20, self._poll_export)
+            return
+        self._exporting = False
+        self.exportRunButton.configure(state="disabled" if self._busy else "normal")
+        self.cancelButton.configure(state="disabled")
+        if error is not None:
+            self._show_failure("Export", error)
+        else:
+            self.statusVar.set(f"Export complete: selected run {record.run_id[:8]} | {destination}")
 
     def _append_details(self, lines) -> None:
         self.resultsText.configure(state="normal")
@@ -977,10 +1345,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                  for row_id in self.distributionTable.get_children()],
                 [(line.get_xdata(), line.get_ydata(), line.get_label()) for line in self.plotAxes.lines],
                 self._displayed_request, self._displayed_envelopes,
-                self.resultProvenanceVar.get(), getattr(self, "_selected_view_label", "Current request"), self._displayed_outcomes)
+                self.resultProvenanceVar.get(), getattr(self, "_selected_view_label", "Current request"), self._displayed_outcomes,
+                (self._selected_saved_run, self._saved_view_data, self._distribution_rows, self._object_rows, self._table_run_id,
+                 self.overviewText.get("1.0", "end"), self._object_page, self._distribution_page))
 
     def _restore_view(self, view) -> None:
-        text, rows, curves, request, envelopes, provenance, label, outcomes = view
+        text, rows, curves, request, envelopes, provenance, label, outcomes, saved = view
         self._clear_distribution()
         self._set_results([text])
         for values, metadata in rows:
@@ -995,6 +1365,13 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.resultViewVar.set(label)
         self._selected_view_label = label
         self._displayed_outcomes = outcomes
+        (self._selected_saved_run, self._saved_view_data, self._distribution_rows, self._object_rows,
+         self._table_run_id, overview, self._object_page, self._distribution_page) = saved
+        self.overviewText.configure(state="normal")
+        self.overviewText.delete("1.0", "end")
+        self.overviewText.insert("1.0", overview)
+        self.overviewText.configure(state="disabled")
+        self._page_objects(0)
 
     def _add_row(self, method, group, index, lower, upper, count, area, na, nv="", volume="", kind="selected") -> None:
         row_id = self.distributionTable.insert("", "end", values=(method, group, index, lower, upper, count, area, na, nv, volume))
@@ -1179,7 +1556,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 result.reconstruction_result.signed_nv_per_mm3[index] if result.reconstruction_result is not None else "")
         self._append_details([f"Overlap diagnostics: {nested.overlap_diagnostics!r}",
             f"Reconstruction (signed): {result.reconstruction_result!r}"])
-        self._plot_values("Modern selected", tuple((lower * upper) ** 0.5 for lower, upper in zip(nested.lower_edges_mm, nested.upper_edges_mm)),
+        self._plot_values("Modern selected", tuple(distribution.bin_spec.bins[index].geometric_midpoint_mm for index in nested.selected_bin_indices),
                           nested.number_densities_per_mm2)
         self._finish_plot()
 
@@ -1225,6 +1602,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.resultsText.configure(state="disabled")
 
     def _on_close(self) -> None:
+        self._view_generation += 1
+        self._export_cancel.set()
         self._closed = True
         for after_id in tuple(self._owned_after_ids):
             try:

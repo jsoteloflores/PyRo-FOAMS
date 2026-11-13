@@ -4,7 +4,7 @@
 
 Launch the application with `python -m main`. The top bar names one physical sample. Use **Load Images** to add images to that sample; duplicate filenames are allowed because each image receives a stable project ID. Use **Rename Image** to change the display name without changing identity.
 
-Use **Save Project** to choose a project folder. Schema 2 stores exact uint8/uint16 grayscale, BGR, or BGRA source pixels in non-executable `.npy` assets; working images, masks, and labels use separate lossless assets. Schema-1 projects remain readable as `legacy_derived_unknown`; their stored pixels are retained as the only available source representation, without claiming lost precision was recovered. Migration occurs only on explicit save. Reopen the folder or copy it elsewhere; load validates checksums, dimensions, schema, and portable asset paths. Unsaved changes prompt for Save, Discard, or Cancel when opening a project or closing the app.
+Use **Save Project** to choose a project folder. Project schema 3 retains schema 2's exact uint8/uint16 grayscale, BGR, or BGRA source pixels in non-executable `.npy` assets and adds immutable analysis-run history. Working images, masks, and labels use separate lossless assets. Schema-1 projects remain readable as `legacy_derived_unknown`; their stored pixels are retained as the only available source representation, without claiming lost precision was recovered. Old schemas 1/2 migrate to empty history; editable setup schema 2 remains distinct from project schema 3. Migration occurs only on explicit save. Reopen the folder or copy it elsewhere; load validates checksums, dimensions, schema, and portable asset paths. Unsaved changes prompt for Save, Discard, or Cancel when opening a project or closing the app.
 
 ## Prepare and accept segmentations
 
@@ -30,8 +30,48 @@ Use **Set Calibration…** for the active image or selected batch images. The va
 - Preparation actions wrap by measured group width; horizontal/vertical scrollbars appear only when content exceeds the viewport. Tab enters the preparation controls and cycles through actions/visible overflow controls; Shift+Tab reverses the order.
 - Layout was exercised at 1280×800 and 1400×900 using ordinary fonts and doubled Tk named-font sizes. This is not OS-DPI certification.
 - Batch threshold/separation runs use the active processing controls for every selected target. Background workers operate on one owned dispatch snapshot; only Tk's UI thread drains events and commits results.
-- No immutable analysis-run history or automatic result-cache persistence is implemented.
-- Brief 21 remains pending independent acceptance. Original FOAMS remains NOT COMPLETE; accepted multiphase project inputs and same-real-image MATLAB comparison remain outstanding. No material phases are inferred from object labels.
+- Brief 22 adds durable result projections, not serialization of private scientific caches. History payloads and checksum-verified assets currently load eagerly on project open; selected table preparation runs in a worker and object/distribution views page 250 rows. Out-of-core histories are not certified.
+- Brief 21f is accepted on `e3d752ed539bf3bb302a077d304878a1da082b1a`; Brief 22 remains pending review/hosted evidence. Original FOAMS remains NOT COMPLETE; accepted multiphase project inputs and same-real-image MATLAB comparison remain outstanding. No material phases are inferred from object labels.
+
+## Saved runs and exports (Brief 22, pending acceptance)
+
+One project remains one physical sample. Each explicit completed **Run analysis** captures a unique run ID, captured sample name, UTC completion time, scientific configuration, editable request values, application version/Git revision (or explicit unavailable status), accepted image/snapshot/checksum/ROI/calibration identities, method outcomes and native result projections. Prepare, Suggest, Review selection and layout changes do not append runs. Cancelled or stale completions cannot append runs. Partial/total failure records contain honest method diagnostics and no fabricated numerical rows. Presentation errors are recorded separately from immutable computation data; rendering rollback retains the previously selected data/provenance.
+
+### Durable record increment
+
+`core/analysis_runs.py` creates validated immutable canonical JSON off-thread. The project owns records separately from `analysis_setup`. Content-addressed historical NPY bytes retain source images, working ROIs, accepted masks and native labels without embedding arrays in every JSON record; shared assets are deduplicated across runs. For a successful Original path, its legitimate builder-issued result is passed to the existing public canonical writer once. The resulting compatible files are retained as checksummed immutable assets, never reconstructed through fake validation records.
+
+`core/sample_project_io.py` writes new assets and run JSON under project-relative paths before atomically publishing the schema-3 manifest. Run IDs, schemas, project identities, path containment, file hashes, historical array shapes/dtypes/checksums and projected row keys/references are checked. Save As through the public `save_project(project, new_folder)` path writes all referenced assets, and the portable-folder regression reopens after deleting the original folder. An interrupted manifest publication leaves the preceding project loadable and the existing GUI save handler does not clear unsaved state on failure.
+
+Missing/damaged/unsupported history yields an explicit `unavailable_history` diagnostic while current preparation loads where safe. Saving is blocked until that unavailable history is repaired rather than silently deleting its manifest references. There is no automatic history repair or discard action in this increment.
+
+### Results increment
+
+The visible selector offers saved runs by captured completion time, preset, independent outcomes and short ID. Selecting one loads projections on a background worker; no measurement, preparation, nesting or reconstruction is invoked. Every tab retains saved/current/previous identity, input/settings stale status and outcomes. **Use this run's settings** copies captured editable configuration/source assignments only; it does not accept a draft, replace current inputs or run science.
+
+- Overview shows the captured sample, outcomes, image/group/object populations and existing native scalar summaries/diagnostics. It displays the first 100 summary metrics; all projected metrics remain in the record and export.
+- Distributions shows prepared/selected native rows with method/group/stage filters and bounded pages. Original duplicate label rows retain their native order and distinct ordinals; no artificial edges are assigned. Modern rows retain intervals and eligible areas.
+- Objects / shape pages native measured objects with raw-selection/preparation/shape membership where those APIs supply it. Column sorting is page-local. Object inspection follows stable native identity after sorting. Shape statistics can be opened in Details. Modern nesting has no invented Original-style raw-object selection.
+- Plot uses captured native plot coordinates and N_A values. Nonpositive/unavailable log omissions are counted; signed numerical tables are not clipped.
+- Details retains captured configuration, assumptions, full identities, versions and diagnostics. Working arrays/private builder caches are not executable history payloads.
+
+### Export increment
+
+**Export selected run** exports that exact record, even when stale, into a fresh `run-{run_id}` directory beneath the chosen parent. Existing directories are refused. A staging directory is atomically renamed only after completion; cancellation/failure removes staging. The status identifies the run. Existing accepted-measurement CSV and draft-image exports retain their distinct meanings.
+
+The bundle includes UTF-8 comma-separated `sample.csv`, `methods.csv`, `images.csv`, `groups.csv`, `group_images.csv`, `objects.csv`, `distributions.csv`, `summary_metrics.csv`, and `diagnostics.csv`, plus `manifest.json`, `settings.json`, the immutable `run.json`, `data_dictionary.json`, README, captured input NPY assets, and successful Original canonical files under `original_compatible/`. Every payload listed in the manifest has a SHA-256 hash and table row count/schema. The manifest itself is the publication marker, not a self-hashed file.
+
+The data dictionary describes each table's row grain, primary/foreign keys, units and nullable values. Common joins start with project/run/method, then native image/snapshot/object or group identity. Distribution ordinals, not duplicate labels, identify rows. Numbers use locale-independent binary64 round-trip precision. Empty values have explicit availability/reason columns; true zero and negative inverse values remain numeric. Disabled reconstruction is unavailable, not zero. Failed methods contribute outcome/diagnostic rows only; empty native tables are explicitly marked header-only.
+
+Each bundle's README contains a self-contained standard-library `csv.DictReader` example joining objects to images and method-filtered group membership without multiplying rows. It demonstrates concatenating two externally exported physical samples using stable project/run IDs, without cross-method/bin aggregation or object correspondence claims. Canonical Original TSV/sidecars remain byte-for-byte copies, clearly distinct from tidy CSV.
+
+### Verification boundary
+
+`tests/test_analysis_runs.py` covers Original/Modern/Compare projection round trips, immutable captured values, canonical writer byte equality, portable Save As, interrupted publication, damaged/future/escaping history, partial/total failure, keys, file hashes, numeric round trips, CSV Unicode/quotes/newlines, fresh-directory refusal and cancelled/failed export staging. Live tests add successful runs followed by save/reopen/inspection/export with scientific entry points forbidden, settings reuse without accepted-input changes, and responsive 900-object paging/history cancellation. Populated screenshots include `analysis-comparison.png`, `analysis-22-reopened-stale-run.png` and `analysis-22-export-complete.png`; the existing layout matrix still exercises both review sizes and font scales.
+
+Local Windows/Python 3.11 gates: Ruff passed; full unit discovery passed (697 discovered, 685 executed, 12 live tests skipped). The separate GUI module passed all 14 tests (12 live plus 2 policy) in exact mode, and all 14 passed under an explicitly simulated 1008x681 WM client limit in available mode. This simulation is not hosted desktop certification. Large-scale/out-of-core loading and every failure-injection combination are not certified by these focused fixtures.
+
+Brief 22 is uncommitted work on `e3d752ed539bf3bb302a077d304878a1da082b1a`. New implementation SHA, full hosted outcomes and independent acceptance remain outstanding; local checks do not replace either hosted GUI gate. Scientific kernels, multiphase input limitations and the outstanding identical-mask/shared-raw-image MATLAB/PyRo comparison remain unchanged.
 
 ## Analysis corrections (Brief 21a, pending)
 
@@ -103,7 +143,7 @@ The prior hosted Linux failure did not record its delivered keysym, so the ISO_L
 
 Brief 21e was pushed as `dc61136341757b7853c65386edd70fbba7bb833a`. Recorded local validation passed Ruff, unit discovery (683 discovered, 674 executed, 9 live tests skipped), and the GUI module's 11 tests (9 live plus 2 policy). Hosted [run 43376334915](https://github.com/jsoteloflores/PyRo-FOAMS/actions/runs/43376334915) passed lint and all four unit jobs. Both Python 3.12 GUI jobs failed during root destruction and then reported cascading font errors, despite passing keyboard assertions; their complete acceptance remains open. Review identified the probe callback ownership mismatch addressed below.
 
-## Brief 21f probe ownership (pending Python 3.12/hosted verification)
+## Brief 21f probe ownership (accepted)
 
 The keyboard diagnostic probe is now explicitly registered through `self.root.bind_class` and removed through `self.root.deletecommand`. [CPython 3.12.10's tkinter source](https://github.com/python/cpython/blob/v3.12.10/Lib/tkinter/__init__.py) routes class binding registration through the root; deleting through a child can leave a root-tracked name that root destruction later tries to delete again. Registration and deletion now share one owner on both supported versions.
 
@@ -113,7 +153,7 @@ Both callback handles start as `None` before `try`. Cleanup restores source bind
 
 Local Windows/Python 3.11 validation: Ruff passed; unit discovery passed (684 discovered, 674 executed, 10 live tests skipped); all 12 GUI-module tests passed separately (10 live plus 2 policy). The new ownership regression, broad close/reopen workflow and setup-migration test also passed in that explicit order in one process. Existing navigation, single-transition, provenance, layout and both CI display modes are unchanged.
 
-Only Python 3.11 is listed by the installed launcher on this host, so the required Python 3.12 sequence has not been executed locally. Both existing GUI CI tracks use Python 3.12 and will run the new regression with the broad workflow and migration in the same module/process. Brief 21f changes are uncommitted work on `dc61136341757b7853c65386edd70fbba7bb833a`; no corrected pushed SHA or final hosted outcome is claimed. Successful corrected-revision lint, four unit jobs and both GUI jobs remain required before independent review and Brief 22. Scope is the diagnostic harness only; full original-FOAMS readiness remains unclaimed.
+Brief 21f was pushed as `e3d752ed539bf3bb302a077d304878a1da082b1a`. Hosted [run 43378658856](https://github.com/jsoteloflores/PyRo-FOAMS/actions/runs/43378658856) passed all seven jobs: lint, four unit jobs, Windows available-display GUI and Linux exact-display GUI on Python 3.12. The callback-cleanup/close-reopen/migration sequence also passed independent local review. This closes the integration/callback correction stage, not full original-FOAMS scientific readiness.
 
 ## Live GUI test
 

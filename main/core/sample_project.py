@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-PROJECT_SCHEMA_VERSION = 2
+PROJECT_SCHEMA_VERSION = 3
 SOURCE_FIDELITY_PRESERVED = "preserved"
 SOURCE_FIDELITY_LEGACY_UNKNOWN = "legacy_derived_unknown"
 
@@ -169,6 +169,10 @@ class SampleProject:
     images: List[ProjectImage] = field(default_factory=list)
     analysis_revision: int = 0
     analysis_setup: Dict[str, Any] = field(default_factory=dict)
+    analysis_runs: List[Any] = field(default_factory=list)
+    analysis_assets: Dict[str, bytes] = field(default_factory=dict, repr=False)
+    unavailable_history: List[Dict[str, Any]] = field(default_factory=list)
+    analysis_presentation_errors: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
     def to_manifest_dict(self) -> Dict[str, Any]:
         return {
@@ -178,6 +182,8 @@ class SampleProject:
             "notes": self.notes,
             "analysis_revision": self.analysis_revision,
             "analysis_setup": dict(self.analysis_setup),
+            "analysis_runs": [run.index_entry() for run in self.analysis_runs] + list(self.unavailable_history),
+            "analysis_presentation_errors": self.analysis_presentation_errors,
             "images": [image.to_manifest_dict() for image in self.images],
         }
 

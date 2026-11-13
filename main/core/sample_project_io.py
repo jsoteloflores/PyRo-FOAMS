@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 import cv2
 import numpy as np
 
+from .analysis_runs import RUN_SCHEMA_VERSION, SavedAnalysisRun, digest, validate_historical_assets, validate_run
 from .sample_project import (
     PROJECT_SCHEMA_VERSION,
     SOURCE_FIDELITY_LEGACY_UNKNOWN,
@@ -183,6 +184,7 @@ def save_project(project: SampleProject, project_root: Path) -> Path:
             image.accepted_mask_asset_path = None
             image.accepted_labels_asset_path = None
 
+    _write_run_history(project, root)
     _atomic_write_manifest(project_root=root, payload=project.to_manifest_dict())
     return root / MANIFEST_FILENAME
 
@@ -192,6 +194,17 @@ def _validate_project_for_save(project: SampleProject) -> None:
         raise SampleProjectIoError("project schema or stable project ID is invalid")
     if not isinstance(project.analysis_setup, dict):
         raise SampleProjectIoError("analysis_setup must be a dictionary")
+    if project.unavailable_history:
+        raise SampleProjectIoError("Historical runs are unavailable; refusing to overwrite their manifest references")
+    seen_runs = set()
+    for run in project.analysis_runs:
+        try:
+            validate_run(run)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise SampleProjectIoError(f"invalid analysis run: {exc}") from exc
+        if run.project_id != project.project_id or run.run_id in seen_runs:
+            raise SampleProjectIoError("Historical run project identity or run ID is invalid")
+        seen_runs.add(run.run_id)
     seen_ids = set()
     for image in project.images:
         if not image.image_id or image.image_id in seen_ids:
@@ -313,7 +326,7 @@ def open_project(project_root: Path) -> SampleProject:
     if (
         isinstance(schema_version, bool)
         or not isinstance(schema_version, int)
-        or schema_version not in (1, PROJECT_SCHEMA_VERSION)
+        or schema_version not in (1, 2, PROJECT_SCHEMA_VERSION)
     ):
         raise SampleProjectIoError(
             f"unsupported project schema version: {schema_version}; expected {PROJECT_SCHEMA_VERSION}"
@@ -335,6 +348,10 @@ def open_project(project_root: Path) -> SampleProject:
     if not isinstance(analysis_setup, dict):
         raise SampleProjectIoError("analysis_setup must be a JSON object when present")
     project.analysis_setup = dict(analysis_setup)
+    presentation_errors = manifest.get("analysis_presentation_errors", {})
+    if not isinstance(presentation_errors, dict):
+        raise SampleProjectIoError("analysis_presentation_errors must be an object")
+    project.analysis_presentation_errors = presentation_errors
 
     images = manifest.get("images")
     if not isinstance(images, list):
@@ -386,7 +403,7 @@ def open_project(project_root: Path) -> SampleProject:
             else str(image_data.get("source_fidelity", SOURCE_FIDELITY_PRESERVED))
         )
         persisted_conversion_id = image_data.get("processing_conversion_id", conversion_id)
-        if schema_version == 2 and persisted_conversion_id != conversion_id:
+        if schema_version >= 2 and persisted_conversion_id != conversion_id:
             raise SampleProjectIoError(f"image {image_id} processing conversion ID is unsupported")
         loaded.processing_conversion_id = conversion_id
 
@@ -466,7 +483,68 @@ def open_project(project_root: Path) -> SampleProject:
         if loaded.analysis_included and loaded.accepted_snapshot is None:
             raise SampleProjectIoError(f"image {image_id} is included but has no accepted snapshot")
 
+    if schema_version >= 3:
+        _load_run_history(project, root, manifest.get("analysis_runs", []))
     return project
+
+
+def _write_history_bytes(path: Path, payload: bytes) -> None:
+    if path.is_file() and digest(path.read_bytes()) == digest(payload):
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        temporary.write_bytes(payload)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _write_run_history(project, root):
+    for run in project.analysis_runs:
+        data = validate_run(run)
+        for asset in data["assets"]:
+            payload = project.analysis_assets.get(asset["sha256"])
+            if payload is None or digest(payload) != asset["sha256"]:
+                raise SampleProjectIoError(f"Missing or damaged historical asset {asset['sha256']}")
+            _write_history_bytes(_asset_path(root, asset["path"]), payload)
+        _write_history_bytes(_asset_path(root, run.index_entry()["path"]), run.payload)
+
+
+def _load_run_history(project, root, index):
+    if not isinstance(index, list):
+        project.unavailable_history.append({"diagnostic": "Run history index is malformed"})
+        return
+    seen = set()
+    for entry in index:
+        try:
+            if not isinstance(entry, dict) or type(entry.get("schema")) is not int or entry.get("schema") != RUN_SCHEMA_VERSION:
+                raise ValueError("Unsupported historical run schema")
+            if entry.get("project_id") != project.project_id or entry.get("run_id") in seen:
+                raise ValueError("Historical run identity mismatch or duplicate")
+            payload = _asset_path(root, entry["path"]).read_bytes()
+            if digest(payload) != entry["sha256"]:
+                raise ValueError("Historical run checksum mismatch")
+            run = SavedAnalysisRun(entry["run_id"], project.project_id, payload)
+            data = validate_run(run)
+            if entry["path"] != run.index_entry()["path"]:
+                raise ValueError("Historical run path does not match its immutable identity")
+            loaded_assets = {}
+            for asset in data["assets"]:
+                content = project.analysis_assets.get(asset["sha256"])
+                if content is None:
+                    content = _asset_path(root, asset["path"]).read_bytes()
+                if digest(content) != asset["sha256"]:
+                    raise ValueError("Historical asset checksum mismatch")
+                loaded_assets[asset["sha256"]] = content
+            validate_historical_assets(data, loaded_assets)
+            project.analysis_assets.update(loaded_assets)
+            project.analysis_runs.append(run)
+            seen.add(run.run_id)
+        except (OSError, ValueError, TypeError, KeyError, SampleProjectIoError) as exc:
+            unavailable = dict(entry) if isinstance(entry, dict) else {"entry": entry}
+            unavailable["diagnostic"] = str(exc)
+            project.unavailable_history.append(unavailable)
 
 
 

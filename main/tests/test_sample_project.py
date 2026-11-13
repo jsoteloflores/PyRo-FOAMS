@@ -285,7 +285,7 @@ class TestSampleProjectPersistence(unittest.TestCase):
             manifest_path.write_text(to_json(manifest), encoding="utf-8")
 
             migrated = open_project(root)
-            self.assertEqual(migrated.schema_version, 2)
+            self.assertEqual(migrated.schema_version, sample_project_io.PROJECT_SCHEMA_VERSION)
             self.assertEqual(migrated.images[0].image_id, image.image_id)
             self.assertEqual(migrated.images[0].source_fidelity, "legacy_derived_unknown")
             self.assertTrue(migrated.images[0].analysis_included)
