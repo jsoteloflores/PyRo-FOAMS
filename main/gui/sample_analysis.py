@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import queue
 import threading
 import tkinter as tk
@@ -11,11 +12,13 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 from typing import Callable, Optional
 
+from matplotlib.backend_bases import NavigationToolbar2
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib.ticker import LogLocator, NullLocator
 
-from ..core.analysis_runs import append_run, create_run_projection, error_diagnostic
+from ..core.analysis_plots import NA_PLOT, NV_PLOT, reconstruction_series, visible_points
+from ..core.analysis_runs import append_run, create_run_projection, error_diagnostic, json_bytes
 from ..core.legacy_cutoffs import Foams105CutoffGroupInput, suggest_foams105_cutoffs
 from ..core.legacy_perimeter import (
     FOAMS105_PERIMETER_PROFILE_CURRENT,
@@ -52,9 +55,10 @@ _PERIMETER_LABEL_TO_ID = {
     "PerimeterOld": FOAMS105_PERIMETER_PROFILE_OLD,
 }
 _PERIMETER_ID_TO_LABEL = {
-    FOAMS105_PERIMETER_PROFILE_CURRENT: "R2025b",
-    FOAMS105_PERIMETER_PROFILE_OLD: "PerimeterOld",
+    FOAMS105_PERIMETER_PROFILE_CURRENT: "MATLAB Perimeter \u2014 verified against R2025b",
+    FOAMS105_PERIMETER_PROFILE_OLD: "MATLAB PerimeterOld \u2014 verified against R2025b",
 }
+_PERIMETER_LABEL_TO_ID.update({label: profile for profile, label in _PERIMETER_ID_TO_LABEL.items()})
 
 
 class SampleAnalysisWorkspace(tk.Toplevel):
@@ -120,10 +124,13 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._table_run_id = None
         self._history_previous = None
         self._history_request = None
+        self._plotted_metadata = {}
+        self._plot_data = None
+        self._graph_refreshing = False
 
         self.modeVar = tk.StringVar(value="Original FOAMS 1.0.5")
         self.minimumDiameterVar = tk.StringVar(value="2.0")
-        self.perimeterProfileVar = tk.StringVar(value="R2025b")
+        self.perimeterProfileVar = tk.StringVar(value=_PERIMETER_ID_TO_LABEL[FOAMS105_PERIMETER_PROFILE_CURRENT])
         self.selectionModeVar = tk.StringVar(value="autosmart")
         self.manualRangesVar = tk.StringVar(value="")
         self.volumeModeVar = tk.StringVar(value="unnormalized")
@@ -142,6 +149,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.modernSegmentsVar = tk.StringVar(value="")
 
         self.statusVar = tk.StringVar(value="Ready")
+        self.plotTypeVar = tk.StringVar(value=NA_PLOT)
+        self.plotMethodVar = tk.StringVar(value="All methods")
+        self.plotStageVar = tk.StringVar(value="All series")
+        self.plotScaleVar = tk.StringVar(value="Log Y")
+        self.plotXAxisVar = tk.StringVar(value="Log diameter")
 
         self._build_ui()
         self._load_persisted_setup()
@@ -152,10 +164,14 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._variables = {
             name: value for name, value in vars(self).items() if isinstance(value, tk.Variable)
             and name not in ("statusVar", "resultViewVar", "resultProvenanceVar", "tableMethodVar", "tableGroupVar", "tableStageVar")
+            and not name.startswith("plot")
         }
         for variable in self._variables.values():
             variable.trace_add("write", self._settings_changed)
         self.manualRangesVar.trace_add("write", self._manual_changed)
+        for variable in (self.modeVar, self.selectionModeVar, self.volumeModeVar, self.shapeModeVar, self.modernReconstructVar):
+            variable.trace_add("write", self._settings_visibility)
+        self._settings_visibility()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.geometry("1200x800")
         self.minsize(980, 640)
@@ -204,96 +220,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         setup_canvas.create_window((0, 0), window=controls, anchor="nw")
         controls.bind("<Configure>", lambda event: setup_canvas.configure(scrollregion=setup_canvas.bbox("all")))
 
-        ttk.Label(controls, text="Method preset").grid(row=0, column=0, sticky="w")
-        mode_combo = ttk.Combobox(
-            controls,
-            textvariable=self.modeVar,
-            values=("Original FOAMS 1.0.5", "Modern analysis", "Compare methods"),
-            state="readonly",
-            width=28,
-        )
-        mode_combo.grid(row=0, column=1, sticky="w", padx=(8, 16))
-
-        ttk.Label(controls, text="Min diameter (px)").grid(row=0, column=2, sticky="w")
-        ttk.Entry(controls, textvariable=self.minimumDiameterVar, width=10).grid(
-            row=0, column=3, sticky="w", padx=(8, 16)
-        )
-
-        ttk.Label(controls, text="Perimeter profile").grid(row=0, column=4, sticky="w")
-        ttk.Combobox(
-            controls,
-            textvariable=self.perimeterProfileVar,
-            values=("R2025b", "PerimeterOld"),
-            state="readonly",
-            width=14,
-        ).grid(row=0, column=5, sticky="w", padx=(8, 0))
-
-        ttk.Label(controls, text="Selection mode").grid(row=1, column=0, sticky="w", pady=(8, 0))
-        ttk.Combobox(
-            controls,
-            textvariable=self.selectionModeVar,
-            values=("autosmart", "manual"),
-            state="readonly",
-            width=14,
-        ).grid(row=1, column=1, sticky="w", padx=(8, 16), pady=(8, 0))
-
-        ttk.Label(controls, text="Manual ranges").grid(row=1, column=2, sticky="w", pady=(8, 0))
-        ttk.Entry(controls, textvariable=self.manualRangesVar, width=42).grid(
-            row=1, column=3, columnspan=3, sticky="w", padx=(8, 0), pady=(8, 0)
-        )
-
-        ttk.Label(controls, text="Normalization").grid(row=2, column=0, sticky="w", pady=(8, 0))
-        ttk.Combobox(
-            controls,
-            textvariable=self.volumeModeVar,
-            values=("unnormalized", "integrated_2d", "known_vesicularity"),
-            state="readonly",
-            width=18,
-        ).grid(row=2, column=1, sticky="w", padx=(8, 16), pady=(8, 0))
-
-        ttk.Label(controls, text="Known vesicularity (%)").grid(row=2, column=2, sticky="w", pady=(8, 0))
-        ttk.Entry(controls, textvariable=self.knownVesicularityVar, width=10).grid(
-            row=2, column=3, sticky="w", padx=(8, 16), pady=(8, 0)
-        )
-
-        ttk.Label(controls, text="Category lower/upper (mm)").grid(row=2, column=4, sticky="w", pady=(8, 0))
-        category_row = ttk.Frame(controls)
-        category_row.grid(row=2, column=5, sticky="w", pady=(8, 0))
-        ttk.Entry(category_row, textvariable=self.sizeLowerCutoffVar, width=8).pack(side="left")
-        ttk.Label(category_row, text="/").pack(side="left", padx=4)
-        ttk.Entry(category_row, textvariable=self.sizeUpperCutoffVar, width=8).pack(side="left")
-
-        ttk.Label(controls, text="Shape minimum (px)").grid(row=3, column=0, sticky="w", pady=(8, 0))
-        ttk.Entry(controls, textvariable=self.shapeMinimumVar, width=10).grid(
-            row=3, column=1, sticky="w", padx=(8, 16), pady=(8, 0)
-        )
-
-        ttk.Label(controls, text="Shape mode").grid(row=3, column=2, sticky="w", pady=(8, 0))
-        ttk.Combobox(
-            controls,
-            textvariable=self.shapeModeVar,
-            values=("initial_analysis", "updated_minimum"),
-            state="readonly",
-            width=18,
-        ).grid(row=3, column=3, sticky="w", padx=(8, 16), pady=(8, 0))
-
-        ttk.Label(controls, text="Modern min/max reliable (mm)").grid(row=3, column=4, sticky="w", pady=(8, 0))
-        modern_limits = ttk.Frame(controls)
-        modern_limits.grid(row=3, column=5, sticky="w", pady=(8, 0))
-        ttk.Entry(modern_limits, textvariable=self.modernMinDetectableVar, width=8).pack(side="left")
-        ttk.Label(modern_limits, text="/").pack(side="left", padx=4)
-        ttk.Entry(modern_limits, textvariable=self.modernMaxReliableVar, width=8).pack(side="left")
-
-        ttk.Label(controls, text="Modern bin edges (mm)").grid(row=4, column=0, sticky="w", pady=(8, 0))
-        ttk.Entry(controls, textvariable=self.modernEdgesVar, width=40).grid(row=4, column=1, columnspan=2, sticky="ew", padx=8)
-        ttk.Checkbutton(
-            controls,
-            text="Enable spherical 3D reconstruction",
-            variable=self.modernReconstructVar,
-        ).grid(row=4, column=3, columnspan=3, sticky="w", pady=(8, 0))
-        ttk.Label(controls, text="Modern group:start:stop bins").grid(row=5, column=0, sticky="w", pady=(8, 0))
-        ttk.Entry(controls, textvariable=self.modernSegmentsVar, width=45).grid(row=5, column=1, columnspan=3, sticky="ew", padx=8)
-        ttk.Checkbutton(controls, text="No 3D size classes above the selected upper edge", variable=self.modernUpperTailVar).grid(row=6, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        self._build_method_settings(controls)
 
         primary = ttk.Frame(root)
         primary.grid(row=2, column=0, sticky="ew", pady=4)
@@ -433,9 +360,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         ttk.Button(table_filters, text="Previous", command=lambda: self._page_distributions(-1)).pack(side="left", padx=4)
         ttk.Button(table_filters, text="Next", command=lambda: self._page_distributions(1)).pack(side="left")
         self.figure = Figure(figsize=(6, 3), dpi=100, constrained_layout=True)
+        self._build_plot_controls(plot_frame)
         self.plotAxes = self.figure.add_subplot(111)
         self.plotCanvas = FigureCanvasTkAgg(self.figure, master=plot_frame)
         self.plotCanvas.get_tk_widget().pack(fill="both", expand=True)
+        self.plotNavigation = NavigationToolbar2(self.plotCanvas)
         self.resultsText = tk.Text(details_frame, wrap="word", height=14)
         self.resultsText.pack(fill="both", expand=True)
         for container, canvas in ((controls, setup_canvas), (actions, action_canvas)):
@@ -447,6 +376,345 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                             self._reveal_control(target, viewport, content), add="+")
         root.bind("<Configure>", self._queue_layout)
         self.resultProvenanceLabel.bind("<Configure>", self._queue_layout)
+
+    def _build_method_settings(self, controls):
+        ttk.Label(controls, text="Method preset").pack(anchor="w")
+        self.methodPresetSelector = ttk.Combobox(controls, textvariable=self.modeVar,
+            values=("Original FOAMS 1.0.5", "Modern analysis", "Compare methods"), state="readonly", width=30)
+        self.methodPresetSelector.pack(anchor="w", pady=(0, 8))
+        self.originalSettingsToggle = ttk.Button(controls, text="Original settings", command=lambda: self._toggle_method_section("legacy"))
+        self.originalSettingsToggle.pack(anchor="w")
+        self.originalSettings = ttk.Frame(controls, padding=(0, 4))
+        self.originalSettings.pack(fill="x")
+        self.modernSettingsToggle = ttk.Button(controls, text="Modern settings", command=lambda: self._toggle_method_section("modern"))
+        self.modernSettingsToggle.pack(anchor="w")
+        self.modernSettings = ttk.Frame(controls, padding=(0, 4))
+        self.modernSettings.pack(fill="x")
+        self._method_expanded = {"legacy": True, "modern": True}
+        self._advanced_original_open = False
+        self.settingRows = {}
+        self.settingInputs = {}
+        self._modern_feedback = {}
+        self._method_rows = {"legacy": [], "modern": []}
+
+        def field(parent, key, label, variable, values=None, method="legacy"):
+            row = ttk.Frame(parent)
+            row.pack(fill="x", pady=3)
+            ttk.Label(row, text=label).pack(anchor="w")
+            widget = ttk.Combobox(row, textvariable=variable, values=values, state="readonly", width=46) if values is not None else ttk.Entry(row, textvariable=variable, width=46)
+            widget.pack(anchor="w", fill="x")
+            if method == "modern":
+                self._modern_feedback[key] = ttk.Label(row, foreground="#a32929", wraplength=660, justify="left")
+            self.settingRows[key] = row
+            self.settingInputs[key] = widget
+            self._method_rows[method].append((key, row))
+            return row
+
+        field(self.originalSettings, "minimum", "Minimum object diameter (pixels)", self.minimumDiameterVar)
+        field(self.originalSettings, "selection", "Selection", self.selectionModeVar, ("autosmart", "manual"))
+        field(self.originalSettings, "manual", "Manual group:lower:upper labels (mm)", self.manualRangesVar)
+        field(self.originalSettings, "normalization", "Normalization mode", self.volumeModeVar, ("unnormalized", "integrated_2d", "known_vesicularity"))
+        field(self.originalSettings, "vesicularity", "Known vesicularity (%)", self.knownVesicularityVar)
+        field(self.originalSettings, "category_lower", "Lower size-category boundary (mm)", self.sizeLowerCutoffVar)
+        field(self.originalSettings, "category_upper", "Upper size-category boundary (mm)", self.sizeUpperCutoffVar)
+        field(self.originalSettings, "shape_mode", "Shape mode", self.shapeModeVar, ("initial_analysis", "updated_minimum"))
+        field(self.originalSettings, "shape_minimum", "Updated shape minimum (pixels)", self.shapeMinimumVar)
+        self.advancedOriginalButton = ttk.Button(self.originalSettings, text="Advanced Original settings", command=self._toggle_advanced_original)
+        self.advancedOriginalButton.pack(anchor="w", pady=4)
+        advanced = ttk.Frame(self.originalSettings)
+        advanced.pack(fill="x")
+        self.advancedOriginalSettings = advanced
+        field(advanced, "perimeter", "Perimeter calculation", self.perimeterProfileVar, tuple(_PERIMETER_ID_TO_LABEL.values()))
+        self.perimeterHelp = ttk.Label(advanced, justify="left", wraplength=660,
+            text="R2025b is the MATLAB release used to verify both perimeter estimators, not image resolution. No MATLAB installation is required. Estimates affect perimeter-dependent shape measures; PerimeterOld is not a separate old-runtime capture.")
+        self.perimeterHelp.pack(fill="x", pady=4)
+        field(self.modernSettings, "detection", "Minimum detectable diameter (mm)", self.modernMinDetectableVar, method="modern")
+        self.detectionHelp = ttk.Label(self.modernSettings, text="Minimum pore diameter reliably detectable at this image resolution, in mm.", wraplength=660, justify="left")
+        self.detectionHelp.pack(fill="x")
+        self.modernValidationLabel = self._modern_feedback["detection"]
+        field(self.modernSettings, "reliability", "Maximum reliable diameter (mm, optional)", self.modernMaxReliableVar, method="modern")
+        field(self.modernSettings, "edges", "Bin edges (mm)", self.modernEdgesVar, method="modern")
+        field(self.modernSettings, "segments", "Source-group plan: group:start:stop bins", self.modernSegmentsVar, method="modern")
+        self.singleGroupHelp = ttk.Label(self.modernSettings, text="Single resolution group: all bins use that group's automatic ownership.", wraplength=660)
+        self.singleGroupHelp.pack(fill="x")
+        self.modernReconstructionCheck = ttk.Checkbutton(self.modernSettings, text="Enable spherical 3D reconstruction", variable=self.modernReconstructVar)
+        self.modernReconstructionCheck.pack(anchor="w", pady=4)
+        self.modernUpperTailCheck = ttk.Checkbutton(self.modernSettings, text="Assume no larger 3D pores above the selected upper edge", variable=self.modernUpperTailVar)
+        self.modernUpperTailCheck.pack(anchor="w")
+        self._modern_feedback["reconstruction"] = ttk.Label(self.modernSettings, foreground="#a32929", wraplength=660, justify="left")
+
+    def _toggle_method_section(self, method):
+        self._method_expanded[method] = not self._method_expanded[method]
+        self._settings_visibility()
+
+    def _toggle_advanced_original(self):
+        self._advanced_original_open = not self._advanced_original_open
+        self._settings_visibility()
+
+    def _settings_visibility(self, *_args):
+        mode = self.modeVar.get()
+        original = mode in ("Original FOAMS 1.0.5", "Compare methods")
+        modern = mode in ("Modern analysis", "Compare methods")
+        for widget in (self.originalSettings, self.modernSettings, self.originalSettingsToggle, self.modernSettingsToggle):
+            widget.pack_forget()
+        if original:
+            if mode == "Compare methods":
+                self.originalSettingsToggle.pack(fill="x")
+            if mode != "Compare methods" or self._method_expanded["legacy"]:
+                self.originalSettings.pack(fill="x")
+        if modern:
+            if mode == "Compare methods":
+                self.modernSettingsToggle.pack(fill="x")
+            if mode != "Compare methods" or self._method_expanded["modern"]:
+                self.modernSettings.pack(fill="x")
+        for method, rows in self._method_rows.items():
+            for _key, row in rows:
+                row.pack_forget()
+            for key, row in rows:
+                show = key != "manual" or self.selectionModeVar.get() == "manual"
+                show = show and (key != "vesicularity" or self.volumeModeVar.get() == "known_vesicularity")
+                show = show and (key != "shape_minimum" or self.shapeModeVar.get() == "updated_minimum")
+                scales = {calibration_mm_per_px(image) for image in self.project.images if image.analysis_included and calibration_mm_per_px(image) is not None}
+                show = show and (key != "segments" or len(scales) > 1)
+                if show:
+                    row.pack(fill="x", pady=3)
+        self.advancedOriginalSettings.pack_forget()
+        if self._advanced_original_open:
+            self.advancedOriginalSettings.pack(fill="x")
+        self.advancedOriginalButton.pack_forget()
+        self.advancedOriginalButton.pack(anchor="w", pady=4, before=self.advancedOriginalSettings if self._advanced_original_open else None)
+        for widget in (self.detectionHelp, self.modernReconstructionCheck):
+            widget.pack_forget()
+        self.detectionHelp.pack(fill="x", before=self.settingRows["reliability"])
+        self.modernReconstructionCheck.pack(anchor="w", pady=4)
+        self.modernUpperTailCheck.pack_forget()
+        if self.modernReconstructVar.get():
+            self.modernUpperTailCheck.pack(anchor="w")
+        feedback = self._modern_feedback["reconstruction"]
+        feedback.pack_forget()
+        if self.modernReconstructVar.get() and feedback.cget("text"):
+            feedback.pack(fill="x")
+        self.singleGroupHelp.pack_forget()
+        if len({calibration_mm_per_px(image) for image in self.project.images if image.analysis_included}) == 1:
+            self.singleGroupHelp.pack(fill="x")
+        self.suggestButton.pack_forget()
+        self.shapeUpdateButton.pack_forget()
+        if original:
+            self.suggestButton.pack(side="left", padx=8)
+            self.shapeUpdateButton.pack(side="left", padx=8)
+        self._queue_layout()
+
+    def _build_plot_controls(self, parent):
+        viewport = ttk.Frame(parent)
+        viewport.pack(fill="x")
+        self.plotToolbar = viewport
+        canvas = tk.Canvas(viewport, height=60, highlightthickness=0)
+        canvas.pack(fill="x")
+        horizontal = ttk.Scrollbar(viewport, orient="horizontal", command=canvas.xview)
+        horizontal.pack(fill="x")
+        canvas.configure(xscrollcommand=horizontal.set)
+        toolbar = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=toolbar, anchor="nw")
+        self._plot_toolbar_canvas = canvas
+        self._plot_toolbar_content = toolbar
+        self._plot_controls = []
+        for label, variable, values, width in (
+            ("Plot type", self.plotTypeVar, (NA_PLOT, NV_PLOT), 52),
+            ("Method", self.plotMethodVar, ("All methods", "Original", "Modern"), 14),
+            ("Series", self.plotStageVar, ("All series", "Prepared", "Selected"), 12),
+            ("Y axis", self.plotScaleVar, ("Linear Y", "Log Y"), 10),
+            ("Diameter", self.plotXAxisVar, ("Log diameter", "Linear diameter"), 16)):
+            group = ttk.Frame(toolbar)
+            ttk.Label(group, text=label).pack(anchor="w")
+            selector = ttk.Combobox(group, textvariable=variable, values=values, state="readonly", width=width)
+            selector.pack(fill="x")
+            selector.bind("<<ComboboxSelected>>", lambda event, field=label: self._graph_option_changed(field))
+            self._plot_controls.append(group)
+            if label == "Plot type":
+                self.plotTypeSelector = selector
+            elif label == "Series":
+                self.plotSeriesSelector = selector
+        actions = ttk.Frame(toolbar)
+        self._plot_controls.append(actions)
+        self.panGraphButton = ttk.Button(actions, text="Pan", command=lambda: self.plotNavigation.pan())
+        self.panGraphButton.pack(side="left")
+        self.zoomGraphButton = ttk.Button(actions, text="Zoom", command=lambda: self.plotNavigation.zoom())
+        self.zoomGraphButton.pack(side="left")
+        self.resetGraphButton = ttk.Button(actions, text="Reset view", command=self._refresh_graph)
+        self.resetGraphButton.pack(side="left")
+        self.saveGraphButton = ttk.Button(actions, text="Save graph", command=self._save_graph)
+        self.saveGraphButton.pack(side="left")
+        self.signedGraphButton = ttk.Button(actions, text="Show signed values", command=self._show_signed_graph)
+        self.signedGraphButton.pack(side="left")
+        self.graphSettingsButton = ttk.Button(actions, text="Draft reconstruction settings", command=self._show_graph_settings)
+        self.graphSettingsButton.pack(side="left")
+        self.graphSettingsButton.pack_forget()
+        self.signedGraphButton.pack_forget()
+        self.graphInfoLabel = ttk.Label(toolbar, justify="left")
+        self.graphInfoLabel.grid(row=1, column=0, columnspan=6, sticky="w")
+        for column, group in enumerate(self._plot_controls):
+            group.grid(row=0, column=column, sticky="sw", padx=3)
+            pending = [group]
+            while pending:
+                widget = pending.pop()
+                pending.extend(widget.winfo_children())
+                widget.bind("<FocusIn>", lambda event, target=widget: self._reveal_control(target, canvas, toolbar), add="+")
+        toolbar.bind("<Configure>", lambda event: (canvas.configure(scrollregion=canvas.bbox("all"), height=toolbar.winfo_reqheight()), self._queue_layout()))
+        self.inverseGraphButton = ttk.Button(self._secondary_actions.children['!canvas'].children['!frame'],
+            text="View inverse reconstruction", command=self._open_inverse_graph)
+        self.inverseGraphButton.pack(side="left", padx=8)
+
+    def _graph_option_changed(self, field):
+        self._invalidate_pending_graph_history()
+        if field == "Plot type":
+            self.plotScaleVar.set("Linear Y" if self.plotTypeVar.get() == NV_PLOT else "Log Y")
+        self._refresh_graph()
+
+    def _show_signed_graph(self):
+        self.plotScaleVar.set("Linear Y")
+        self._invalidate_pending_graph_history()
+        self._refresh_graph()
+
+    def _open_inverse_graph(self):
+        self.plotTypeVar.set(NV_PLOT)
+        self.plotScaleVar.set("Linear Y")
+        self._invalidate_pending_graph_history()
+        self.resultsNotebook.select(self._plot_frame)
+        self._refresh_graph()
+
+    def _invalidate_pending_graph_history(self):
+        if self._history_loading:
+            variables = (self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar)
+            values = tuple(variable.get() for variable in variables)
+            self._invalidate_history()
+            if self._history_previous is not None:
+                self._restore_view(self._history_previous)
+            for variable, value in zip(variables, values):
+                variable.set(value)
+
+    def _show_graph_settings(self):
+        self._set_setup_visible(True)
+        self.modeVar.set("Modern analysis" if self.modeVar.get() != "Compare methods" else "Compare methods")
+        self._method_expanded["modern"] = True
+        self._settings_visibility()
+        self._reveal_control(self.modernReconstructionCheck, self._setup_canvas, self.setupControls)
+
+    def _graph_source(self):
+        if self._selected_saved_run is not None:
+            return self._saved_view_data
+        if self._displayed_request is not None:
+            return self._projection_views.get(self._displayed_request.request_id)
+        return None
+
+    def _refresh_graph(self):
+        if self._graph_refreshing:
+            return
+        self._graph_refreshing = True
+        try:
+            data = self._graph_source()
+            self._plot_data = data
+            if self.plotTypeVar.get() == NV_PLOT:
+                self._render_inverse_graph(data)
+            elif data is not None:
+                self._plot_saved_rows(data=data)
+            else:
+                self._plotted_metadata = {}
+                self._sync_graph_controls()
+                self.graphInfoLabel.configure(text="Prepare or select a completed run to inspect its distribution")
+        finally:
+            self._graph_refreshing = False
+
+    def _sync_graph_controls(self, messages=()):
+        inverse = self.plotTypeVar.get() == NV_PLOT
+        self.plotSeriesSelector.configure(state="disabled" if inverse else "readonly")
+        self.graphSettingsButton.pack_forget()
+        self.signedGraphButton.pack_forget()
+        if inverse and any("was not calculated" in message for message in messages):
+            self.graphSettingsButton.pack(side="left")
+        if inverse and self.plotScaleVar.get() == "Log Y":
+            self.signedGraphButton.pack(side="left")
+
+    def _render_inverse_graph(self, data):
+        self.plotAxes.clear()
+        self._nonpositive_plot_count = 0
+        if data is None:
+            self._sync_graph_controls()
+            self.graphInfoLabel.configure(text="No computed reconstruction is selected")
+            self._plotted_metadata = {}
+            self.plotCanvas.draw_idle()
+            return
+        tables = data.get("tables")
+        if self._selected_saved_run is not None:
+            tables = {"distributions": self._distribution_rows}
+        series, messages = reconstruction_series(data, tables)
+        log_y = self.plotScaleVar.get() == "Log Y"
+        log_x = self.plotXAxisVar.get() == "Log diameter"
+        self._sync_graph_controls(messages)
+        plotted = []
+        all_omitted = {"invalid_diameter": 0, "unavailable": 0, "zero": 0, "negative": 0}
+        for item in series:
+            if self.plotMethodVar.get() != "All methods" and item["method_id"] != ("legacy" if self.plotMethodVar.get() == "Original" else "modern"):
+                continue
+            points, omitted = visible_points(item["points"], log_x=log_x, log_y=log_y)
+            for key, count in omitted.items():
+                all_omitted[key] += count
+            self.plotAxes.plot([point["diameter_mm"] for point in points], [point["signed_nv_per_mm3"] for point in points],
+                               linestyle="none", marker="o" if item["method_id"] == "legacy" else "s", markersize=4,
+                               label=item["title"])
+            negatives = [point for point in points if point["signed_nv_per_mm3"] < 0]
+            if negatives:
+                self.plotAxes.plot([point["diameter_mm"] for point in negatives], [point["signed_nv_per_mm3"] for point in negatives],
+                                   color="#bb2638", marker="x", linestyle="none", label=("Original" if item["method_id"] == "legacy" else "Modern") + " signed negative values")
+            plotted.append({**item, "omitted": omitted})
+        if not log_y:
+            self.plotAxes.axhline(0, color="#555555", linewidth=0.8, label="Zero")
+        self.plotAxes.set_xscale("log" if log_x else "linear")
+        if log_y:
+            self.plotAxes.set_yscale("log")
+            if not any(len(line.get_ydata()) for line in self.plotAxes.lines):
+                self.plotAxes.set_ylim(1, 10)
+        else:
+            self.plotAxes.set_yscale("linear")
+        self.plotAxes.set_xlabel(plotted[0]["coordinates"] if len(plotted) == 1 else "Diameter (mm): Original labels / Modern native upper-edge class representatives")
+        self.plotAxes.set_ylabel("N_V (mm^-3 per native class)")
+        title = plotted[0]["title"] if len(plotted) == 1 else "Separate native inverse reconstructions"
+        self.plotAxes.set_title(title, fontsize=10)
+        if self.plotAxes.lines:
+            self.plotAxes.legend(fontsize=8)
+        info = messages + [f"Omitted: zero={all_omitted['zero']}, negative={all_omitted['negative']}, unavailable={all_omitted['unavailable']}, invalid diameter={all_omitted['invalid_diameter']}"]
+        self.graphInfoLabel.configure(text=" | ".join(info))
+        self._plotted_metadata = {"run_id": data["run_id"], "project_id": data["project_id"], "sample_name": data["sample_name"],
+            "plot_type": NV_PLOT, "x_scale": self.plotAxes.get_xscale(), "y_scale": self.plotAxes.get_yscale(),
+            "omitted": all_omitted, "series": plotted, "messages": messages,
+            "caption": f"{data['sample_name'][:70]} | run {data['run_id'][:12]} | {title}"}
+        self.plotCanvas.draw_idle()
+
+    def _save_graph(self):
+        if self._busy or self._history_loading:
+            self.statusVar.set("Wait for the selected run to finish loading before saving its graph")
+            return
+        if not self._plotted_metadata.get("run_id"):
+            self.statusVar.set("Select a completed run before saving a graph")
+            return
+        path = filedialog.asksaveasfilename(parent=self, title=f"Save graph for run {self._plotted_metadata['run_id'][:8]}",
+            defaultextension=".png", filetypes=(("PNG", "*.png"), ("SVG", "*.svg")))
+        if not path:
+            return
+        path = Path(path)
+        try:
+            if path.suffix.lower() not in (".png", ".svg"):
+                raise ValueError("Graph output must be PNG or SVG")
+            self._plotted_metadata["x_limits"] = list(self.plotAxes.get_xlim())
+            self._plotted_metadata["y_limits"] = list(self.plotAxes.get_ylim())
+            caption = self.figure.text(0.01, -0.025, self._plotted_metadata["caption"], fontsize=7)
+            try:
+                self.figure.savefig(path, dpi=180, bbox_inches="tight")
+            finally:
+                caption.remove()
+            path.with_suffix(path.suffix + ".json").write_bytes(json_bytes(self._plotted_metadata))
+            self.statusVar.set(f"Graph saved for run {self._plotted_metadata['run_id'][:8]}: {path.name}")
+        except Exception as exc:
+            self._show_failure("Save graph", exc)
 
     def _queue_layout(self, _event=None) -> None:
         if not self._closed and not self._layout_pending:
@@ -489,7 +757,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self._status_scroll.grid(row=0, column=1, sticky="ns")
         else:
             self._status_scroll.grid_remove()
-        reserve = 240 + self.resultViewSelector.winfo_reqheight() + self.resultProvenanceLabel.winfo_reqheight() + line_height + 32
+        reserve = 240 + self.resultViewSelector.winfo_reqheight() + self.resultProvenanceLabel.winfo_reqheight() + line_height + 32 + self.plotToolbar.winfo_reqheight()
         self._layout_root.rowconfigure(5, minsize=reserve)
         if self._setup_visible:
             fixed = self._summary_frame.winfo_reqheight() + self._primary_actions.winfo_reqheight() + self._status_frame.winfo_reqheight() + self._secondary_actions.winfo_reqheight() + 40
@@ -498,6 +766,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             if int(self._setup_canvas.cget("height")) != height:
                 self._setup_canvas.configure(height=height)
         self._refresh_summary_banner()
+        for label in (self.perimeterHelp, self.detectionHelp, self.singleGroupHelp, *self._modern_feedback.values()):
+            if int(label.cget("wraplength") or 0) != width:
+                label.configure(wraplength=width)
 
     def _reveal_control(self, widget, canvas, content) -> None:
         left = widget.winfo_rootx() - content.winfo_rootx()
@@ -572,6 +843,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 variable = getattr(self, name, None)
                 if isinstance(variable, tk.Variable) and name != "statusVar" and isinstance(value, (str, bool)):
                     variable.set(value)
+                profile = _PERIMETER_LABEL_TO_ID.get(self.perimeterProfileVar.get())
+                if profile is not None:
+                    self.perimeterProfileVar.set(_PERIMETER_ID_TO_LABEL[profile])
         self.statusVar.set("Saved setup restored; no completed calculation restored")
         missing = set(setup.get("referenced_images", ())) - {image.image_id for image in self.project.images}
         if missing:
@@ -619,7 +893,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
     def _parse_legacy_config(self) -> LegacyRunConfig:
         minimum = float(self.minimumDiameterVar.get())
         known_text = self.knownVesicularityVar.get().strip()
-        known = float(known_text) if known_text else None
+        known = float(known_text) if known_text and self.volumeModeVar.get() == "known_vesicularity" else None
         shape_text = self.shapeMinimumVar.get().strip()
         shape_minimum = float(shape_text) if shape_text and self.shapeModeVar.get() == "updated_minimum" else minimum
         perimeter_label = self.perimeterProfileVar.get()
@@ -634,7 +908,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             minimum_diameter_px=minimum,
             perimeter_profile=perimeter_profile,
             selection_mode=self.selectionModeVar.get(),
-            manual_ranges=self._parse_manual_ranges(),
+            manual_ranges=self._parse_manual_ranges() if self.selectionModeVar.get() == "manual" else (),
             volume_normalization_mode=self.volumeModeVar.get(),
             known_vesicularity_percent=known,
             size_lower_cutoff_mm=lower_cutoff,
@@ -645,6 +919,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         )
 
     def _parse_modern_config(self) -> ModernRunConfig:
+        def parse(text, converter, field):
+            try:
+                return converter(text)
+            except (ValueError, IndexError) as exc:
+                raise SampleAnalysisError(f"{field}: {exc}") from exc
+
         min_text = self.modernMinDetectableVar.get().strip()
         max_text = self.modernMaxReliableVar.get().strip()
         transition_text = self.modernTransitionBinsVar.get().strip()
@@ -652,16 +932,17 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             transitions = tuple(int(part.strip()) for part in transition_text.split(",") if part.strip())
         else:
             transitions = ()
+        groups = {calibration_mm_per_px(image) for image in self.project.images if image.analysis_included}
         return ModernRunConfig(
-            bin_edges_mm=tuple(float(part) for part in self.modernEdgesVar.get().split(",")) if self.modernEdgesVar.get().strip() else None,
-            min_detectable_mm=float(min_text) if min_text else None,
-            max_reliable_mm=float(max_text) if max_text else None,
+            bin_edges_mm=parse(self.modernEdgesVar.get(), lambda text: tuple(float(part) for part in text.split(",")), "Bin edges") if self.modernEdgesVar.get().strip() else None,
+            min_detectable_mm=parse(min_text, float, "Minimum detectable diameter") if min_text else None,
+            max_reliable_mm=parse(max_text, float, "Maximum reliable diameter") if max_text else None,
             transition_bins=transitions,
             enable_reconstruction=bool(self.modernReconstructVar.get()),
-            nesting_segments=tuple(
+            nesting_segments=parse(self.modernSegmentsVar.get(), lambda text: tuple(
                 (parts[0].strip(), int(parts[1]), int(parts[2]))
-                for parts in (token.split(":") for token in self.modernSegmentsVar.get().split(";"))
-            ) if self.modernSegmentsVar.get().strip() else (),
+                for parts in (token.split(":") for token in text.split(";"))
+            ), "Source-group segment plan") if len(groups) > 1 and self.modernSegmentsVar.get().strip() else (),
             upper_tail_assumption=UPPER_TAIL_ASSUMPTION if self.modernUpperTailVar.get() else None,
         )
 
@@ -845,6 +1126,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         data = self._projection_views.get(request.request_id)
         if data is not None:
             self._populate_saved_supplement(data, data["tables"])
+        self._refresh_graph()
 
     def _select_result_view(self, _event=None) -> None:
         view = self._capture_view()
@@ -945,6 +1227,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
     def _update_shape_minimum(self) -> None:
         if not self._busy:
+            if self.modeVar.get() not in ("Original FOAMS 1.0.5", "Compare methods"):
+                self._show_failure("Shape update", ValueError("Shape minimum updates require the Original method"))
+                return
             self.shapeModeVar.set("updated_minimum")
             self._start_job("run")
 
@@ -959,6 +1244,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             if not self._input_signature()[2]:
                 raise SampleAnalysisError("Project session changed; reopen analysis from the current project")
             mode = self.modeVar.get()
+            if action == "suggest" and mode not in ("Original FOAMS 1.0.5", "Compare methods"):
+                raise ValueError("Suggest cutoffs requires the Original method")
             snapshot = create_analysis_snapshot(self.project)
             self.snapshot = snapshot
             legacy_cfg = modern_cfg = None
@@ -978,10 +1265,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 except Exception as exc:
                     legacy_error = exc
             if mode in ("Modern analysis", "Compare methods") and action != "suggest":
+                self._modern_validation()
                 try:
                     modern_cfg = self._parse_modern_config()
                 except Exception as exc:
                     modern_error = exc
+                    self._modern_validation(exc)
             if action != "run" and mode != "Compare methods" and (legacy_error or modern_error):
                 raise legacy_error or modern_error
             if action == "suggest" and legacy_cfg is None:
@@ -1226,7 +1515,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self.resultViewVar.set(label)
             self._selected_view_label = label
             self._filter_saved_tables()
-            self._plot_saved_rows()
+            self._refresh_graph()
             self._refresh_result_provenance()
             self.statusVar.set(f"Saved run {record.run_id[:8]} loaded; no science rerun")
         except Exception as exc:
@@ -1290,11 +1579,25 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 kind=row["method_id"] if row["stage"] == "prepared" else "selected")
         self._plot_saved_rows()
 
-    def _plot_saved_rows(self):
+    def _plot_saved_rows(self, data=None):
+        data = data or self._graph_source()
+        if self.plotTypeVar.get() == NV_PLOT:
+            self._render_inverse_graph(data)
+            return
+        self.plotSeriesSelector.configure(state="readonly")
+        self.graphSettingsButton.pack_forget()
+        self.signedGraphButton.pack_forget()
         self.plotAxes.clear()
         self._nonpositive_plot_count = 0
         series = {}
-        for row in self._distribution_rows:
+        source_rows = self._distribution_rows if self._selected_saved_run is not None or data is None else data["tables"]["distributions"]
+        plotted_rows = []
+        for row in source_rows:
+            if self.plotMethodVar.get() != "All methods" and row["method_id"] != ("legacy" if self.plotMethodVar.get() == "Original" else "modern"):
+                continue
+            if self.plotStageVar.get() != "All series" and row["stage"] != self.plotStageVar.get().lower():
+                continue
+            plotted_rows.append(row)
             key = (row["method_id"], row["group_id"], row["stage"])
             diameter = row["plot_diameter_mm"]
             value = row["na_per_mm2"]
@@ -1303,8 +1606,18 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             else:
                 self._nonpositive_plot_count += 1
         for key, pairs in series.items():
-            self._plot_values(" ".join(key), tuple(pair[0] for pair in pairs), tuple(pair[1] for pair in pairs))
+            name = ("Original" if key[0] == "legacy" else "Modern") + " " + " ".join(key[1:])
+            self._plot_values(name, tuple(pair[0] for pair in pairs), tuple(pair[1] for pair in pairs))
         self._finish_plot()
+        messages = []
+        if data is not None:
+            messages = [f"{method['method_id']} failed: {item['message']}" for method in data["methods"] if method["outcome"] == "failed" for item in method["diagnostics"]]
+            methods = "/".join("Original" if method == "legacy" else "Modern" for method in sorted({row["method_id"] for row in plotted_rows}))
+            self._plotted_metadata = {"run_id": data["run_id"], "project_id": data["project_id"], "sample_name": data["sample_name"],
+                "plot_type": NA_PLOT, "x_scale": self.plotAxes.get_xscale(), "y_scale": self.plotAxes.get_yscale(),
+                "omitted_nonpositive_or_unavailable": self._nonpositive_plot_count, "rows": plotted_rows,
+                "messages": messages, "caption": f"{data['sample_name'][:70]} | run {data['run_id'][:12]} | {methods} native 2D number density"}
+        self.graphInfoLabel.configure(text=" | ".join(messages + [f"Selected-scale omissions: {self._nonpositive_plot_count}; N_A in mm^-2"]))
 
     def _page_distributions(self, offset):
         self._distribution_page = max(0, min(max(0, (len(self._distribution_rows) - 1) // 250), self._distribution_page + offset))
@@ -1415,33 +1728,65 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._diagnostic_inputs = self._input_signature()
         self._append_details([f"{method}: Analysis run failed", str(error),
             f"stage={getattr(error, 'stage', method)} context={getattr(error, 'context', {})}"])
+        if method == "modern":
+            self._modern_validation(error)
+
+    def _modern_validation(self, error=None):
+        for label in self._modern_feedback.values():
+            label.configure(text="")
+            label.pack_forget()
+        if error is None:
+            return
+        message = str(error)
+        key = "detection"
+        for field, tokens in (("reconstruction", ("upper_tail", "upper tail", "3d", "reconstruct")),
+                              ("reliability", ("max_reliable", "maximum reliable")),
+                              ("segments", ("segment", "plan", "group")), ("edges", ("bin", "edge"))):
+            if any(token in message.lower() for token in tokens):
+                key = field
+                break
+        included = [image for image in self.project.images if image.analysis_included]
+        for image in included:
+            message = message.replace(image.image_id, image.display_name)
+        label = self._modern_feedback[key]
+        label.configure(text=", ".join(image.display_name for image in included) + ": " + message)
+        label.pack(fill="x")
 
     def _clear_distribution(self) -> None:
         self.distributionTable.delete(*self.distributionTable.get_children())
         self._table_rows = {}
         self.plotAxes.clear()
         self._nonpositive_plot_count = 0
+        self._plotted_metadata = {}
+        self._plot_data = None
 
     def _capture_view(self):
         return (self.resultsText.get("1.0", "end-1c"),
                 [(self.distributionTable.item(row_id, "values"), self._table_rows.get(row_id))
                  for row_id in self.distributionTable.get_children()],
-                [(line.get_xdata(), line.get_ydata(), line.get_label()) for line in self.plotAxes.lines],
+                                [(line.get_xdata(), line.get_ydata(), line.get_label(),
+                                    {"marker": line.get_marker(), "linestyle": line.get_linestyle(), "color": line.get_color()}) for line in self.plotAxes.lines],
                 self._displayed_request, self._displayed_envelopes,
                 self.resultProvenanceVar.get(), getattr(self, "_selected_view_label", "Current request"), self._displayed_outcomes,
                 (self._selected_saved_run, self._saved_view_data, self._distribution_rows, self._object_rows, self._table_run_id,
-                 self.overviewText.get("1.0", "end-1c"), self._object_page, self._distribution_page))
+                 self.overviewText.get("1.0", "end-1c"), self._object_page, self._distribution_page),
+                (self._plotted_metadata, self._plot_data, self.graphInfoLabel.cget("text"),
+                 tuple(variable.get() for variable in (self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar)),
+                 self.plotAxes.get_xscale(), self.plotAxes.get_yscale(), self.plotAxes.get_xlim(), self.plotAxes.get_ylim(),
+                 self.plotAxes.get_xlabel(), self.plotAxes.get_ylabel(), self.plotAxes.get_title()))
 
     def _restore_view(self, view) -> None:
-        text, rows, curves, request, envelopes, provenance, label, outcomes, saved = view
+        text, rows, curves, request, envelopes, provenance, label, outcomes, saved, graph = view
         self._clear_distribution()
         self._set_results([text])
         for values, metadata in rows:
             row_id = self.distributionTable.insert("", "end", values=values)
             self._table_rows[row_id] = metadata
-        for diameters, values, name in curves:
-            self._plot_values(name, diameters, values)
-        self._finish_plot()
+        for diameters, values, name, style in curves:
+            if name == "Zero":
+                self.plotAxes.axhline(0, color=style["color"], linewidth=0.8, label="Zero")
+            else:
+                self.plotAxes.plot(diameters, values, label=name, **style)
         self._displayed_request = request
         self._displayed_envelopes = envelopes
         self.resultProvenanceVar.set(provenance)
@@ -1455,6 +1800,21 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.overviewText.insert("1.0", overview)
         self.overviewText.configure(state="disabled")
         self._page_objects(0)
+        (self._plotted_metadata, self._plot_data, notice, options, xscale, yscale, xlim, ylim, xlabel, ylabel, title) = graph
+        for variable, value in zip((self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar), options):
+            variable.set(value)
+        self.graphInfoLabel.configure(text=notice)
+        self._sync_graph_controls(self._plotted_metadata.get("messages", ()))
+        self.plotAxes.set_xscale(xscale)
+        self.plotAxes.set_yscale(yscale)
+        self.plotAxes.set_xlim(xlim)
+        self.plotAxes.set_ylim(ylim)
+        self.plotAxes.set_xlabel(xlabel)
+        self.plotAxes.set_ylabel(ylabel)
+        self.plotAxes.set_title(title, fontsize=10)
+        if curves:
+            self.plotAxes.legend(fontsize=8)
+        self.plotCanvas.draw_idle()
 
     def _add_row(self, method, group, index, lower, upper, count, area, na, nv="", volume="", kind="selected") -> None:
         row_id = self.distributionTable.insert("", "end", values=(method, group, index, lower, upper, count, area, na, nv, volume))
@@ -1462,7 +1822,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
     def _plot_values(self, name, diameters, values) -> None:
         pairs = [(diameter, value) for diameter, value in zip(diameters, values)
-                 if diameter > 0 and value > 0]
+                 if math.isfinite(diameter) and math.isfinite(value)
+                 and (self.plotXAxisVar.get() != "Log diameter" or diameter > 0)
+                 and (self.plotScaleVar.get() != "Log Y" or value > 0)]
         self._nonpositive_plot_count += len(values) - len(pairs)
         if pairs:
             self.plotAxes.plot([pair[0] for pair in pairs], [pair[1] for pair in pairs], marker=".", label=name)
@@ -1471,14 +1833,14 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.plotAxes.set_xlabel("Diameter / label (mm)")
         self.plotAxes.set_ylabel("N_A (mm^-2)")
         if self.plotAxes.lines:
-            self.plotAxes.set_xscale("log")
-            self.plotAxes.set_yscale("log")
-            self.plotAxes.xaxis.set_major_locator(LogLocator(numticks=3))
-            self.plotAxes.yaxis.set_major_locator(LogLocator(numticks=3))
-            self.plotAxes.xaxis.set_minor_locator(NullLocator())
-            self.plotAxes.yaxis.set_minor_locator(NullLocator())
+            self.plotAxes.set_xscale("log" if self.plotXAxisVar.get() == "Log diameter" else "linear")
+            self.plotAxes.set_yscale("log" if self.plotScaleVar.get() == "Log Y" else "linear")
+            for axis, scale in ((self.plotAxes.xaxis, self.plotAxes.get_xscale()), (self.plotAxes.yaxis, self.plotAxes.get_yscale())):
+                if scale == "log":
+                    axis.set_major_locator(LogLocator(numticks=3))
+                    axis.set_minor_locator(NullLocator())
             self.plotAxes.legend(fontsize=8)
-        self.plotAxes.set_title(f"Nonpositive/unavailable rows omitted from log plot: {self._nonpositive_plot_count}", fontsize=9)
+        self.plotAxes.set_title(f"Rows omitted for selected scales: {self._nonpositive_plot_count}", fontsize=9)
         self.plotCanvas.draw_idle()
 
     def _render_prepared(self, legacy, modern, clear=True) -> None:

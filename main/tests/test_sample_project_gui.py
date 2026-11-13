@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
-from PIL import ImageGrab
+from PIL import Image, ImageGrab
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -453,7 +453,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 window.suggestButton.invoke()
                 self._wait_until(entered.is_set, self.root)
                 self.assertNotEqual(thread_ids[0], threading.get_ident())
-                self.assertEqual(str(window.setupControls.children['!combobox'].cget("state")), "disabled")
+                self.assertEqual(str(window.methodPresetSelector.cget("state")), "disabled")
                 set_calibration(project.images[0], 0.004, "mm")
                 release.set()
                 finish()
@@ -615,6 +615,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         window.modeVar.set("Modern analysis")
         window.modernMinDetectableVar.set("0.001")
         window.modernSegmentsVar.set("group-2:0:4;group-1:4:8")
+        window.modernReconstructVar.set(True)
+        window.modernUpperTailVar.set(True)
         run()
         self.assertEqual(window.statusVar.get(), "Modern run complete")
         modern_a = window._displayed_envelopes[0]
@@ -651,6 +653,16 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                         self.assertTrue(legends)
                 if modern_fails and not legacy_fails:
                     capture("analysis-21b-current-partial-failure.png")
+                window.inverseGraphButton.invoke()
+                self.root.update()
+                self.assertEqual(window._plotted_metadata["run_id"], request_b.request_id)
+                self.assertEqual({item["method_id"] for item in window._plotted_metadata["series"]},
+                                 {method for failed, method in ((legacy_fails, "legacy"), (modern_fails, "modern")) if not failed})
+                for failed, method in ((legacy_fails, "legacy"), (modern_fails, "modern")):
+                    if failed:
+                        self.assertIn(method + " failed", window.graphInfoLabel.cget("text"))
+                window.plotTypeVar.set(sample_analysis.NA_PLOT)
+                window.plotTypeSelector.event_generate("<<ComboboxSelected>>")
                 window.resultViewVar.set(label_a)
                 window.resultViewSelector.event_generate("<<ComboboxSelected>>")
                 self.root.update()
@@ -754,6 +766,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         window.manualRangesVar.set(f"group-1:{labels[0]!r}:{labels[-1]!r}")
         window.modernMinDetectableVar.set("0.001")
         window.modernEdgesVar.set("0.001,0.01,0.1")
+        window.modernReconstructVar.set(True)
+        window.modernUpperTailVar.set(True)
         font_sizes = {name: tkfont.nametofont(name).cget("size") for name in tkfont.names()}
         previous_label = None
         try:
@@ -783,7 +797,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                         else:
                             self.assertEqual(window._latest_compare.legacy_result is None, state in ("partial-failure", "both-failed"))
                             self.assertEqual(window._latest_compare.modern_result is None, state == "both-failed")
-                    window.resultsNotebook.select(window.plotCanvas.get_tk_widget().master)
+                    window.inverseGraphButton.invoke()
                     self.root.update()
                     self.assertFalse(window._setup_visible)
                     for font_scale in (1, 2):
@@ -1180,7 +1194,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                     tuple(window.distributionTable.item(row, "values") for row in window.distributionTable.get_children()),
                     tuple(window.objectsTable.item(row, "values") for row in window.objectsTable.get_children()),
                     tuple((line.get_label(), tuple(line.get_xdata()), tuple(line.get_ydata())) for line in window.plotAxes.lines),
-                    window._table_run_id)
+                    window._table_run_id, window.plotTypeVar.get(), window.plotScaleVar.get(),
+                    json.dumps(window._plotted_metadata, sort_keys=True))
 
         expected = signature()
         with patch("main.gui.sample_analysis.run_tables", side_effect=ValueError("injected history load failure")):
@@ -1199,7 +1214,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         window.runButton.invoke()
         self._wait_until(lambda: not window._busy, self.root)
 
-        for destination in ("Current request", previous_live, label_b, "calculate", "cancel", "session", "close"):
+        for destination in ("Current request", previous_live, label_b, "plot", "calculate", "cancel", "session", "close"):
             with self.subTest(destination=destination):
                 select("Current request")
                 expected_request = window._displayed_request
@@ -1228,6 +1243,9 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                             self.assertEqual(str(window.cancelButton.cget("state")), "normal")
                         elif destination == "cancel":
                             window.cancelButton.invoke()
+                        elif destination == "plot":
+                            window.plotTypeVar.set(sample_analysis.NV_PLOT)
+                            window.plotTypeSelector.event_generate("<<ComboboxSelected>>")
                         elif destination == "close":
                             window._on_close()
                         elif destination == "session":
@@ -1263,6 +1281,207 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 finally:
                     release.set()
         self.assertEqual(project.analysis_runs[0].run_id, run_a.run_id)
+
+    def test_inverse_graphs_method_controls_and_saved_figure_identity(self):
+        from main.core.analysis_plots import NA_PLOT, NV_PLOT
+        from main.core.sample_analysis import prepare_legacy_analysis
+        from main.core.sample_project_io import open_project, save_project
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        set_analysis_included(project.images[2], False)
+        snapshot = create_analysis_snapshot(project)
+        labels = prepare_legacy_analysis(snapshot).prepared.label_preparation_result.bin_labels_mm
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, snapshot)
+        self.root.update()
+        self.assertTrue(window.originalSettings.winfo_ismapped())
+        self.assertFalse(window.modernSettings.winfo_ismapped())
+        self.assertFalse(window.settingRows["manual"].winfo_ismapped())
+        self.assertFalse(window.advancedOriginalSettings.winfo_ismapped())
+        window.selectionModeVar.set("manual")
+        window.volumeModeVar.set("known_vesicularity")
+        window.shapeModeVar.set("updated_minimum")
+        window.advancedOriginalButton.invoke()
+        self.root.update()
+        for key in ("manual", "vesicularity", "shape_minimum", "perimeter"):
+            self.assertTrue(window.settingRows[key].winfo_ismapped(), key)
+        window.modeVar.set("Compare methods")
+        self.root.update()
+        self.assertTrue(window.originalSettingsToggle.winfo_ismapped())
+        self.assertTrue(window.modernSettingsToggle.winfo_ismapped())
+        for button, frame in ((window.originalSettingsToggle, window.originalSettings), (window.modernSettingsToggle, window.modernSettings)):
+            button.invoke()
+            self.root.update()
+            self.assertFalse(frame.winfo_ismapped())
+            button.invoke()
+        window.modeVar.set("Original FOAMS 1.0.5")
+        window.volumeModeVar.set("unnormalized")
+        window.shapeModeVar.set("initial_analysis")
+        window.knownVesicularityVar.set("unfinished inactive value")
+        window.shapeMinimumVar.set("unfinished inactive value")
+        window.manualRangesVar.set(f"group-1:{labels[0]!r}:{labels[-1]!r}")
+        window.modernMinDetectableVar.set("0.001")
+        window.modernEdgesVar.set("0.001,0.01,0.1")
+
+        def finish():
+            self._wait_until(lambda: not window._busy, self.root)
+            self.assertNotIn("failed", window.statusVar.get().lower(), window.resultsText.get("1.0", "end"))
+
+        window.runButton.invoke()
+        finish()
+        original = window._latest_legacy
+        original_record = project.analysis_runs[-1]
+        window.inverseGraphButton.invoke()
+        self.root.update()
+        line = next(line for line in window.plotAxes.lines if line.get_label() == "Original FOAMS inverse Saltykov reconstruction")
+        np.testing.assert_array_equal(line.get_xdata(), [row.label_mm for row in original.analysis.binned_selection_result.rows])
+        np.testing.assert_array_equal(line.get_ydata(), original.analysis.conversion_result.signed_nv_per_mm3)
+        self.assertEqual(window.plotAxes.get_yscale(), "linear")
+        self.assertTrue(any(line.get_label() == "Zero" for line in window.plotAxes.lines))
+        self._capture_owned_window(window, "analysis-24-original-inverse.png")
+        current = window._capture_view()
+        for values in ((0.0,), (-2.0,), (-1.0, -3.0), (-1.0, 0.0, 2.0, -4.0)):
+            data = original_record.data()
+            data["run_id"] = "synthetic-render-edge-case"
+            native = data["methods"][0]["native"]
+            native["selected"]["rows"] = native["selected"]["rows"][:len(values)]
+            for row in native["selected"]["rows"]:
+                row["label_mm"] = 0.1
+            native["conversion"]["signed_nv_per_mm3"] = list(values)
+            data["tables"]["distributions"] = [row for row in data["tables"]["distributions"] if row["stage"] == "selected"][:len(values)]
+            window._render_inverse_graph(data)
+            line = next(line for line in window.plotAxes.lines if line.get_label() == "Original FOAMS inverse Saltykov reconstruction")
+            np.testing.assert_array_equal(line.get_xdata(), [0.1] * len(values))
+            np.testing.assert_array_equal(line.get_ydata(), values)
+        window._restore_view(current)
+        window.plotScaleVar.set("Log Y")
+        window._graph_option_changed("Y axis")
+        expected_negative = sum(value < 0 for value in original.analysis.conversion_result.signed_nv_per_mm3)
+        expected_zero = sum(value == 0 for value in original.analysis.conversion_result.signed_nv_per_mm3)
+        self.assertEqual(window._plotted_metadata["omitted"]["negative"], expected_negative)
+        self.assertEqual(window._plotted_metadata["omitted"]["zero"], expected_zero)
+        window.signedGraphButton.invoke()
+        self.assertEqual(window.plotAxes.get_yscale(), "linear")
+
+        window._set_setup_visible(True)
+        window.modeVar.set("Modern analysis")
+        self.root.update()
+        self.assertFalse(window.originalSettings.winfo_ismapped())
+        self.assertTrue(window.modernSettings.winfo_ismapped())
+        self.assertFalse(window.suggestButton.winfo_ismapped())
+        self.assertFalse(window.shapeUpdateButton.winfo_ismapped())
+        self.assertFalse(window.settingRows["segments"].winfo_ismapped())
+        self.assertFalse(window.modernUpperTailCheck.winfo_ismapped())
+        self.assertIn("Minimum pore diameter reliably detectable", window.detectionHelp.cget("text"))
+        window.methodPresetSelector.focus_force()
+        reached = set()
+        for _ in range(70):
+            focused = self.root.focus_get()
+            reached.add(focused)
+            focused.event_generate("<Tab>")
+            self.root.update()
+        self.assertTrue({window.settingInputs[key] for key in ("detection", "reliability", "edges")}.issubset(reached))
+        self.assertFalse({window.settingInputs[key] for key in window.settingInputs if key not in ("detection", "reliability", "edges")}.intersection(reached))
+        self.assertNotIn(window.modernUpperTailCheck, reached)
+        window._reveal_control(window.settingInputs["detection"], window._setup_canvas, window.setupControls)
+        self._capture_owned_window(window, "analysis-24-modern-settings.png")
+        for field, variable in (("detection", window.modernMinDetectableVar), ("reliability", window.modernMaxReliableVar), ("edges", window.modernEdgesVar)):
+            previous = variable.get()
+            variable.set("unfinished")
+            window.runButton.invoke()
+            self._wait_until(lambda: not window._busy, self.root)
+            self.assertIn("dup.png", window._modern_feedback[field].cget("text"))
+            variable.set(previous)
+        window.runButton.invoke()
+        finish()
+        window.inverseGraphButton.invoke()
+        self.root.update()
+        self.assertIn("3D reconstruction was not calculated for this run", window.graphInfoLabel.cget("text"))
+        self.assertTrue(window.graphSettingsButton.winfo_ismapped())
+        window.graphSettingsButton.invoke()
+        self.assertFalse(window.modernReconstructVar.get())
+        self.assertFalse(window.modernUpperTailVar.get())
+        window.minimumDiameterVar.set("unfinished Original edit")
+        window.modernReconstructionCheck.invoke()
+        self.root.update()
+        self.assertTrue(window.modernUpperTailCheck.winfo_ismapped())
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertIn("upper", window._modern_feedback["reconstruction"].cget("text").lower())
+        self.assertFalse(window.modernUpperTailVar.get())
+        window.modernUpperTailCheck.invoke()
+        window.runButton.invoke()
+        finish()
+        modern = window._latest_modern
+        modern_record = project.analysis_runs[-1]
+        window.inverseGraphButton.invoke()
+        self.root.update()
+        line = next(line for line in window.plotAxes.lines if line.get_label() == "Modern spherical 3D reconstruction")
+        np.testing.assert_array_equal(line.get_xdata(), modern.reconstruction_result.operator.representative_diameters_mm)
+        np.testing.assert_array_equal(line.get_ydata(), modern.reconstruction_result.signed_nv_per_mm3)
+        self._capture_owned_window(window, "analysis-24-modern-inverse.png")
+        draft = (window.minimumDiameterVar.get(), window.manualRangesVar.get(), window.modernMinDetectableVar.get(), window.modernEdgesVar.get())
+        window.modeVar.set("Original FOAMS 1.0.5")
+        window.modeVar.set("Modern analysis")
+        self.assertEqual((window.minimumDiameterVar.get(), window.manualRangesVar.get(), window.modernMinDetectableVar.get(), window.modernEdgesVar.get()), draft)
+        window.saveSetupButton.invoke()
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            save_project(project, root / "project")
+            window._on_close()
+            restored = open_project(root / "project")
+            for image in restored.images:
+                set_analysis_included(image, False)
+            window = sample_analysis.SampleAnalysisWorkspace(self.root, restored, None)
+            self.assertEqual((window.minimumDiameterVar.get(), window.manualRangesVar.get(), window.modernMinDetectableVar.get(), window.modernEdgesVar.get()), draft)
+            with contextlib.ExitStack() as mocks:
+                for function in ("prepare_legacy_analysis", "prepare_modern_analysis", "analyze_legacy_prepared", "analyze_modern_prepared"):
+                    mocks.enter_context(patch("main.gui.sample_analysis." + function, side_effect=AssertionError("graph reran science")))
+                for record in (original_record, modern_record):
+                    label = next(label for label, saved in window._saved_labels.items() if saved.run_id == record.run_id)
+                    window.resultViewVar.set(label)
+                    window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+                    self._wait_until(lambda: window._selected_saved_run is not None and window._selected_saved_run.run_id == record.run_id, self.root)
+                    window.plotTypeVar.set(NV_PLOT)
+                    window.plotTypeSelector.event_generate("<<ComboboxSelected>>")
+                    self.root.update()
+                    self.assertEqual(window._plotted_metadata["run_id"], record.run_id)
+                    self.assertIn("Current inputs unavailable", window.resultProvenanceVar.get())
+                    for extension in ("png", "svg"):
+                        path = root / (record.run_id + "." + extension)
+                        with patch("main.gui.sample_analysis.filedialog.asksaveasfilename", return_value=str(path)):
+                            window.saveGraphButton.invoke()
+                        self.assertTrue(path.is_file())
+                        if extension == "svg":
+                            self.assertIn(record.run_id[:12], path.read_text(encoding="utf-8"))
+                        else:
+                            with Image.open(path) as figure:
+                                figure.load()
+                                pixels = np.asarray(figure.convert("RGB"))
+                                self.assertGreater(np.count_nonzero(np.any(pixels < 200, axis=2)), 100)
+                        metadata = json.loads(path.with_suffix(path.suffix + ".json").read_text())
+                        self.assertEqual(metadata["run_id"], record.run_id)
+                        self.assertEqual(metadata["plot_type"], NV_PLOT)
+                        self.assertEqual(metadata["y_scale"], "linear")
+                        self.assertTrue(metadata["series"][0]["points"])
+                    if record is original_record:
+                        window.useRunSettingsButton.invoke()
+                        self.assertEqual(window.modeVar.get(), "Original FOAMS 1.0.5")
+                        self.assertEqual(window.manualRangesVar.get(), draft[1])
+                        self.assertFalse(any(image.analysis_included for image in restored.images))
+                window.plotTypeVar.set(NA_PLOT)
+                window.plotTypeSelector.event_generate("<<ComboboxSelected>>")
+                self.root.update()
+                self.assertEqual(window._plotted_metadata["plot_type"], NA_PLOT)
+                window.plotScaleVar.set("Linear Y")
+                window._graph_option_changed("Y axis")
+                self.assertEqual(window.plotAxes.get_yscale(), "linear")
+                self.assertIn("Modern", window._plotted_metadata["caption"])
+                with patch("main.gui.sample_analysis.filedialog.asksaveasfilename", return_value=str(root / "na.svg")):
+                    window.saveGraphButton.invoke()
+                self.assertIn("Modern", (root / "na.svg").read_text(encoding="utf-8"))
+            window._on_close()
 
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self._request_geometry(self.root, width, height)
