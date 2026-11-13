@@ -518,7 +518,7 @@ def _load_run_history(project, root, index):
     seen = set()
     for entry in index:
         try:
-            if not isinstance(entry, dict) or type(entry.get("schema")) is not int or entry.get("schema") != RUN_SCHEMA_VERSION:
+            if not isinstance(entry, dict) or type(entry.get("schema")) is not int or entry.get("schema") not in (1, RUN_SCHEMA_VERSION):
                 raise ValueError("Unsupported historical run schema")
             if entry.get("project_id") != project.project_id or entry.get("run_id") in seen:
                 raise ValueError("Historical run identity mismatch or duplicate")
@@ -527,6 +527,8 @@ def _load_run_history(project, root, index):
                 raise ValueError("Historical run checksum mismatch")
             run = SavedAnalysisRun(entry["run_id"], project.project_id, payload)
             data = validate_run(run)
+            if entry["schema"] != run.schema:
+                raise ValueError("Historical run index schema does not match its payload")
             if entry["path"] != run.index_entry()["path"]:
                 raise ValueError("Historical run path does not match its immutable identity")
             loaded_assets = {}

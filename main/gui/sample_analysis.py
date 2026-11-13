@@ -22,7 +22,7 @@ from ..core.legacy_perimeter import (
     FOAMS105_PERIMETER_PROFILE_OLD,
 )
 from ..core.reconstruction import UPPER_TAIL_ASSUMPTION
-from ..core.run_exports import export_selected_run, run_tables
+from ..core.run_exports import TABLE_PROJECTION_SCHEMA_VERSION, export_selected_run, run_tables
 from ..core.sample_analysis import (
     CapturedAnalysisRequest,
     CompareRunResult,
@@ -868,9 +868,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                     self.resultProvenanceVar.set("No completed current request")
                     return
                 self._present_result(*self._current_view)
+                self.statusVar.set("Showing current request " + self._current_view[2].request_id[:8])
             else:
                 envelope = self._successful_results[selected_label]
                 self._present_result(envelope.method, envelope.result, envelope.request, (envelope,), previous=True)
+                self.statusVar.set("Showing previous result " + envelope.request.request_id[:8])
         except Exception as exc:
             self._restore_view(view)
             self._show_failure("Rendering", exc)
@@ -1212,6 +1214,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         try:
             self._clear_distribution()
             details = {key: value for key, value in data.items() if key not in ("tables", "methods")}
+            details["display_table_projection"] = {"schema": TABLE_PROJECTION_SCHEMA_VERSION, "source_run_schema": record.schema,
+                "basis": "retained native projections; no scientific recomputation"}
             details["methods"] = [{key: value for key, value in method.items() if key != "native"} for method in data["methods"]]
             self._set_results([json.dumps(details, ensure_ascii=False, indent=2)])
             self._populate_saved_supplement(data, tables)
@@ -1233,7 +1237,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._table_run_id = data["run_id"]
         self.overviewText.configure(state="normal")
         self.overviewText.delete("1.0", "end")
-        lines = [data["sample_name"], data["completed_at_utc"], f"{len(data['images'])} captured images", ""]
+        lines = [data["sample_name"], data["completed_at_utc"], f"{len(data['images'])} captured images",
+             f"Table projection {TABLE_PROJECTION_SCHEMA_VERSION}; captured record schema {data['schema']}", ""]
         for method in data["methods"]:
             lines.append(f"{method['method_id']}: {method['outcome']}")
             if method["native"] is not None:
@@ -1247,8 +1252,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         lines.extend(["", "Native summaries:"])
         for diagnostic in self.project.analysis_presentation_errors.get(data["run_id"], ()):
             lines.append(f"Presentation error: {diagnostic['message']}")
-        lines.extend(f"{row['method_id']} {row['metric_id']}: {row['value']} {row['unit']}"
-                     for row in tables["summary_metrics"][:100])
+        for row in tables["summary_metrics"][:100]:
+            value = row["value"] if row["availability"] == "available" else "unavailable: " + row["reason"]
+            lines.append(f"{row['method_id']} {row['metric_id']}: {value} {row['unit']}")
         self.overviewText.insert("1.0", "\n".join(lines))
         self.overviewText.configure(state="disabled")
         self._distribution_rows = tables["distributions"]

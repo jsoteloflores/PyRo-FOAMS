@@ -17,7 +17,7 @@ import numpy as np
 from .legacy_exports import write_foams105_export_bundle
 from .sample_project import checksum_ndarray
 
-RUN_SCHEMA_VERSION = 1
+RUN_SCHEMA_VERSION = 2
 
 
 def json_bytes(value) -> bytes:
@@ -62,9 +62,11 @@ class SavedAnalysisRun:
     completed_at_utc: str = field(init=False)
     preset: str = field(init=False)
     outcomes: tuple = field(init=False)
+    schema: int = field(init=False)
 
     def __post_init__(self):
         data = self.data()
+        object.__setattr__(self, "schema", data["schema"])
         object.__setattr__(self, "completed_at_utc", data["completed_at_utc"])
         object.__setattr__(self, "preset", data["preset"])
         object.__setattr__(self, "outcomes", tuple(method["outcome"] for method in data["methods"]))
@@ -73,7 +75,7 @@ class SavedAnalysisRun:
         return json.loads(self.payload)
 
     def index_entry(self):
-        return {"run_id": self.run_id, "project_id": self.project_id, "schema": RUN_SCHEMA_VERSION,
+        return {"run_id": self.run_id, "project_id": self.project_id, "schema": self.schema,
                 "path": f"runs/{self.run_id}-{digest(self.payload)}.json", "sha256": digest(self.payload),
             "completed_at_utc": self.completed_at_utc, "preset": self.preset}
 
@@ -88,8 +90,10 @@ def validate_run(record):
     if not isinstance(record, SavedAnalysisRun):
         raise ValueError("Run must be a SavedAnalysisRun")
     data = record.data()
-    if data.get("schema") != RUN_SCHEMA_VERSION or type(data.get("schema")) is not int:
+    if data.get("schema") not in (1, RUN_SCHEMA_VERSION) or type(data.get("schema")) is not int:
         raise ValueError("Unsupported analysis run schema")
+    if type(data.get("table_projection_schema", 1)) is not int or data.get("table_projection_schema", 1) not in (1, 2):
+        raise ValueError("Unsupported run table projection schema")
     if data.get("run_id") != record.run_id or data.get("project_id") != record.project_id:
         raise ValueError("Analysis run identity mismatch")
     if not record.run_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in record.run_id):
@@ -171,7 +175,10 @@ def _legacy_native(result):
     groups = []
     objects = []
     selected = set(analysis.raw_selection_result.selected_identities)
-    shape = set(analysis.shape_statistics_result.threshold_identities)
+    statistics = analysis.shape_statistics_result
+    shape = set(statistics.summary_population_identities)
+    threshold = set(statistics.threshold_identities)
+    histogram = set(analysis.shape_histogram_result.population_identities)
     for group in result.prepared.groups:
         retained = {(item.image_id, item.component_id) for item in group.diameter_filtered_objects}
         groups.append({"group_id": group.group_id, "source_slot": group.source_slot, "scale_px_per_mm": group.scale_px_per_mm,
@@ -181,6 +188,9 @@ def _legacy_native(result):
             item = structured(raw)
             identity = (raw.image_id, raw.component_id)
             item.update(group_id=group.group_id, selected=identity in selected, shape_population=identity in shape,
+                        shape_threshold_population=identity in threshold, shape_histogram_population=identity in histogram,
+                        shape_included_metrics=[row.metric for row in statistics.statistic_rows if identity in row.included_identities],
+                        shape_excluded_metrics=[row.metric for row in statistics.statistic_rows if identity in row.excluded_identities],
                         preparation_retained=identity in retained)
             objects.append(item)
     return {"method": analysis.method, "profile": result.prepared.perimeter_profile, "groups": groups,
@@ -252,7 +262,7 @@ def create_run_projection(request, results, sample_name, source_arrays=()):
                 write_foams105_export_bundle(result.analysis, output)
                 for path in sorted(output.iterdir()):
                     canonical.append({"filename": path.name, "sha256": asset(path.read_bytes(), "canonical-original")})
-    data = {"schema": RUN_SCHEMA_VERSION, "run_id": request.request_id, "project_id": request.snapshot.project_id,
+    data = {"schema": RUN_SCHEMA_VERSION, "table_projection_schema": 2, "run_id": request.request_id, "project_id": request.snapshot.project_id,
             "sample_name": sample_name, "completed_at_utc": datetime.now(timezone.utc).isoformat(),
             "preset": request.mode, "session_id": request.session_id, "application": application_identity(),
             "draft_settings": structured(dict(request.draft_settings)), "method_settings": structured(dict(request.method_settings)),

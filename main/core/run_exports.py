@@ -10,8 +10,10 @@ import tempfile
 from pathlib import Path
 
 from .analysis_runs import digest, json_bytes, validate_run
+from .run_export_schema import TABLE_COLUMNS, TABLE_GRAINS, column_definition, foreign_keys, summary_rows
 
-EXPORT_SCHEMA_VERSION = 1
+EXPORT_SCHEMA_VERSION = 2
+TABLE_PROJECTION_SCHEMA_VERSION = 2
 
 TABLE_KEYS = {
     "sample": ("project_id", "run_id"),
@@ -28,7 +30,7 @@ TABLE_KEYS = {
 
 def run_tables(record):
     data = validate_run(record)
-    if "tables" in data:
+    if "tables" in data and data.get("table_projection_schema", 1) == TABLE_PROJECTION_SCHEMA_VERSION:
         return data["tables"]
     base = {"project_id": record.project_id, "run_id": record.run_id}
     tables = {name: [] for name in TABLE_KEYS}
@@ -129,7 +131,13 @@ def run_tables(record):
             if method_id == "legacy":
                 image_id, object_id = object_["image_id"], object_["component_id"]
                 row = {**object_, **geometry.get((image_id, object_id), {})}
-                row["shape_population"] = object_["shape_population"]
+                stats = native["shape_statistics"]
+                identity = [image_id, object_id]
+                row["shape_population"] = identity in stats["summary_population_identities"]
+                row["shape_threshold_population"] = identity in stats["threshold_identities"]
+                row["shape_histogram_population"] = identity in native["shape_histogram"]["population_identities"]
+                row["shape_included_metrics"] = [item["metric"] for item in stats["statistic_rows"] if identity in item["included_identities"]]
+                row["shape_excluded_metrics"] = [item["metric"] for item in stats["statistic_rows"] if identity in item["excluded_identities"]]
             else:
                 image_id = image_records[object_["image_index"]]["image_id"]
                 object_id = object_["label"]
@@ -140,20 +148,7 @@ def run_tables(record):
                        measured=True, length_unit="mm", area_unit="mm^2")
             tables["objects"].append(row)
 
-        def metrics(value, prefix, population):
-            if isinstance(value, dict) and "availability" not in value:
-                for name, item in value.items():
-                    if name not in ("diagnostics", "source_commit", "source_lines", "source_file", "source_repository", "method", "rows", "shape_result"):
-                        metrics(item, prefix + "." + name, population)
-            elif value is None or isinstance(value, (int, float)) or isinstance(value, dict) and "availability" in value:
-                unit = "%" if "percent" in prefix else "mm^-3" if "nv_per_mm3" in prefix else "mm^2" if "mm2" in prefix else "mm" if prefix.endswith("_mm") else "deg" if "_deg" in prefix else "1"
-                tables["summary_metrics"].append({**common, "metric_id": prefix, "value": value, "unit": unit, "population": population})
-        for section in ("volume", "summary", "categories", "shape_statistics", "reconstruction"):
-            if section in native:
-                value = native[section]
-                if section == "reconstruction" and value is None:
-                    value = {"value": None, "availability": "unavailable", "reason": "reconstruction disabled"}
-                metrics(value, section, "shape-summary" if section == "shape_statistics" else "selected-distribution")
+        tables["summary_metrics"].extend(summary_rows(common, native))
     return tables
 
 
@@ -193,12 +188,15 @@ def export_selected_run(record, assets, destination, cancel=None, presentation_e
         dictionary = {}
         tables = run_tables(record)
         for name, rows in tables.items():
-            columns = list(TABLE_KEYS[name])
+            columns = list(TABLE_COLUMNS[name])
             for row in rows:
                 for column in row:
                     if column not in columns:
-                        columns.append(column)
-            value_columns = tuple(columns)
+                        raise ValueError(f"Undeclared export field {name}.{column}")
+            for column in tuple(columns):
+                if column not in TABLE_KEYS[name]:
+                    columns.extend((column + "_availability", column + "_reason"))
+            value_columns = TABLE_COLUMNS[name]
             normalized = []
             for row in rows:
                 check_cancel()
@@ -210,6 +208,8 @@ def export_selected_run(record, assets, destination, cancel=None, presentation_e
                         if isinstance(value, dict) and "availability" not in value:
                             availability = "available"
                         reason = value.get("reason", "") if isinstance(value, dict) else "not supplied by this method" if value is None else ""
+                        if name == "summary_metrics" and column == "value":
+                            availability, reason = row["availability"], row["reason"]
                         converted[column] = value.get("value") if isinstance(value, dict) and "availability" in value else value
                         converted[column + "_availability"] = availability
                         converted[column + "_reason"] = reason
@@ -229,14 +229,9 @@ def export_selected_run(record, assets, destination, cancel=None, presentation_e
                 writer.writerow({column: _cell(row.get(column)) for column in columns})
             write(name + ".csv", stream.getvalue().encode("utf-8"), len(rows))
             dictionary[name + ".csv"] = {"primary_key": TABLE_KEYS[name], "columns": columns,
-                "grain": "one native " + name.rstrip("s") + " per primary key", "nullable": "Empty with *_availability/*_reason; zero is numeric zero",
-                "foreign_keys": ["project_id/run_id -> sample.csv", "method_id -> methods.csv when present",
-                                 "image_id/snapshot_id -> images.csv when present", "method_id/group_id -> groups.csv when present"],
-                "units": {column: "mm^-2" if "na_per_mm2" in column else "mm^-3" if "nv_per_mm3" in column else
-                          "mm^2" if "mm2" in column else "mm/px" if column == "mm_per_px" else "px/mm" if column == "scale_px_per_mm" else
-                          "mm" if column.endswith("_mm") else "px^2" if column == "area_px" else "px" if column.endswith("_px") or column.startswith(("bbox_", "roi_", "centroid_")) else
-                          "deg" if column.endswith("_deg") else "row unit_name^2" if column == "area_units2" else "row unit_name" if column.endswith("_units") else
-                          "row unit" if column == "value" else "1 or text/identifier" for column in columns}}
+                "grain": TABLE_GRAINS[name], "nullable": "Empty with *_availability/*_reason; zero is numeric zero",
+                "foreign_keys": foreign_keys(name), "fields": {column: column_definition(column) for column in columns},
+                "units": {column: column_definition(column)["unit"] for column in columns}}
         settings_payload = {"run_id": record.run_id, "draft_settings": data["draft_settings"],
                     "methods": [{"method_id": method["method_id"], "settings": method["settings"]} for method in data["methods"]]}
         write("settings.json", json_bytes(settings_payload))
@@ -256,6 +251,7 @@ def export_selected_run(record, assets, destination, cancel=None, presentation_e
         write("README.md", EXPORT_README.encode("utf-8"))
         write("manifest.json", json_bytes({"schema": EXPORT_SCHEMA_VERSION, "complete": True,
             "project_id": record.project_id, "run_id": record.run_id, "record_sha256": digest(record.payload),
+            "source_run_schema": record.schema, "table_projection_schema": TABLE_PROJECTION_SCHEMA_VERSION,
             "application": data["application"], "presentation_errors": list(presentation_errors), "files": files,
             "table_availability": {name: "available" if rows else "header-only; no supplied rows" for name, rows in tables.items()}}))
         check_cancel()
@@ -279,6 +275,11 @@ row ordinals. Modern nesting issues density selections, not an Original raw-obje
 Reconstruction disabled is unavailable, not zero. Canonical TSV/sidecar files, when
 available, are preserved byte-for-byte under original_compatible, not tidy CSV tables.
 Full keys, grains, foreign keys and units are in data_dictionary.json.
+Table/export projection contract 2 uses explicit public-field mappings. Shape
+summary, threshold/histogram and per-metric validity populations are distinct.
+For source run schema 1, tidy tables are reprojected from retained native data
+without running science; run.json and original_compatible remain unchanged.
+The manifest identifies both source_run_schema and table_projection_schema.
 
 ## Join example (standard library only)
 

@@ -1258,6 +1258,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                             self.root.update()
                             window._poll_history()
                             self.assertEqual(signature(), expected)
+                            if destination in ("Current request", label_b):
+                                self._capture_owned_window(window, "analysis-22a-switch-" + ("current" if destination == "Current request" else "saved") + ".png")
                 finally:
                     release.set()
         self.assertEqual(project.analysis_runs[0].run_id, run_a.run_id)

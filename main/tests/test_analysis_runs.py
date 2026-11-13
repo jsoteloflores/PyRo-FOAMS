@@ -11,8 +11,18 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from main.core.analysis_runs import append_run, create_run_projection, digest, validate_run
+from main.core.analysis_runs import (
+    SavedAnalysisRun,
+    append_run,
+    create_run_projection,
+    digest,
+    json_bytes,
+    structured,
+    validate_run,
+)
 from main.core.legacy_exports import write_foams105_export_bundle
+from main.core.legacy_summaries import Foams105RealValue
+from main.core.run_export_schema import SHAPE_REDUCTIONS, TABLE_COLUMNS, summary_rows
 from main.core.run_exports import TABLE_KEYS, _cell, export_selected_run, run_tables
 from main.core.sample_analysis import (
     CapturedAnalysisRequest,
@@ -28,6 +38,98 @@ from main.core.sample_project_io import SampleProjectIoError, open_project, save
 
 
 class TestSavedAnalysisRuns(unittest.TestCase):
+    def test_explicit_shape_reductions_and_membership_match_public_results(self):
+        project, _, outcomes = self.completed()
+        snapshot = create_analysis_snapshot(project)
+        scale = max(group.scale_px_per_mm for group in outcomes["legacy"].prepared.groups)
+        minimum = outcomes["legacy"].analysis.shape_result.rows[0].equivalent_diameter_mm * scale
+        for mode, threshold in (("initial_analysis", minimum), ("updated_minimum", 100.0)):
+            with self.subTest(mode=mode):
+                context = prepare_legacy_analysis(snapshot, LegacyRunConfig(minimum_diameter_px=minimum))
+                labels = context.prepared.label_preparation_result.bin_labels_mm
+                config = LegacyRunConfig(minimum_diameter_px=minimum, selection_mode="manual",
+                    manual_ranges=(("group-1", labels[0], labels[-1]),), shape_statistics_mode=mode, shape_minimum_diameter_px=threshold)
+                legacy = analyze_legacy_prepared(context, config)
+                request = CapturedAnalysisRequest(uuid.uuid4().hex, "session", "Original FOAMS 1.0.5", "run", snapshot, (), (), (), config, None)
+                projection = create_run_projection(request, {"legacy": legacy}, project.sample_name)
+                tables = run_tables(projection.record)
+                metrics = {row["metric_id"]: row for row in tables["summary_metrics"]}
+                public = legacy.analysis.shape_statistics_result
+                if mode == "initial_analysis":
+                    self.assertNotEqual(public.summary_population_identities, public.threshold_identities)
+                for statistic in public.statistic_rows:
+                    for reduction in SHAPE_REDUCTIONS:
+                        row = metrics[f"shape_statistics.{statistic.metric}.{reduction}"]
+                        self.assertEqual(row["value"], getattr(statistic, reduction))
+                        self.assertEqual(row["unit"], "count" if reduction in ("n", "population_count") else "1")
+                        self.assertEqual(row["status"], statistic.status)
+                        self.assertEqual(row["reason"], statistic.reason or ("not supplied by source" if getattr(statistic, reduction) is None else ""))
+                        self.assertEqual(row["included_identities"], structured(statistic.included_identities))
+                        self.assertEqual(row["excluded_identities"], structured(statistic.excluded_identities))
+                self.assertEqual(metrics["shape_statistics.maximum_configured_scale_px_per_mm"]["unit"], "px/mm")
+                self.assertEqual(metrics["shape_statistics.minimum_diameter_px"]["unit"], "px")
+                self.assertEqual(metrics["shape_statistics.minimum_diameter_px"]["kind"], "setting")
+                for row in tables["objects"]:
+                    identity = (row["image_id"], row["object_id"])
+                    self.assertEqual(row["shape_population"], identity in public.summary_population_identities)
+                    self.assertEqual(row["shape_threshold_population"], identity in public.threshold_identities)
+                    self.assertEqual(row["shape_histogram_population"], identity in legacy.analysis.shape_histogram_result.population_identities)
+
+    def test_undefined_wrapper_is_one_quantity_with_reason(self):
+        wrapper = Foams105RealValue(None, reason="division_by_zero", legacy_classification="positive_infinity", operands=(1.0, 0.0))
+        rows = summary_rows({"project_id": "project", "run_id": "run", "method_id": "legacy"},
+                            {"summary": {"corrected_nv_per_mm3": structured(wrapper)}})
+        corrected = next(row for row in rows if row["metric_id"] == "summary.corrected_nv_per_mm3")
+        self.assertIsNone(corrected["value"])
+        self.assertEqual(corrected["availability"], "unavailable")
+        self.assertEqual(corrected["reason"], "division_by_zero")
+        self.assertEqual(corrected["classification"], "positive_infinity")
+        self.assertFalse(any(row["metric_id"].endswith((".reason", ".operands", ".legacy_classification")) for row in rows))
+
+    def test_schema1_reprojection_preserves_record_and_canonical_bytes(self):
+        project, projection, _ = self.completed()
+        data = projection.record.data()
+        data["schema"] = 1
+        data.pop("table_projection_schema")
+        data["tables"]["summary_metrics"] = []
+        old = SavedAnalysisRun(projection.record.run_id, project.project_id, json_bytes(data))
+        project.analysis_runs = [old]
+        before = old.payload
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            save_project(project, root / "project")
+            restored = open_project(root / "project")
+            loaded = restored.analysis_runs[0]
+            self.assertEqual(loaded.payload, before)
+            self.assertEqual(loaded.index_entry()["schema"], 1)
+            with patch("main.core.sample_analysis.prepare_legacy_analysis", side_effect=AssertionError("migration reran science")):
+                tables = run_tables(loaded)
+                output = export_selected_run(loaded, restored.analysis_assets, root / "export")
+            self.assertTrue(any(row["metric_id"] == "shape_statistics.aspect_ratio.mean" for row in tables["summary_metrics"]))
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(manifest["source_run_schema"], 1)
+            self.assertEqual(manifest["table_projection_schema"], 2)
+            self.assertEqual(loaded.payload, before)
+            for artifact in data["canonical_original"]:
+                self.assertEqual((output / "original_compatible" / artifact["filename"]).read_bytes(), project.analysis_assets[artifact["sha256"]])
+
+    def test_complete_headers_and_explicit_units_on_failed_exports(self):
+        project, _, _ = self.completed()
+        request = CapturedAnalysisRequest(uuid.uuid4().hex, "session", "Compare methods", "run", create_analysis_snapshot(project), (), (), (), None, None)
+        projection = create_run_projection(request, {"legacy_error": ValueError("bad legacy"), "modern_error": ValueError("bad modern")}, project.sample_name)
+        append_run(project, projection)
+        with tempfile.TemporaryDirectory() as folder:
+            output = export_selected_run(projection.record, project.analysis_assets, Path(folder) / "export")
+            dictionary = json.loads((output / "data_dictionary.json").read_text())
+            for table, declared in TABLE_COLUMNS.items():
+                with (output / (table + ".csv")).open(encoding="utf-8", newline="") as handle:
+                    reader = csv.DictReader(handle)
+                    self.assertTrue(set(declared).issubset(reader.fieldnames))
+            self.assertEqual(dictionary["objects.csv"]["units"]["orientation_deg"], "deg")
+            self.assertEqual(dictionary["objects.csv"]["units"]["area_px"], "px^2")
+            self.assertEqual(dictionary["objects.csv"]["units"]["shape_population_availability"], "text")
+            self.assertEqual(dictionary["groups.csv"]["units"]["scale_px_per_mm"], "px/mm")
+            self.assertTrue(dictionary["objects.csv"]["foreign_keys"][0]["columns"])
     def test_export_keys_values_artifacts_and_input_assets(self):
         project, projection, _ = self.completed()
         tables = run_tables(projection.record)
