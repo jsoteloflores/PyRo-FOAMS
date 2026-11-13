@@ -1152,6 +1152,116 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                         self._capture_owned_window(window, "analysis-22a-history-only-" + case + ".png")
                     window._on_close()
 
+    def test_delayed_history_selection_is_owned_by_view_intent(self):
+        from main.core.run_exports import run_tables as real_tables
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        set_analysis_included(project.images[2], False)
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, create_analysis_snapshot(project))
+        window.modeVar.set("Modern analysis")
+        window.modernMinDetectableVar.set("0.001")
+        window.modernEdgesVar.set("0.001,0.01,0.1")
+        for _ in range(2):
+            window.runButton.invoke()
+            self._wait_until(lambda: not window._busy, self.root)
+        run_a, run_b = project.analysis_runs
+        label_a = next(label for label, run in window._saved_labels.items() if run.run_id == run_a.run_id)
+        label_b = next(label for label, run in window._saved_labels.items() if run.run_id == run_b.run_id)
+        previous_live = next(label for label, envelope in window._successful_results.items() if envelope.request.request_id == run_a.run_id)
+
+        def select(label):
+            window.resultViewVar.set(label)
+            window._select_result_view()
+
+        def signature():
+            return (window.resultViewVar.get(), window._selected_saved_run, window._displayed_request,
+                    window.resultProvenanceVar.get(), window.overviewText.get("1.0", "end"),
+                    tuple(window.distributionTable.item(row, "values") for row in window.distributionTable.get_children()),
+                    tuple(window.objectsTable.item(row, "values") for row in window.objectsTable.get_children()),
+                    tuple((line.get_label(), tuple(line.get_xdata()), tuple(line.get_ydata())) for line in window.plotAxes.lines),
+                    window._table_run_id)
+
+        expected = signature()
+        with patch("main.gui.sample_analysis.run_tables", side_effect=ValueError("injected history load failure")):
+            select(label_a)
+            self._wait_until(lambda: not window._history_loading, self.root)
+        self.assertEqual(signature(), expected)
+        self.assertIn("History load failed", window.statusVar.get())
+        count = len(project.analysis_runs)
+        window.prepareButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertFalse(window._object_rows)
+        self.assertFalse(window._distribution_rows)
+        self.assertFalse(window.overviewText.get("1.0", "end").strip())
+        self.assertIsNone(window._table_run_id)
+        self.assertEqual(len(project.analysis_runs), count)
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+
+        for destination in ("Current request", previous_live, label_b, "calculate", "cancel", "session", "close"):
+            with self.subTest(destination=destination):
+                select("Current request")
+                expected_request = window._displayed_request
+                entered, release, completed = threading.Event(), threading.Event(), threading.Event()
+                queued = threading.Event()
+                put = window._history_queue.put
+                def record_put(item):
+                    put(item)
+                    if item[1].run_id == run_a.run_id:
+                        queued.set()
+                def delayed(record):
+                    if record.run_id == run_a.run_id:
+                        entered.set()
+                        if not release.wait(5):
+                            raise RuntimeError("history barrier timeout")
+                    try:
+                        return real_tables(record)
+                    finally:
+                        completed.set()
+                try:
+                    with patch("main.gui.sample_analysis.run_tables", side_effect=delayed), patch.object(window._history_queue, "put", side_effect=record_put):
+                        select(label_a)
+                        self._wait_until(entered.is_set, self.root)
+                        if destination == "calculate":
+                            window.runButton.invoke()
+                            self.assertEqual(str(window.cancelButton.cget("state")), "normal")
+                        elif destination == "cancel":
+                            window.cancelButton.invoke()
+                        elif destination == "close":
+                            window._on_close()
+                        elif destination == "session":
+                            original_project_id = project.project_id
+                            project.project_id = "replaced-project-session"
+                        else:
+                            select(destination)
+                            if destination == label_b:
+                                self._wait_until(lambda: window._selected_saved_run is not None, self.root)
+                        if destination not in ("close", "session"):
+                            expected = signature()
+                        release.set()
+                        self._wait_until(queued.is_set, self.root)
+                        if destination == "close":
+                            self.assertFalse(window.winfo_exists())
+                            continue
+                        if destination == "session":
+                            self._wait_until(lambda: not window._history_loading, self.root)
+                            self.assertIs(window._displayed_request, expected_request)
+                            project.project_id = original_project_id
+                            continue
+                        if destination == "calculate":
+                            self._wait_until(lambda: not window._busy, self.root)
+                            self.assertNotEqual(window._displayed_request.request_id, run_a.run_id)
+                            self.assertIsNone(window._selected_saved_run)
+                            self.assertEqual(str(window.cancelButton.cget("state")), "disabled")
+                        else:
+                            self.root.update()
+                            window._poll_history()
+                            self.assertEqual(signature(), expected)
+                finally:
+                    release.set()
+        self.assertEqual(project.analysis_runs[0].run_id, run_a.run_id)
+
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self._request_geometry(self.root, width, height)
         self._record_geometry(self.root, "preparation-layout", requested_size=[width, height], font_scale=font_scale)

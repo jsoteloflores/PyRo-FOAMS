@@ -119,6 +119,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._projection_views = {}
         self._table_run_id = None
         self._history_previous = None
+        self._history_request = None
 
         self.modeVar = tk.StringVar(value="Original FOAMS 1.0.5")
         self.minimumDiameterVar = tk.StringVar(value="2.0")
@@ -813,6 +814,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.resultViewSelector.configure(values=options)
 
     def _present_result(self, kind, result, request, envelopes, previous=False) -> None:
+        self._clear_supplement()
         self._selected_saved_run = None
         self._saved_view_data = None
         if not previous:
@@ -847,11 +849,23 @@ class SampleAnalysisWorkspace(tk.Toplevel):
     def _select_result_view(self, _event=None) -> None:
         view = self._capture_view()
         selected_label = self.resultViewVar.get()
+        self._invalidate_history()
+        if self._busy or self._exporting:
+            self.resultViewVar.set(getattr(self, "_selected_view_label", "Current request"))
+            return
         try:
             if selected_label in self._saved_labels:
                 self._load_saved_run(self._saved_labels[selected_label])
             elif selected_label == "Current request":
                 if self._current_view is None:
+                    self._clear_supplement()
+                    self._clear_distribution()
+                    self._set_results(["No completed current request"])
+                    self._finish_plot()
+                    self._selected_saved_run = self._saved_view_data = self._displayed_request = None
+                    self._displayed_envelopes = ()
+                    self._selected_view_label = selected_label
+                    self.resultProvenanceVar.set("No completed current request")
                     return
                 self._present_result(*self._current_view)
             else:
@@ -860,6 +874,32 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         except Exception as exc:
             self._restore_view(view)
             self._show_failure("Rendering", exc)
+        finally:
+            self._sync_operation_controls()
+
+    def _invalidate_history(self):
+        self._view_generation += 1
+        self._history_loading = False
+        self._history_request = None
+        self._sync_operation_controls()
+
+    def _sync_operation_controls(self):
+        self.cancelButton.configure(state="normal" if self._busy or self._history_loading or self._exporting else "disabled")
+        self.resultViewSelector.configure(state="disabled" if self._busy or self._exporting else "readonly")
+
+    def _clear_supplement(self):
+        self._table_run_id = None
+        self._distribution_rows = []
+        self._object_rows = []
+        self._object_row_by_id = {}
+        self._object_page = self._distribution_page = 0
+        self.overviewText.configure(state="normal")
+        self.overviewText.delete("1.0", "end")
+        self.overviewText.configure(state="disabled")
+        self.objectsTable.delete(*self.objectsTable.get_children())
+        self.objectPageLabel.configure(text="No completed run population selected")
+        self.tableGroupVar.set("All")
+        self.tableFilters[1].configure(values=("All",))
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -879,13 +919,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         for button in (self.runButton, self.suggestButton, self.prepareButton, self.previewButton, self.shapeUpdateButton,
                    self.saveSetupButton, self.useRunSettingsButton, self.exportRunButton):
             button.configure(state="disabled" if busy else "normal")
-        self.cancelButton.configure(state="normal" if busy else "disabled")
+        self._sync_operation_controls()
 
     def _cancel_job(self) -> None:
         if self._history_loading and self._history_previous is not None:
             self._restore_view(self._history_previous)
-        self._view_generation += 1
-        self._history_loading = False
+        self._invalidate_history()
         self._export_cancel.set()
         self._active_generation += 1
         self._active_request = None
@@ -908,13 +947,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self._start_job("run")
 
     def _start_job(self, action: str) -> None:
-        if self._busy:
+        if self._busy or self._exporting:
             return
         if self._history_loading:
-            self._view_generation += 1
-            self._history_loading = False
             if self._history_previous is not None:
                 self._restore_view(self._history_previous)
+        self._invalidate_history()
         try:
             if not self._input_signature()[2]:
                 raise SampleAnalysisError("Project session changed; reopen analysis from the current project")
@@ -1125,17 +1163,20 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
     def _load_saved_run(self, record):
         self._history_previous = self._capture_view()
-        self._view_generation += 1
         generation = self._view_generation
+        if not self._input_signature()[2]:
+            raise ValueError("Project session changed; reopen Results / history from the current project")
+        request = (generation, self.resultViewVar.get(), record.run_id, self.project, self.project.project_id, self._project_session)
+        self._history_request = request
         self._history_loading = True
-        self.cancelButton.configure(state="normal")
+        self._sync_operation_controls()
         self.statusVar.set(f"Loading saved run {record.run_id[:8]}")
 
         def worker():
             try:
-                self._history_queue.put((generation, record, record.data(), run_tables(record), None))
+                self._history_queue.put((request, record, record.data(), run_tables(record), None))
             except Exception as exc:
-                self._history_queue.put((generation, record, None, None, exc))
+                self._history_queue.put((request, record, None, None, exc))
         threading.Thread(target=worker, daemon=True).start()
         self._schedule_after(20, self._poll_history)
 
@@ -1143,19 +1184,31 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         if not self._history_loading:
             return
         try:
-            generation, record, data, tables, error = self._history_queue.get_nowait()
+            request, record, data, tables, error = self._history_queue.get_nowait()
         except queue.Empty:
             self._schedule_after(20, self._poll_history)
             return
-        if generation != self._view_generation:
+        generation, label, run_id, project, project_id, session = request
+        if (generation != self._view_generation or request is not self._history_request
+                or label != self.resultViewVar.get() or run_id != record.run_id
+                or project is not self.project or project_id != self.project.project_id
+                or session != self._project_session or not self._input_signature()[2]):
+            if request is self._history_request:
+                self._invalidate_history()
+                if self._history_previous is not None:
+                    self._restore_view(self._history_previous)
+                self.statusVar.set("Discarded incompatible history completion")
+                return
             self._schedule_after(20, self._poll_history)
             return
         self._history_loading = False
-        self.cancelButton.configure(state="disabled")
+        self._history_request = None
+        self._sync_operation_controls()
         if error is not None:
+            self._restore_view(self._history_previous)
             self._show_failure("History load", error)
             return
-        previous = self._capture_view()
+        previous = self._history_previous
         try:
             self._clear_distribution()
             details = {key: value for key, value in data.items() if key not in ("tables", "methods")}
@@ -1166,7 +1219,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self._saved_view_data = data
             self._displayed_request = None
             self._displayed_envelopes = ()
-            self._selected_view_label = self.resultViewVar.get()
+            self.resultViewVar.set(label)
+            self._selected_view_label = label
             self._filter_saved_tables()
             self._plot_saved_rows()
             self._refresh_result_provenance()
@@ -1302,7 +1356,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.statusVar.set("Saved run settings copied to editable setup; accepted inputs unchanged")
 
     def _export_run(self):
-        if self._exporting:
+        if self._exporting or self._busy or self._history_loading:
             return
         record = self._selected_saved_run
         if record is None and self._displayed_request is not None:
@@ -1317,7 +1371,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         cancellation = self._export_cancel
         self._exporting = True
         self.exportRunButton.configure(state="disabled")
-        self.cancelButton.configure(state="normal")
+        self._sync_operation_controls()
         self.statusVar.set(f"Exporting selected run {record.run_id[:8]}")
         errors = tuple(self.project.analysis_presentation_errors.get(record.run_id, ()))
 
@@ -1339,7 +1393,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             return
         self._exporting = False
         self.exportRunButton.configure(state="disabled" if self._busy else "normal")
-        self.cancelButton.configure(state="disabled")
+        self._sync_operation_controls()
         if error is not None:
             self._show_failure("Export", error)
         else:
@@ -1363,14 +1417,14 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._nonpositive_plot_count = 0
 
     def _capture_view(self):
-        return (self.resultsText.get("1.0", "end"),
+        return (self.resultsText.get("1.0", "end-1c"),
                 [(self.distributionTable.item(row_id, "values"), self._table_rows.get(row_id))
                  for row_id in self.distributionTable.get_children()],
                 [(line.get_xdata(), line.get_ydata(), line.get_label()) for line in self.plotAxes.lines],
                 self._displayed_request, self._displayed_envelopes,
                 self.resultProvenanceVar.get(), getattr(self, "_selected_view_label", "Current request"), self._displayed_outcomes,
                 (self._selected_saved_run, self._saved_view_data, self._distribution_rows, self._object_rows, self._table_run_id,
-                 self.overviewText.get("1.0", "end"), self._object_page, self._distribution_page))
+                 self.overviewText.get("1.0", "end-1c"), self._object_page, self._distribution_page))
 
     def _restore_view(self, view) -> None:
         text, rows, curves, request, envelopes, provenance, label, outcomes, saved = view
