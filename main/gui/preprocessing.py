@@ -293,6 +293,8 @@ class PreprocessApp:
         self.includeButton.pack(side="left", padx=4)
         self.analyzeIncludedButton = ttk.Button(self.acceptanceToolbar, text="Analyze Included", command=self.onAnalyzeIncluded)
         self.analyzeIncludedButton.pack(side="left", padx=4)
+        self.resultsHistoryButton = ttk.Button(self.acceptanceToolbar, text="Results / history", command=self.onResultsHistory)
+        self.resultsHistoryButton.pack(side="left", padx=4)
 
         ttk.Label(self.displayToolbar, text="Thumbnails:").pack(side="left", padx=(6, 2), pady=4)
         self.displayModeButtons = []
@@ -317,6 +319,7 @@ class PreprocessApp:
             self.acceptDraftButton,
             self.includeButton,
             self.analyzeIncludedButton,
+            self.resultsHistoryButton,
             *self.displayModeButtons,
         )
         for control in (
@@ -1126,6 +1129,17 @@ class PreprocessApp:
             snapshot=snapshot,
             mark_unsaved=self._markUnsaved,
         )
+
+    def onResultsHistory(self):
+        from .sample_analysis import SampleAnalysisWorkspace
+
+        window = SampleAnalysisWorkspace(parent=self.master, project=self.project, snapshot=None,
+                                         mark_unsaved=self._markUnsaved)
+        if self.project.analysis_runs:
+            newest = self.project.analysis_runs[-1].run_id
+            label = next(label for label, run in window._saved_labels.items() if run.run_id == newest)
+            window.resultViewVar.set(label)
+            window._select_result_view()
 
     def onExportAcceptedMeasurements(self):
         try:

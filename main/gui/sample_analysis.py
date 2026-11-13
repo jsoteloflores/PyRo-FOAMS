@@ -64,7 +64,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self,
         parent: tk.Misc,
         project: SampleProject,
-        snapshot: ProjectAnalysisSnapshot,
+        snapshot: Optional[ProjectAnalysisSnapshot],
         mark_unsaved: Optional[Callable[[], None]] = None,
     ) -> None:
         super().__init__(parent)
@@ -146,7 +146,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._load_persisted_setup()
         self._set_results([f"Sample: {self.project.sample_name}", "Included accepted binary-mask inputs:"]
             + [f"{image.display_name}: {image.image_id} snapshot={image.snapshot_id} calibration={image.mm_per_px!r} mm/px"
-               for image in self.snapshot.images])
+                    for image in self.snapshot.images] if self.snapshot is not None else
+                [f"Sample: {self.project.sample_name}", "History view; no current analysis snapshot captured"])
         self._variables = {
             name: value for name, value in vars(self).items() if isinstance(value, tk.Variable)
             and name not in ("statusVar", "resultViewVar", "resultProvenanceVar", "tableMethodVar", "tableGroupVar", "tableStageVar")
@@ -160,6 +161,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._refresh_summary_banner()
         self._schedule_after(200, self._watch_inputs)
         self._update_result_choices()
+        if self._current_input_problem():
+            self.statusVar.set("Current inputs unavailable; saved history remains accessible")
         if self.project.unavailable_history:
             self._append_details(["Unavailable historical runs:", json.dumps(self.project.unavailable_history, ensure_ascii=False, indent=2)])
             self.statusVar.set("Historical runs unavailable; see Details. Preparation remains usable")
@@ -569,12 +572,13 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 if isinstance(variable, tk.Variable) and name != "statusVar" and isinstance(value, (str, bool)):
                     variable.set(value)
         self.statusVar.set("Saved setup restored; no completed calculation restored")
-        missing = set(setup.get("referenced_images", ())) - {image.image_id for image in self.snapshot.images}
+        missing = set(setup.get("referenced_images", ())) - {image.image_id for image in self.project.images}
         if missing:
             self.statusVar.set("Saved input references changed; refresh/revalidate required")
 
     def _refresh_summary_banner(self) -> None:
-        self.includedSummary.configure(text=f"{len(self.snapshot.images)} included images | Binary masks")
+        included_count = sum(image.analysis_included for image in self.project.images)
+        self.includedSummary.configure(text=f"{included_count} included images | Binary masks")
         available = max(80, self._summary_frame.winfo_width() - self.includedSummary.winfo_reqwidth() - 16)
         font = tkfont.nametofont("TkDefaultFont")
         name = self.project.sample_name
@@ -583,6 +587,17 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         text = "Sample: " + name
         if self.snapshotSummary.cget("text") != text:
             self.snapshotSummary.configure(text=text)
+
+    def _current_input_problem(self):
+        included = [image for image in self.project.images if image.analysis_included]
+        if not included:
+            return "No accepted images are included for current analysis"
+        for image in included:
+            if image.accepted_snapshot is None:
+                return f"{image.display_name}: accepted segmentation unavailable"
+            if calibration_mm_per_px(image) is None:
+                return f"{image.display_name}: current calibration unavailable"
+        return None
 
     def _parse_manual_ranges(self) -> tuple[tuple[str, float, float], ...]:
         raw = self.manualRangesVar.get().strip()
@@ -678,7 +693,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             "modern": asdict(modern_cfg) if modern_cfg is not None else previous.get("modern", {}),
             "source_keys": list(getattr(self, "_source_keys", ())),
             "drafts": {name: variable.get() for name, variable in getattr(self, "_variables", {}).items()},
-            "referenced_images": [image.image_id for image in self.snapshot.images] if hasattr(self, "snapshot") else [],
+            "referenced_images": [image.image_id for image in self.snapshot.images] if getattr(self, "snapshot", None) is not None else previous.get("referenced_images", []),
         }
         validate_analysis_setup(payload)
         self.project.analysis_setup = payload
@@ -755,6 +770,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                         calibration_mm_per_px(image), image.processing_roi) for image in self.project.images if image.analysis_included}
             prefix = "Saved run" if self.project.analysis_runs and self._selected_saved_run.run_id == self.project.analysis_runs[-1].run_id else "Previous saved run"
             stale = " | Inputs changed - rerun required" if captured != current else ""
+            if self._current_input_problem():
+                stale += " | Current inputs unavailable"
             draft_changed = any(getattr(self, name).get() != value for name, value in data["draft_settings"].items()
                                 if name in self._variables and name != "binGroupVar")
             if draft_changed:
@@ -767,6 +784,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             return
         previous = self.resultViewVar.get() != "Current request"
         state = "Previous successful result" if previous else "Current request"
+        if self._current_input_problem():
+            state += " | Current inputs unavailable"
         if request.input_signature != self._input_signature():
             state += " | Inputs changed - rerun required"
         elif self._view_settings_stale():
@@ -876,7 +895,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
     def _open_measurements(self) -> None:
         from .stereology import StereologyWindow
-        snapshot = create_analysis_snapshot(self.project)
+        try:
+            snapshot = create_analysis_snapshot(self.project)
+        except ValueError as exc:
+            self._show_failure("Measurements", exc)
+            return
         StereologyWindow(self, images=snapshot.working_images, labels=snapshot.labels, scales=snapshot.scales)
 
     def _update_shape_minimum(self) -> None:

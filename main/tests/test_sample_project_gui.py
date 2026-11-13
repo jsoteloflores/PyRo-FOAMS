@@ -1099,6 +1099,59 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             self.assertEqual(len(window.objectsTable.get_children()), 250)
         window._on_close()
 
+    def test_history_route_without_valid_current_inputs(self):
+        from main.core.sample_project_io import open_project, save_project
+        from main.tests.test_analysis_runs import TestSavedAnalysisRuns
+
+        for case in ("excluded", "uncalibrated", "unavailable"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as folder:
+                project, projection, _ = TestSavedAnalysisRuns().completed("Modern analysis")
+                if case == "uncalibrated":
+                    set_calibration(project.images[0], None, None)
+                else:
+                    for image in project.images:
+                        set_analysis_included(image, False)
+                root = Path(folder) / "project"
+                save_project(project, root)
+                if case == "unavailable":
+                    (root / projection.record.index_entry()["path"]).write_bytes(b"corrupt history")
+                restored = open_project(root)
+                self.app.project = restored
+                self.app._refreshProjectBackedLists()
+                with contextlib.ExitStack() as mocks:
+                    mocks.enter_context(patch("main.gui.preprocessing.create_analysis_snapshot", side_effect=AssertionError("history required current inputs")))
+                    for function in ("prepare_legacy_analysis", "prepare_modern_analysis", "analyze_legacy_prepared", "analyze_modern_prepared"):
+                        mocks.enter_context(patch("main.gui.sample_analysis." + function, side_effect=AssertionError("history ran science")))
+                    previous_windows = set(self._top_levels(self.root))
+                    self.app.resultsHistoryButton.invoke()
+                    self.root.update()
+                    window = next(child for child in self._top_levels(self.root)
+                                  if child not in previous_windows and isinstance(child, sample_analysis.SampleAnalysisWorkspace))
+                    self.assertIsNone(window.snapshot)
+                    if case == "unavailable":
+                        self.assertIn("unavailable", window.statusVar.get())
+                        self.assertIn("Unavailable historical runs", window.resultsText.get("1.0", "end"))
+                    else:
+                        self._wait_until(lambda: window._selected_saved_run is not None, self.root)
+                        self.assertEqual(window._selected_saved_run.payload, projection.record.payload)
+                        self.assertIn("Current inputs unavailable", window.resultProvenanceVar.get())
+                        window.saveSetupButton.invoke()
+                        self.assertIn("Setup saved", window.statusVar.get())
+                        window.useRunSettingsButton.invoke()
+                        self.assertIsNone(window.snapshot)
+                        output = Path(folder) / "exports"
+                        output.mkdir()
+                        with patch("main.gui.sample_analysis.filedialog.askdirectory", return_value=str(output)):
+                            window.exportRunButton.invoke()
+                        self._wait_until(lambda: not window._exporting, self.root)
+                        manifest = json.loads((output / ("run-" + projection.record.run_id) / "manifest.json").read_text())
+                        self.assertEqual(manifest["run_id"], projection.record.run_id)
+                        window.runButton.invoke()
+                        self.assertIn("Validation failed", window.statusVar.get())
+                        self.assertEqual(window._selected_saved_run.run_id, projection.record.run_id)
+                        self._capture_owned_window(window, "analysis-22a-history-only-" + case + ".png")
+                    window._on_close()
+
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self._request_geometry(self.root, width, height)
         self._record_geometry(self.root, "preparation-layout", requested_size=[width, height], font_scale=font_scale)
