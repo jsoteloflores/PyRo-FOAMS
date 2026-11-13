@@ -3,6 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 import tkinter as tk
+import tkinter.font as tkfont
 import uuid
 from dataclasses import asdict, replace
 from tkinter import ttk
@@ -122,6 +123,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
         self._build_ui()
         self._load_persisted_setup()
+        self._set_results([f"Sample: {self.project.sample_name}", "Included accepted binary-mask inputs:"]
+            + [f"{image.display_name}: {image.image_id} snapshot={image.snapshot_id} calibration={image.mm_per_px!r} mm/px"
+               for image in self.snapshot.images])
         self._variables = {
             name: value for name, value in vars(self).items() if isinstance(value, tk.Variable)
             and name not in ("statusVar", "resultViewVar", "resultProvenanceVar")
@@ -138,15 +142,27 @@ class SampleAnalysisWorkspace(tk.Toplevel):
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=10)
         root.pack(fill="both", expand=True)
+        self._layout_root = root
+        self._layout_pending = False
+        self._setup_visible = True
+        self._plot_entered = False
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(5, weight=1)
 
-        summary = ttk.LabelFrame(root, text="Accepted Analysis Snapshot", padding=8)
-        summary.pack(fill="x")
-        self.snapshotSummary = ttk.Label(summary, justify="left", wraplength=1120)
-        self.snapshotSummary.pack(fill="x")
+        summary = ttk.Frame(root)
+        summary.grid(row=0, column=0, sticky="ew")
+        summary.columnconfigure(0, weight=1)
+        self.snapshotSummary = ttk.Label(summary, justify="left")
+        self.snapshotSummary.grid(row=0, column=0, sticky="w")
+        self.includedSummary = ttk.Label(summary)
+        self.includedSummary.grid(row=0, column=1, sticky="e", padx=(12, 0))
+        self._summary_frame = summary
 
         setup = ttk.LabelFrame(root, text="Setup", padding=4)
-        setup.pack(fill="x", pady=(8, 0))
+        setup.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        self.setupBody = setup
         setup_canvas = tk.Canvas(setup, height=230, highlightthickness=0)
+        self._setup_canvas = setup_canvas
         setup_canvas.grid(row=0, column=0, sticky="nsew")
         setup.columnconfigure(0, weight=1)
         setup.rowconfigure(0, weight=1)
@@ -250,8 +266,20 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         ttk.Entry(controls, textvariable=self.modernSegmentsVar, width=45).grid(row=5, column=1, columnspan=3, sticky="ew", padx=8)
         ttk.Checkbutton(controls, text="No 3D size classes above the selected upper edge", variable=self.modernUpperTailVar).grid(row=6, column=0, columnspan=6, sticky="w", pady=(8, 0))
 
+        primary = ttk.Frame(root)
+        primary.grid(row=2, column=0, sticky="ew", pady=4)
+        self._primary_actions = primary
+        self.runButton = ttk.Button(primary, text="Run analysis", command=self._run_analysis)
+        self.runButton.grid(row=0, column=0, sticky="w")
+        self.cancelButton = ttk.Button(primary, text="Cancel", command=self._cancel_job, state="disabled")
+        self.cancelButton.grid(row=0, column=1, sticky="w", padx=8)
+        self.setupToggleButton = ttk.Button(primary, text="Hide setup", command=self._toggle_setup)
+        self.setupToggleButton.grid(row=0, column=2, sticky="w")
+        self.backButton = ttk.Button(primary, text="Back to preparation", command=self._on_close)
+        self.backButton.grid(row=0, column=3, sticky="w", padx=8)
         action_frame = ttk.Frame(root)
-        action_frame.pack(fill="x", pady=(8, 0))
+        action_frame.grid(row=3, column=0, sticky="ew")
+        self._secondary_actions = action_frame
         action_canvas = tk.Canvas(action_frame, height=44, highlightthickness=0)
         action_canvas.pack(fill="x")
         action_scroll = ttk.Scrollbar(action_frame, orient="horizontal", command=action_canvas.xview)
@@ -261,8 +289,6 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         action_canvas.create_window((0, 0), window=actions, anchor="nw")
         actions.bind("<Configure>", lambda event: (action_canvas.configure(scrollregion=action_canvas.bbox("all")),
                               action_canvas.configure(height=actions.winfo_reqheight())))
-        self.runButton = ttk.Button(actions, text="Run analysis", command=self._run_analysis)
-        self.runButton.pack(side="left")
         self.suggestButton = ttk.Button(actions, text="Suggest cutoffs", command=self._suggest_cutoffs)
         self.suggestButton.pack(side="left", padx=(8, 0))
         self.saveSetupButton = ttk.Button(actions, text="Save setup", command=self._save_current_setup)
@@ -273,33 +299,42 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.previewButton.pack(side="left")
         self.shapeUpdateButton = ttk.Button(actions, text="Update shape minimum", command=self._update_shape_minimum)
         self.shapeUpdateButton.pack(side="left", padx=8)
-        self.cancelButton = ttk.Button(actions, text="Cancel", command=self._cancel_job, state="disabled")
-        self.cancelButton.pack(side="left", padx=8)
-        ttk.Button(actions, text="Back to preparation", command=self._on_close).pack(
-            side="left", padx=(8, 0)
-        )
         ttk.Button(actions, text="Measurements", command=self._open_measurements).pack(side="left", padx=8)
-        ttk.Label(root, textvariable=self.statusVar, wraplength=900).pack(fill="x", pady=4)
+        status_frame = ttk.Frame(root)
+        status_frame.grid(row=4, column=0, sticky="ew", pady=4)
+        status_frame.columnconfigure(0, weight=1)
+        self._status_frame = status_frame
+        self._status_canvas = tk.Canvas(status_frame, height=24, highlightthickness=0)
+        self._status_canvas.grid(row=0, column=0, sticky="ew")
+        self.statusLabel = ttk.Label(self._status_canvas, textvariable=self.statusVar, justify="left")
+        self._status_window = self._status_canvas.create_window((0, 0), window=self.statusLabel, anchor="nw")
+        self._status_scroll = ttk.Scrollbar(status_frame, orient="vertical", command=self._status_canvas.yview)
+        self._status_canvas.configure(yscrollcommand=self._status_scroll.set)
+        self.statusLabel.bind("<Configure>", self._queue_layout)
 
-        results = ttk.LabelFrame(root, text="Results", padding=8)
-        results.pack(fill="both", expand=True, pady=(8, 0))
+        results = ttk.Frame(root, padding=(0, 4))
+        results.grid(row=5, column=0, sticky="nsew")
+        results.columnconfigure(0, weight=1)
+        results.rowconfigure(2, weight=1)
+        self._results_frame = results
         self.resultViewVar = tk.StringVar(value="Current request")
         self.resultProvenanceVar = tk.StringVar(value="No completed result selected")
         self.resultViewSelector = ttk.Combobox(results, textvariable=self.resultViewVar,
             values=("Current request",), state="readonly", width=60)
-        self.resultViewSelector.pack(fill="x")
+        self.resultViewSelector.grid(row=0, column=0, sticky="ew")
         self.resultViewSelector.bind("<<ComboboxSelected>>", self._select_result_view)
-        ttk.Label(results, textvariable=self.resultProvenanceVar, wraplength=900).pack(fill="x", pady=4)
+        self.resultProvenanceLabel = ttk.Label(results, textvariable=self.resultProvenanceVar, justify="left")
+        self.resultProvenanceLabel.grid(row=1, column=0, sticky="ew", pady=4)
         views = ttk.Notebook(results)
-        views.pack(fill="both", expand=True)
+        views.grid(row=2, column=0, sticky="nsew")
+        self.resultsNotebook = views
         table_frame = ttk.Frame(views)
         plot_frame = ttk.Frame(views)
         details_frame = ttk.Frame(views)
         views.add(table_frame, text="Distributions")
         views.add(plot_frame, text="Plot")
         views.add(details_frame, text="Details / raw identities")
-        views.bind("<<NotebookTabChanged>>", lambda event: setup_canvas.configure(
-            height=110 if views.index(views.select()) == 1 else 230))
+        views.bind("<<NotebookTabChanged>>", self._results_tab_changed)
         columns = ("method", "group", "bin", "lower", "upper", "count", "area", "na", "nv", "volume")
         self.distributionTable = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="extended")
         for column, label in zip(columns, ("Method", "Group", "Bin", "Lower mm", "Upper mm", "Count", "Area mm^2", "N_A mm^-2", "N_V mm^-3", "Volume fraction")):
@@ -332,6 +367,59 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 pending.extend(widget.winfo_children())
                 widget.bind("<FocusIn>", lambda event, target=widget, viewport=canvas, content=container:
                             self._reveal_control(target, viewport, content), add="+")
+        root.bind("<Configure>", self._queue_layout)
+        self.resultProvenanceLabel.bind("<Configure>", self._queue_layout)
+
+    def _queue_layout(self, _event=None) -> None:
+        if not self._closed and not self._layout_pending:
+            self._layout_pending = True
+            self._schedule_after(0, self._reflow_analysis_layout)
+
+    def _toggle_setup(self) -> None:
+        self._set_setup_visible(not self._setup_visible)
+
+    def _set_setup_visible(self, visible: bool) -> None:
+        self._setup_visible = visible
+        if visible:
+            self.setupBody.grid()
+            self._secondary_actions.grid()
+        else:
+            self.setupBody.grid_remove()
+            self._secondary_actions.grid_remove()
+        self.setupToggleButton.configure(text="Hide setup" if visible else "Show setup")
+        self._queue_layout()
+
+    def _results_tab_changed(self, _event=None) -> None:
+        if self.resultsNotebook.index(self.resultsNotebook.select()) == 1 and not self._plot_entered:
+            self._plot_entered = True
+            self._set_setup_visible(False)
+        self._queue_layout()
+
+    def _reflow_analysis_layout(self) -> None:
+        self._layout_pending = False
+        width = max(1, self._layout_root.winfo_width() - 24)
+        for label in (self.statusLabel, self.resultProvenanceLabel):
+            if int(label.cget("wraplength") or 0) != width:
+                label.configure(wraplength=width)
+        self._status_canvas.itemconfigure(self._status_window, width=width)
+        line_height = tkfont.nametofont("TkDefaultFont").metrics("linespace")
+        status_height = min(self.statusLabel.winfo_reqheight(), line_height * 2 + 4)
+        if int(self._status_canvas.cget("height")) != status_height:
+            self._status_canvas.configure(height=status_height)
+        self._status_canvas.configure(scrollregion=self._status_canvas.bbox("all"))
+        if self.statusLabel.winfo_reqheight() > status_height:
+            self._status_scroll.grid(row=0, column=1, sticky="ns")
+        else:
+            self._status_scroll.grid_remove()
+        reserve = 240 + self.resultViewSelector.winfo_reqheight() + self.resultProvenanceLabel.winfo_reqheight() + line_height + 32
+        self._layout_root.rowconfigure(5, minsize=reserve)
+        if self._setup_visible:
+            fixed = self._summary_frame.winfo_reqheight() + self._primary_actions.winfo_reqheight() + self._status_frame.winfo_reqheight() + self._secondary_actions.winfo_reqheight() + 40
+            setup_overhead = max(0, self.setupBody.winfo_reqheight() - self._setup_canvas.winfo_reqheight())
+            height = max(40, min(230, self._layout_root.winfo_height() - reserve - fixed - setup_overhead))
+            if int(self._setup_canvas.cget("height")) != height:
+                self._setup_canvas.configure(height=height)
+        self._refresh_summary_banner()
 
     def _reveal_control(self, widget, canvas, content) -> None:
         left = widget.winfo_rootx() - content.winfo_rootx()
@@ -412,14 +500,15 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self.statusVar.set("Saved input references changed; refresh/revalidate required")
 
     def _refresh_summary_banner(self) -> None:
-        lines = [
-            f"Sample: {self.project.sample_name}",
-            f"Included accepted images: {len(self.snapshot.images)} | Binary pore masks | {self.modeVar.get()}",
-        ]
-        lines.append(", ".join(f"{image.display_name} ({image.mm_per_px:.6g} mm/px)" for image in self.snapshot.images[:4]))
-        if len(self.snapshot.images) > 4:
-            lines.append(f"and {len(self.snapshot.images) - 4} more; full identities in Details")
-        self.snapshotSummary.configure(text="\n".join(lines))
+        self.includedSummary.configure(text=f"{len(self.snapshot.images)} included images | Binary masks")
+        available = max(80, self._summary_frame.winfo_width() - self.includedSummary.winfo_reqwidth() - 16)
+        font = tkfont.nametofont("TkDefaultFont")
+        name = self.project.sample_name
+        while len(name) > 1 and font.measure("Sample: " + name) > available:
+            name = name[:-2] + "." if name.endswith(".") else name[:-1] + "."
+        text = "Sample: " + name
+        if self.snapshotSummary.cget("text") != text:
+            self.snapshotSummary.configure(text=text)
 
     def _parse_manual_ranges(self) -> tuple[tuple[str, float, float], ...]:
         raw = self.manualRangesVar.get().strip()
@@ -594,11 +683,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             state += " | Inputs changed - rerun required"
         elif self._view_settings_stale():
             state += " | Settings changed - rerun required"
-        self.resultProvenanceVar.set(f"{state} | {request.mode} | request {request.request_id[:12]} | "
-            f"{len(request.snapshot.images)} accepted images | " + "; ".join(f"{method}: {status}" for method, status in self._displayed_outcomes))
+        self.resultProvenanceVar.set(f"{state} | {request.request_id[:8]} | "
+            + "; ".join(f"{method}: {status}" for method, status in self._displayed_outcomes))
 
     def _append_request_details(self, request: CapturedAnalysisRequest) -> None:
         self._append_details([f"Request ID: {request.request_id}", f"Session ID: {request.session_id}",
+            f"Sample: {self.project.sample_name}",
             f"Captured request: {request.mode} / {request.action}",
             f"Legacy settings: {request.legacy_config!r}", f"Modern settings: {request.modern_config!r}",
             f"Captured editable settings: {request.draft_settings!r}", f"Project: {request.snapshot.project_id}"]

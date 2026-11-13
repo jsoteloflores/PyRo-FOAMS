@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import sys
 import tempfile
@@ -224,6 +225,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                         window.plotCanvas.get_tk_widget().master.master.select(1)
                         self.root.update()
                         capture(f"analysis-plot-{width}x{height}-font{scale}x.png")
+                        self._assert_analysis_results_layout(window, width, height, scale, "existing-compare-success")
                         self.assertGreater(window.plotCanvas.get_tk_widget().winfo_height(), 100)
                         window.plotCanvas.draw()
                         pixels = np.asarray(window.plotCanvas.buffer_rgba())
@@ -328,6 +330,9 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             with patch("main.gui.sample_analysis.prepare_modern_analysis", side_effect=delayed):
                 window.runButton.invoke()
                 self._wait_until(entered.is_set, self.root)
+                window.cancelButton.focus_force()
+                self.root.update()
+                self.assertIs(self.root.focus_get(), window.cancelButton)
                 window.cancelButton.invoke()
                 self.assertFalse(window._busy)
                 release.set()
@@ -538,6 +543,129 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 self.assertEqual(window.resultViewVar.get(), label_a)
         finally:
             release.set()
+            window._on_close()
+
+    def _assert_analysis_results_layout(self, window, width, height, font_scale, state, focused=True):
+        window.deiconify()
+        window.lift()
+        window.attributes("-topmost", True)
+        self.root.update()
+        window.plotCanvas.draw()
+        plot = window.plotCanvas.get_tk_widget()
+        metrics = {"state": state, "requested_size": [width, height],
+                   "actual_size": [window.winfo_width(), window.winfo_height()],
+                   "font_scale": font_scale, "tk_scaling": float(window.tk.call("tk", "scaling")),
+                   "plot_height": plot.winfo_height(), "plot_width": plot.winfo_width(),
+                   "setup_visible": window._setup_visible}
+        print("ANALYSIS_LAYOUT: " + json.dumps(metrics), flush=True)
+        artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
+        artifacts.mkdir(parents=True, exist_ok=True)
+        left, top = window.winfo_rootx(), window.winfo_rooty()
+        try:
+            ImageGrab.grab(bbox=(left, top, left + window.winfo_width(), top + window.winfo_height())).save(
+                artifacts / f"analysis-21c-{state}-{width}x{height}-font{font_scale}x.png")
+        finally:
+            window.attributes("-topmost", False)
+        diagnostic = json.dumps(metrics)
+        self.assertEqual(metrics["actual_size"], metrics["requested_size"], diagnostic)
+        self.assertEqual(window._setup_visible, not focused, diagnostic)
+        self.assertGreaterEqual(plot.winfo_height(), 240, diagnostic)
+        self.assertGreaterEqual(window.plotAxes.get_window_extent(window.plotCanvas.get_renderer()).height, 120, diagnostic)
+        for control in (window.runButton, window.cancelButton, window.setupToggleButton,
+                        window.resultViewSelector, window.backButton):
+            self.assertTrue(control.winfo_ismapped(), diagnostic)
+            self.assertGreaterEqual(control.winfo_rooty(), window.winfo_rooty(), diagnostic)
+            self.assertLessEqual(control.winfo_rooty() + control.winfo_height(), window.winfo_rooty() + window.winfo_height(), diagnostic)
+            self.assertLessEqual(control.winfo_rootx() + control.winfo_width(), window.winfo_rootx() + window.winfo_width(), diagnostic)
+        self.assertLessEqual(window.statusLabel.winfo_height() if not window._status_scroll.winfo_ismapped()
+                             else window._status_canvas.winfo_height(), tkfont.nametofont("TkDefaultFont").metrics("linespace") * 2 + 4)
+
+    def test_analysis_results_focused_layout_preserves_state(self):
+        from main.core.sample_analysis import prepare_legacy_analysis, prepare_modern_analysis
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        set_analysis_included(project.images[2], False)
+        project.sample_name = "Long physical sample name with several acquisition details " * 8
+        snapshot = create_analysis_snapshot(project)
+        labels = prepare_legacy_analysis(snapshot).prepared.label_preparation_result.bin_labels_mm
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, snapshot)
+        window.manualRangesVar.set(f"group-1:{labels[0]!r}:{labels[-1]!r}")
+        window.modernMinDetectableVar.set("0.001")
+        window.modernEdgesVar.set("0.001,0.01,0.1")
+        font_sizes = {name: tkfont.nametofont(name).cget("size") for name in tkfont.names()}
+        previous_label = None
+        try:
+            with patch("main.gui.sample_analysis.prepare_legacy_analysis", wraps=prepare_legacy_analysis) as legacy_calls, \
+                 patch("main.gui.sample_analysis.prepare_modern_analysis", wraps=prepare_modern_analysis) as modern_calls:
+                for state in ("original-success", "modern-success", "compare-success", "partial-failure", "both-failed", "previous-inputs-changed"):
+                    if state == "previous-inputs-changed":
+                        set_calibration(project.images[0], 0.004, "mm")
+                        window.resultViewVar.set(previous_label)
+                        window.resultViewSelector.event_generate("<<ComboboxSelected>>")
+                        self.root.update()
+                        self.assertIn("Previous successful result", window.resultProvenanceVar.get())
+                        self.assertIn("Inputs changed", window.resultProvenanceVar.get())
+                    else:
+                        window.modeVar.set("Original FOAMS 1.0.5" if state == "original-success" else
+                                           "Modern analysis" if state == "modern-success" else "Compare methods")
+                        window.minimumDiameterVar.set("-1" if state in ("partial-failure", "both-failed") else "2")
+                        window.modernMinDetectableVar.set("" if state == "both-failed" else "0.001")
+                        window.runButton.invoke()
+                        self._wait_until(lambda: not window._busy, self.root)
+                        if state == "original-success":
+                            self.assertEqual(window.statusVar.get(), "Original run complete")
+                        elif state == "modern-success":
+                            self.assertEqual(window.statusVar.get(), "Modern run complete")
+                            envelope = window._displayed_envelopes[0]
+                            previous_label = next(label for label, saved in window._successful_results.items() if saved is envelope)
+                        else:
+                            self.assertEqual(window._latest_compare.legacy_result is None, state in ("partial-failure", "both-failed"))
+                            self.assertEqual(window._latest_compare.modern_result is None, state == "both-failed")
+                    window.resultsNotebook.select(1)
+                    self.root.update()
+                    self.assertFalse(window._setup_visible)
+                    for font_scale in (1, 2):
+                        for name, size in font_sizes.items():
+                            tkfont.nametofont(name).configure(size=size * font_scale)
+                        for width, height in ((1280, 800), (1400, 900)):
+                            window.geometry(f"{width}x{height}+0+0")
+                            window.statusVar.set("A long operational diagnostic, retained in the scrollable status area. " * 12)
+                            self.root.update()
+                            self._assert_analysis_results_layout(window, width, height, font_scale, state)
+                            request = window._displayed_request
+                            envelopes = window._displayed_envelopes
+                            provenance = window.resultProvenanceVar.get()
+                            signature = window._settings_signature()
+                            counts = (legacy_calls.call_count, modern_calls.call_count)
+                            window.setupToggleButton.invoke()
+                            self.root.update()
+                            self.assertTrue(window.setupBody.winfo_ismapped())
+                            self._assert_analysis_results_layout(window, width, height, font_scale,
+                                                                 state + "-setup-open", focused=False)
+                            window.setupToggleButton.invoke()
+                            self.root.update()
+                            self.assertFalse(window.setupBody.winfo_ismapped())
+                            self.assertIs(window._displayed_request, request)
+                            self.assertEqual(window._displayed_envelopes, envelopes)
+                            self.assertEqual(window.resultProvenanceVar.get(), provenance)
+                            self.assertEqual(window._settings_signature(), signature)
+                            self.assertEqual((legacy_calls.call_count, modern_calls.call_count), counts)
+                            window.runButton.focus_force()
+                            self.root.update()
+                            reached = set()
+                            for _ in range(12):
+                                focused = self.root.focus_get()
+                                reached.add(focused)
+                                focused.event_generate("<Tab>")
+                                self.root.update()
+                            self.assertTrue({window.runButton, window.setupToggleButton, window.backButton,
+                                             window.resultViewSelector}.issubset(reached))
+                    for name, size in font_sizes.items():
+                        tkfont.nametofont(name).configure(size=size)
+        finally:
+            for name, size in font_sizes.items():
+                tkfont.nametofont(name).configure(size=size)
             window._on_close()
 
     def _assert_keyboard_traversal_reaches_primary_controls(self):
