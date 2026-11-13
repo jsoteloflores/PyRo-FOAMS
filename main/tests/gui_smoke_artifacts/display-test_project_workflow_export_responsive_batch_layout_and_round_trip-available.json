@@ -8,46 +8,46 @@
     "window_manager_probe": null,
     "focused_widget": null,
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1280,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1288,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1296,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "environment",
     "requested_size": [
@@ -65,52 +65,56 @@
     "window_manager_probe": null,
     "focused_widget": null,
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1280,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1288,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1296,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "declared-matrix",
     "tested_sizes": [
       [
-        1008,
-        681
+        1064,
+        800
+      ],
+      [
+        1064,
+        900
       ]
     ]
   },
@@ -123,51 +127,51 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "geometry-request",
     "requested_size": [
-      1008,
-      681
+      1064,
+      800
     ]
   },
   {
@@ -179,52 +183,56 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "declared-matrix",
     "tested_sizes": [
       [
-        1008,
-        681
+        1064,
+        800
+      ],
+      [
+        1064,
+        900
       ]
     ]
   },
@@ -237,51 +245,51 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "geometry-request",
     "requested_size": [
-      1008,
-      681
+      1064,
+      800
     ]
   },
   {
@@ -293,51 +301,51 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "preparation-layout",
     "requested_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "font_scale": 1
   },
@@ -350,58 +358,236 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "screenshot",
-    "screenshot": "available-workspace_1008x681_font1x.png",
+    "screenshot": "available-workspace_1064x800_font1x.png",
     "screenshot_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "screenshot_size": [
-      1024,
-      720
+      1080,
+      839
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "available",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".",
+    "screen": [
+      1080,
+      1920
+    ],
+    "virtual_root": [
+      0,
+      0,
+      3000,
+      1920
+    ],
+    "tk_scaling": 1.332167832167832,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      3004,
+      1901
+    ],
+    "client_size": [
+      1064,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1072,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      1080,
+      1872
+    ],
+    "state": "geometry-request",
+    "requested_size": [
+      1064,
+      900
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "available",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".",
+    "screen": [
+      1080,
+      1920
+    ],
+    "virtual_root": [
+      0,
+      0,
+      3000,
+      1920
+    ],
+    "tk_scaling": 1.332167832167832,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      3004,
+      1901
+    ],
+    "client_size": [
+      1064,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1072,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      1080,
+      1872
+    ],
+    "state": "preparation-layout",
+    "requested_size": [
+      1064,
+      900
+    ],
+    "font_scale": 1
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "available",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".",
+    "screen": [
+      1080,
+      1920
+    ],
+    "virtual_root": [
+      0,
+      0,
+      3000,
+      1920
+    ],
+    "tk_scaling": 1.332167832167832,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      3004,
+      1901
+    ],
+    "client_size": [
+      1064,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1072,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      1080,
+      1872
+    ],
+    "state": "screenshot",
+    "screenshot": "available-workspace_1064x900_font1x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "screenshot_size": [
+      1080,
+      939
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -415,46 +601,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -474,8 +660,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080777770560_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080777770560_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038157277056_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038157277056_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -502,46 +688,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -561,8 +747,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080777773312_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080777773312_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038162692160_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038162692160_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -589,46 +775,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame.!button2",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -648,8 +834,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -676,46 +862,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame.!button",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -735,8 +921,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -763,46 +949,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame2.!button",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "forward-tab",
     "generated_sequence": "<Tab>",
@@ -822,8 +1008,8 @@
           "all"
         ],
         "delivered_sequence": "<Tab>",
-        "widget_binding": "if {\"[3080777770304_onPreparationTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080777770560_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038087147392_onPreparationTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038157277056_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -850,46 +1036,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame5.!button2",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -909,8 +1095,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080770350016_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080770350016_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038162676224_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038162676224_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -941,46 +1127,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!scrollbar",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -1000,8 +1186,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080738372864_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080738372864_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038156898112_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038156898112_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1028,52 +1214,56 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!scrollbar",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "declared-matrix",
     "tested_sizes": [
       [
-        1008,
-        681
+        1064,
+        800
+      ],
+      [
+        1064,
+        900
       ]
     ]
   },
@@ -1086,51 +1276,51 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "geometry-request",
     "requested_size": [
-      1008,
-      681
+      1064,
+      800
     ]
   },
   {
@@ -1142,51 +1332,51 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "preparation-layout",
     "requested_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "font_scale": 2
   },
@@ -1199,58 +1389,236 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "screenshot",
-    "screenshot": "available-workspace_1008x681_font2x.png",
+    "screenshot": "available-workspace_1064x800_font2x.png",
     "screenshot_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "screenshot_size": [
-      1024,
-      720
+      1080,
+      839
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "available",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".",
+    "screen": [
+      1080,
+      1920
+    ],
+    "virtual_root": [
+      0,
+      0,
+      3000,
+      1920
+    ],
+    "tk_scaling": 1.332167832167832,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      3004,
+      1901
+    ],
+    "client_size": [
+      1064,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1072,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      1080,
+      1872
+    ],
+    "state": "geometry-request",
+    "requested_size": [
+      1064,
+      900
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "available",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".",
+    "screen": [
+      1080,
+      1920
+    ],
+    "virtual_root": [
+      0,
+      0,
+      3000,
+      1920
+    ],
+    "tk_scaling": 1.332167832167832,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      3004,
+      1901
+    ],
+    "client_size": [
+      1064,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1072,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      1080,
+      1872
+    ],
+    "state": "preparation-layout",
+    "requested_size": [
+      1064,
+      900
+    ],
+    "font_scale": 2
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "available",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".",
+    "screen": [
+      1080,
+      1920
+    ],
+    "virtual_root": [
+      0,
+      0,
+      3000,
+      1920
+    ],
+    "tk_scaling": 1.332167832167832,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      3004,
+      1901
+    ],
+    "client_size": [
+      1064,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1072,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      1080,
+      1872
+    ],
+    "state": "screenshot",
+    "screenshot": "available-workspace_1064x900_font2x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1080,
+      939
+    ],
+    "screenshot_size": [
+      1080,
+      939
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -1264,46 +1632,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -1323,8 +1691,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080777770560_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080777770560_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038157277056_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038157277056_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1351,46 +1719,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -1410,8 +1778,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080777773312_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080777773312_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038162692160_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038162692160_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1438,46 +1806,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame.!button2",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -1497,8 +1865,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1525,46 +1893,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame.!button",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -1584,8 +1952,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080773679360_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038147810304_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1612,46 +1980,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame2.!button",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "forward-tab",
     "generated_sequence": "<Tab>",
@@ -1671,8 +2039,8 @@
           "all"
         ],
         "delivered_sequence": "<Tab>",
-        "widget_binding": "if {\"[3080777770304_onPreparationTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080777770560_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038087147392_onPreparationTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038157277056_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1699,46 +2067,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame5.!button2",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -1758,8 +2126,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080770350016_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080770350016_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038162676224_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038162676224_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1790,46 +2158,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!scrollbar",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -1849,8 +2217,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[3080738372864_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[3080738372864_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2038156898112_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2038156898112_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -1877,58 +2245,58 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      900
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      931
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "screenshot",
-    "screenshot": "available-workspace_populated_1008x681_font1x.png",
+    "screenshot": "available-workspace_populated_1064x900_font1x.png",
     "screenshot_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      939
     ],
     "screenshot_size": [
-      1024,
-      720
+      1080,
+      939
     ],
     "complete_owned_window": true,
     "screenshot_scope": "decorated"
@@ -1942,52 +2310,56 @@
     "window_manager_probe": null,
     "focused_widget": null,
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1280,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1288,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1296,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "declared-matrix",
     "tested_sizes": [
       [
-        1008,
-        681
+        1064,
+        800
+      ],
+      [
+        1064,
+        900
       ]
     ]
   },
@@ -2000,51 +2372,51 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      3440,
-      1440
+      1080,
+      1920
     ],
     "virtual_root": [
       0,
-      -290,
-      6440,
+      0,
+      3000,
       1920
     ],
-    "tk_scaling": 1.3335775335775335,
+    "tk_scaling": 1.332167832167832,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      1008,
-      681
+      3004,
+      1901
     ],
     "client_size": [
-      1008,
-      681
+      1064,
+      800
     ],
     "client_bounds": [
       8,
       31,
-      1016,
-      712
+      1072,
+      831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1024,
-      720
+      1080,
+      839
     ],
     "work_area": [
       0,
       0,
-      3440,
-      1392
+      1080,
+      1872
     ],
     "state": "geometry-request",
     "requested_size": [
-      1008,
-      681
+      1064,
+      800
     ]
   }
 ]
