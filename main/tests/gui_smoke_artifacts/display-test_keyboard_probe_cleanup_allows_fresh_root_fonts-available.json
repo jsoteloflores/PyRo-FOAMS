@@ -8,23 +8,23 @@
     "window_manager_probe": null,
     "focused_widget": null,
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
@@ -46,8 +46,8 @@
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "environment",
     "requested_size": [
@@ -65,23 +65,23 @@
     "window_manager_probe": null,
     "focused_widget": null,
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
@@ -103,17 +103,17 @@
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "declared-matrix",
     "tested_sizes": [
       [
-        1064,
+        1280,
         800
       ],
       [
-        1064,
+        1400,
         900
       ]
     ]
@@ -127,50 +127,50 @@
     "window_manager_probe": null,
     "focused_widget": ".",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "geometry-request",
     "requested_size": [
-      1064,
+      1280,
       800
     ]
   },
@@ -183,46 +183,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -242,8 +242,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038147151488_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038147151488_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193787904_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193787904_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -270,46 +270,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -329,8 +329,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038155058752_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038155058752_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193714048_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193714048_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -357,46 +357,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame.!button2",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -416,8 +416,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038147819264_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038147819264_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193775296_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193775296_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -444,46 +444,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -503,8 +503,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038147151488_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038147151488_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193787904_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193787904_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -531,46 +531,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -590,8 +590,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038155058752_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038155058752_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193714048_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193714048_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -618,46 +618,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame.!button2",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -677,8 +677,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038147819264_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038147819264_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193775296_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193775296_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -705,46 +705,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -764,8 +764,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038147151488_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038147151488_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193787904_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193787904_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -792,46 +792,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame.!button3",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -851,8 +851,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038155058752_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038155058752_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193714048_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193714048_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""
@@ -879,46 +879,46 @@
     "window_manager_probe": null,
     "focused_widget": ".!frame2.!frame.!canvas.!frame.!frame.!button2",
     "screen": [
-      1080,
-      1920
+      3440,
+      1440
     ],
     "virtual_root": [
       0,
-      0,
-      3000,
+      -290,
+      6440,
       1920
     ],
-    "tk_scaling": 1.332167832167832,
+    "tk_scaling": 1.3335775335775335,
     "tk_patchlevel": "8.6.12",
     "wm_min_size": [
       120,
       1
     ],
     "wm_max_size": [
-      3004,
+      6444,
       1901
     ],
     "client_size": [
-      1064,
+      1280,
       800
     ],
     "client_bounds": [
       8,
       31,
-      1072,
+      1288,
       831
     ],
     "decorated_outer_bounds": [
       0,
       0,
-      1080,
+      1296,
       839
     ],
     "work_area": [
       0,
       0,
-      1080,
-      1872
+      3440,
+      1392
     ],
     "state": "reverse-tab",
     "generated_sequence": "<Shift-Tab>",
@@ -938,8 +938,8 @@
           "all"
         ],
         "delivered_sequence": "<Shift-Tab>",
-        "widget_binding": "if {\"[2038147819264_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
-        "shift_tab_binding": "if {\"[2038147819264_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "widget_binding": "if {\"[2752193775296_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
+        "shift_tab_binding": "if {\"[2752193775296_onPreparationShiftTab %# %b %f %h %k %s %t %w %x %y %A %E %K %N %W %T %X %Y %D]\" == \"break\"} break\n",
         "native_reverse_binding": null,
         "class_binding": "",
         "all_binding": ""

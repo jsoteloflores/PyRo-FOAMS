@@ -352,7 +352,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 587,
+    "plot_height": 523,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -481,7 +481,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 263,
+    "plot_height": 253,
     "plot_width": 1256,
     "setup_visible": true
   },
@@ -666,7 +666,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 687,
+    "plot_height": 623,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -795,7 +795,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 363,
+    "plot_height": 299,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -871,7 +871,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -1042,7 +1042,7 @@
       800
     ],
     "font_scale": 2,
-    "plot_height": 485,
+    "plot_height": 370,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -1356,7 +1356,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 585,
+    "plot_height": 470,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -1485,7 +1485,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 245,
+    "plot_height": 264,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -1561,7 +1561,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -1732,7 +1732,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 587,
+    "plot_height": 523,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -1861,7 +1861,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 263,
+    "plot_height": 253,
     "plot_width": 1256,
     "setup_visible": true
   },
@@ -2046,7 +2046,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 687,
+    "plot_height": 623,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -2175,7 +2175,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 363,
+    "plot_height": 299,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -2251,7 +2251,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -2422,7 +2422,7 @@
       800
     ],
     "font_scale": 2,
-    "plot_height": 485,
+    "plot_height": 370,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -2736,7 +2736,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 585,
+    "plot_height": 470,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -2865,7 +2865,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 245,
+    "plot_height": 264,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -2941,7 +2941,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -3112,7 +3112,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 587,
+    "plot_height": 523,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -3241,7 +3241,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 263,
+    "plot_height": 253,
     "plot_width": 1256,
     "setup_visible": true
   },
@@ -3426,7 +3426,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 687,
+    "plot_height": 623,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -3555,7 +3555,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 363,
+    "plot_height": 299,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -3631,7 +3631,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -3802,7 +3802,7 @@
       800
     ],
     "font_scale": 2,
-    "plot_height": 485,
+    "plot_height": 370,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -4116,7 +4116,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 585,
+    "plot_height": 470,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -4245,7 +4245,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 245,
+    "plot_height": 264,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -4321,7 +4321,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -4492,7 +4492,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 587,
+    "plot_height": 523,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -4621,7 +4621,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 263,
+    "plot_height": 253,
     "plot_width": 1256,
     "setup_visible": true
   },
@@ -4806,7 +4806,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 687,
+    "plot_height": 623,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -4935,7 +4935,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 363,
+    "plot_height": 299,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -5011,7 +5011,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -5182,7 +5182,7 @@
       800
     ],
     "font_scale": 2,
-    "plot_height": 485,
+    "plot_height": 370,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -5496,7 +5496,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 585,
+    "plot_height": 470,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -5625,7 +5625,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 245,
+    "plot_height": 264,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -5701,7 +5701,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -5872,7 +5872,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 587,
+    "plot_height": 523,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -6001,7 +6001,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 263,
+    "plot_height": 253,
     "plot_width": 1256,
     "setup_visible": true
   },
@@ -6186,7 +6186,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 687,
+    "plot_height": 623,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -6315,7 +6315,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 363,
+    "plot_height": 299,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -6391,7 +6391,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -6562,7 +6562,7 @@
       800
     ],
     "font_scale": 2,
-    "plot_height": 485,
+    "plot_height": 370,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -6876,7 +6876,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 585,
+    "plot_height": 470,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -7005,7 +7005,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 245,
+    "plot_height": 264,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -7081,7 +7081,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -7252,7 +7252,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 619,
+    "plot_height": 555,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -7381,7 +7381,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 295,
+    "plot_height": 253,
     "plot_width": 1256,
     "setup_visible": true
   },
@@ -7566,7 +7566,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 719,
+    "plot_height": 655,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -7695,7 +7695,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 395,
+    "plot_height": 331,
     "plot_width": 1376,
     "setup_visible": true
   },
@@ -7771,7 +7771,7 @@
     "windowing_system": "win32",
     "display": null,
     "window_manager_probe": null,
-    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame2.!button",
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!frame5.!notebook.!frame2.!frame.!canvas.!frame.!frame3.!label",
     "screen": [
       3440,
       1440
@@ -7942,7 +7942,7 @@
       800
     ],
     "font_scale": 2,
-    "plot_height": 517,
+    "plot_height": 402,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -8256,7 +8256,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 617,
+    "plot_height": 502,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -8385,7 +8385,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 259,
+    "plot_height": 264,
     "plot_width": 1376,
     "setup_visible": true
   },
