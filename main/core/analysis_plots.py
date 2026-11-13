@@ -17,7 +17,7 @@ def reconstruction_series(data, tables):
             continue
         rows = [row for row in tables["distributions"] if row["method_id"] == method_id and row["stage"] == "selected"]
         if method_id == "legacy":
-            title = "Original FOAMS inverse Saltykov reconstruction"
+            title = "Original FOAMS 3D conversion"
             positions = [row["label_mm"] for row in native["selected"]["rows"]]
             values = native["conversion"]["signed_nv_per_mm3"]
             coordinates = "Original label-only diameter positions (mm)"

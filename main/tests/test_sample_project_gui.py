@@ -1333,7 +1333,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         original_record = project.analysis_runs[-1]
         window.inverseGraphButton.invoke()
         self.root.update()
-        line = next(line for line in window.plotAxes.lines if line.get_label() == "Original FOAMS inverse Saltykov reconstruction")
+        line = next(line for line in window.plotAxes.lines if line.get_label() == "Original FOAMS 3D conversion")
         np.testing.assert_array_equal(line.get_xdata(), [row.label_mm for row in original.analysis.binned_selection_result.rows])
         np.testing.assert_array_equal(line.get_ydata(), original.analysis.conversion_result.signed_nv_per_mm3)
         self.assertEqual(window.plotAxes.get_yscale(), "linear")
@@ -1350,7 +1350,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             native["conversion"]["signed_nv_per_mm3"] = list(values)
             data["tables"]["distributions"] = [row for row in data["tables"]["distributions"] if row["stage"] == "selected"][:len(values)]
             window._render_inverse_graph(data)
-            line = next(line for line in window.plotAxes.lines if line.get_label() == "Original FOAMS inverse Saltykov reconstruction")
+            line = next(line for line in window.plotAxes.lines if line.get_label() == "Original FOAMS 3D conversion")
             np.testing.assert_array_equal(line.get_xdata(), [0.1] * len(values))
             np.testing.assert_array_equal(line.get_ydata(), values)
         window._restore_view(current)
@@ -1380,8 +1380,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             reached.add(focused)
             focused.event_generate("<Tab>")
             self.root.update()
-        self.assertTrue({window.settingInputs[key] for key in ("detection", "reliability", "edges")}.issubset(reached))
-        self.assertFalse({window.settingInputs[key] for key in window.settingInputs if key not in ("detection", "reliability", "edges")}.intersection(reached))
+        self.assertTrue({window.settingInputs["detection"], window.classModeSelector}.issubset(reached))
+        self.assertFalse({window.settingInputs[key] for key in window.settingInputs if key not in ("detection", "edges")}.intersection(reached))
         self.assertNotIn(window.modernUpperTailCheck, reached)
         window._reveal_control(window.settingInputs["detection"], window._setup_canvas, window.setupControls)
         self._capture_owned_window(window, "analysis-24-modern-settings.png")
@@ -1481,6 +1481,183 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 with patch("main.gui.sample_analysis.filedialog.asksaveasfilename", return_value=str(root / "na.svg")):
                     window.saveGraphButton.invoke()
                 self.assertIn("Modern", (root / "na.svg").read_text(encoding="utf-8"))
+            window._on_close()
+
+    def test_display_units_structured_inputs_and_density_identity(self):
+        from main.core.sample_project_io import open_project, save_project
+        from main.gui.analysis_inputs import MICROMETRES, inherited_unit
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        for alias in ("um", "\u00b5m", "\u03bcm"):
+            for index, image in enumerate(project.images):
+                set_calibration(image, 3 if index < 2 else 6, alias)
+            self.assertEqual(inherited_unit(project), MICROMETRES)
+        set_calibration(project.images[2], 0.006, "mm")
+        self.assertEqual(inherited_unit(project), "mm")
+        set_calibration(project.images[2], 6, "um")
+        project.analysis_setup = {"schema": 2, "mode": "Modern analysis", "legacy": {},
+                      "modern": {"bin_edges_mm": [0.01, 0.02]}}
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, create_analysis_snapshot(project))
+        self.root.update()
+        self.assertEqual(window.displayUnitVar.get(), MICROMETRES)
+        self.assertEqual(window.modernClassModeVar.get(), "Custom classes")
+        self.assertEqual(window.classEditor.numbers[0].text.get(), "10")
+        self.assertEqual(window._parse_modern_config().bin_edges_mm, (0.01, 0.02))
+        window.modeVar.set("Original FOAMS 1.0.5")
+
+        def enter(number, text):
+            number.entry.focus_force()
+            self.root.update()
+            number.entry.delete(0, "end")
+            number.entry.insert(0, text)
+            number.entry.event_generate("<Return>")
+            self.root.update()
+
+        window.selectionModeVar.set("manual")
+        window.originalRangeEditor.addButton.invoke()
+        enter(window.originalRangeEditor.numbers[0], "10")
+        enter(window.originalRangeEditor.numbers[1], "20")
+        self.assertEqual(window._parse_legacy_config().manual_ranges, (("group-1", 0.01, 0.02),))
+        self.assertIn("third.png", window.originalRangeEditor.groupSelectors[0].get())
+        window.methodPresetSelector.set("Modern analysis")
+        window.classModeSelector.set("Custom classes")
+        self.root.update()
+        editor = window.classEditor
+        next(child for child in editor.rows.winfo_children()[0].winfo_children() if isinstance(child, ttk.Button)).invoke()
+        editor.addButton.invoke()
+        enter(editor.numbers[0], "10")
+        enter(editor.numbers[1], "20")
+        self.assertEqual(window._parse_modern_config().bin_edges_mm, (0.01, 0.02))
+        editor.addButton.invoke()
+        enter(editor.numbers[-1], "40")
+        enter(editor.numbers[1], "30")
+        self.assertEqual(editor.numbers[2].text.get(), "30")
+        self.assertEqual(window._parse_modern_config().bin_edges_mm, (0.01, 0.03, 0.04))
+        enter(editor.numbers[-1], "10")
+        self.assertIn("exceed", editor.message.cget("text"))
+        enter(editor.numbers[-1], "nan")
+        self.assertIn("finite", editor.numbers[-1].error.get())
+        enter(editor.numbers[-1], "40")
+        remove = next(child for child in editor.rows.winfo_children()[-1].winfo_children()
+                      if isinstance(child, ttk.Button))
+        remove.invoke()
+        self.assertEqual(window._parse_modern_config().bin_edges_mm, (0.01, 0.03))
+        enter(editor.numbers[1], "20")
+        editor.addButton.invoke()
+        enter(editor.numbers[-1], "200")
+        enter(window._committed_fields["detection"][1], "1")
+        window.modernGeometricStartVar.set("0.010000000000000002")
+        window.modernGeometricCountVar.set("unfinished hidden generated input")
+        for group_index, class_index in ((1, 0), (0, 1)):
+            ranges = window.modernRangeEditor
+            ranges.addButton.invoke()
+            ranges.groupSelectors[-1].current(group_index)
+            ranges.groupSelectors[-1].event_generate("<<ComboboxSelected>>")
+            for selector in ranges.intervalSelectors[-2:]:
+                selector.current(class_index)
+                selector.event_generate("<<ComboboxSelected>>")
+        config = window._parse_modern_config()
+        self.assertEqual(config.nesting_segments, (("group-2", 0, 1), ("group-1", 1, 2)))
+        self.assertEqual(config.bin_edges_mm, (0.01, 0.02, 0.2))
+        self.assertEqual(config.min_detectable_mm, 0.001)
+        window.classModeSelector.set("Generated classes")
+        self.root.update()
+        enter(window._committed_fields["geometric_start"][1], "10")
+        enter(window._committed_fields["geometric_count"][1], "3")
+        enter(window._committed_fields["geometric_step"][1], "0.1")
+        generated = window._parse_modern_config()
+        self.assertIsNone(generated.bin_edges_mm)
+        self.assertEqual(generated.geometric_start_mm, 0.010000000000000002)
+        self.assertEqual(generated.geometric_bin_count, 3)
+        from main.core.distributions import geometric_diameter_bin_spec
+        self.assertEqual(window._preview_edges, geometric_diameter_bin_spec(0.010000000000000002, 3, 0.1).edges_mm)
+        enter(window._committed_fields["geometric_step"][1], "unfinished pending hidden edit")
+        window.classModeSelector.set("Custom classes")
+        self.root.update()
+        window.modernGeometricStartVar.set("0.010000000000000002")
+        window.modernGeometricCountVar.set("unfinished hidden generated input")
+        self.assertEqual(window._parse_modern_config(), config)
+        window.advancedModernButton.invoke()
+        window.modernReconstructionCheck.invoke()
+        window.modernUpperTailCheck.invoke()
+        config = window._parse_modern_config()
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertEqual(window.statusVar.get(), "Modern run complete", window.resultsText.get("1.0", "end"))
+        record = project.analysis_runs[-1]
+        payload = record.payload
+        identity = window._displayed_request.request_id
+        signature = window._settings_signature()
+        window.inverseGraphButton.invoke()
+        expected = window._latest_modern.reconstruction_result
+        self.assertTrue(any(value != 0 for value in expected.signed_nv_per_mm3))
+        line = next(line for line in window.plotAxes.lines if line.get_label() == "Modern spherical 3D reconstruction")
+        np.testing.assert_array_equal(line.get_ydata(), expected.signed_nv_per_mm3)
+        np.testing.assert_allclose(line.get_xdata(), np.array(expected.operator.representative_diameters_mm) * 1000)
+        with contextlib.ExitStack() as mocks:
+            for function in ("prepare_legacy_analysis", "prepare_modern_analysis", "analyze_legacy_prepared", "analyze_modern_prepared"):
+                mocks.enter_context(patch("main.gui.sample_analysis." + function, side_effect=AssertionError("presentation invoked science")))
+            for unit in ("mm", MICROMETRES, "mm", MICROMETRES):
+                window.displayUnitSelector.set(unit)
+                window.displayUnitSelector.event_generate("<<ComboboxSelected>>")
+                self.root.update()
+                self.assertEqual(window._settings_signature(), signature)
+                self.assertEqual(window._displayed_request.request_id, identity)
+                self.assertEqual(record.payload, payload)
+                self.assertEqual(window.modernGeometricStartVar.get(), "0.010000000000000002")
+                self.assertEqual(window._committed_fields["geometric_step"][1].text.get(), "unfinished pending hidden edit")
+                line = next(line for line in window.plotAxes.lines if line.get_label() == "Modern spherical 3D reconstruction")
+                np.testing.assert_array_equal(line.get_ydata(), expected.signed_nv_per_mm3)
+            window.plotDensityUnitsVar.set("Match display units")
+            window._graph_option_changed("Density units")
+            self.assertEqual(window._settings_signature(), signature)
+            data = record.data()
+            data["methods"][0]["native"]["reconstruction"]["signed_nv_per_mm3"] = [1e9, 2e9]
+            window._render_inverse_graph(data)
+            line = next(line for line in window.plotAxes.lines if line.get_label() == "Modern spherical 3D reconstruction")
+            np.testing.assert_allclose(line.get_ydata(), [1, 2])
+            self.assertEqual(window._plotted_metadata["display_units"]["N_V"], MICROMETRES + "^-3")
+            self.assertEqual(window._plotted_metadata["series"][0]["points"][0]["signed_nv_per_mm3"], 1e9)
+            self.assertEqual(window._plotted_metadata["series"][0]["displayed_points"][0]["number_density"], 1)
+            window._refresh_graph()
+            window.useRunSettingsButton.invoke()
+            self.assertEqual(window.displayUnitVar.get(), MICROMETRES)
+            self.assertEqual(window.classEditor.numbers[0].text.get(), "10")
+            window.saveSetupButton.invoke()
+        fonts = {name: tkfont.nametofont(name).cget("size") for name in tkfont.names()}
+        try:
+            for scale in (1, 2):
+                for name, size in fonts.items():
+                    tkfont.nametofont(name).configure(size=size * scale)
+                for width, height in self._review_sizes(window):
+                    self._request_geometry(window, width, height)
+                    window._set_setup_visible(True)
+                    self.root.update()
+                    window._reveal_control(editor.numbers[0].entry, window._setup_canvas, window.setupControls)
+                    self._assert_analysis_results_layout(window, width, height, scale, "24a-micrometre-inputs", focused=False)
+                    window._set_setup_visible(False)
+                    self.root.update()
+                    self._assert_analysis_results_layout(window, width, height, scale, "24a-micrometre-3d")
+        finally:
+            for name, size in fonts.items():
+                tkfont.nametofont(name).configure(size=size)
+        with tempfile.TemporaryDirectory() as folder:
+            destination = Path(folder)
+            with patch("main.gui.sample_analysis.filedialog.asksaveasfilename", return_value=str(destination / "units.svg")):
+                window.saveGraphButton.invoke()
+            metadata = json.loads((destination / "units.svg.json").read_text(encoding="utf-8"))
+            self.assertEqual(metadata["display_units"]["length"], MICROMETRES)
+            self.assertEqual(metadata["run_id"], record.run_id)
+            save_project(project, destination / "project")
+            window._on_close()
+            reopened = open_project(destination / "project")
+            window = sample_analysis.SampleAnalysisWorkspace(self.root, reopened, create_analysis_snapshot(reopened))
+            self.root.update()
+            self.assertEqual(window.displayUnitVar.get(), MICROMETRES)
+            self.assertEqual(window._parse_modern_config(), config)
+            self.assertEqual(window.classEditor.numbers[0].text.get(), "10")
+            self.assertEqual(reopened.analysis_runs[-1].payload, payload)
             window._on_close()
 
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):

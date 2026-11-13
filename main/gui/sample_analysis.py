@@ -19,6 +19,7 @@ from matplotlib.ticker import LogLocator, NullLocator
 
 from ..core.analysis_plots import NA_PLOT, NV_PLOT, reconstruction_series, visible_points
 from ..core.analysis_runs import append_run, create_run_projection, error_diagnostic, json_bytes
+from ..core.distributions import geometric_diameter_bin_spec
 from ..core.legacy_cutoffs import Foams105CutoffGroupInput, suggest_foams105_cutoffs
 from ..core.legacy_perimeter import (
     FOAMS105_PERIMETER_PROFILE_CURRENT,
@@ -48,6 +49,15 @@ from ..core.sample_project import (
     SampleProject,
     calibration_mm_per_px,
     create_analysis_snapshot,
+)
+from .analysis_inputs import (
+    LENGTH_UNITS,
+    CommittedNumber,
+    GroupRangeEditor,
+    IntervalEditor,
+    inherited_unit,
+    normalized_unit,
+    unit_scale,
 )
 
 _PERIMETER_LABEL_TO_ID = {
@@ -147,6 +157,17 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.modernUpperTailVar = tk.BooleanVar(value=False)
         self.modernEdgesVar = tk.StringVar(value="")
         self.modernSegmentsVar = tk.StringVar(value="")
+        self.modernClassModeVar = tk.StringVar(value="Generated classes")
+        self.modernGeometricStartVar = tk.StringVar(value="")
+        self.modernGeometricCountVar = tk.StringVar(value="8")
+        self.modernGeometricStepVar = tk.StringVar(value="0.1")
+        setup = project.analysis_setup if isinstance(project.analysis_setup, dict) else {}
+        presentation = setup.get("presentation", {})
+        if not isinstance(presentation, dict):
+            presentation = {}
+        self._display_unit = normalized_unit(presentation.get("length_unit", inherited_unit(project)))
+        self.displayUnitVar = tk.StringVar(value=self._display_unit)
+        self._committed_fields = {}
 
         self.statusVar = tk.StringVar(value="Ready")
         self.plotTypeVar = tk.StringVar(value=NA_PLOT)
@@ -154,6 +175,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.plotStageVar = tk.StringVar(value="All series")
         self.plotScaleVar = tk.StringVar(value="Log Y")
         self.plotXAxisVar = tk.StringVar(value="Log diameter")
+        self.plotDensityUnitsVar = tk.StringVar(value=presentation.get("density_units", "Canonical mm"))
 
         self._build_ui()
         self._load_persisted_setup()
@@ -165,13 +187,16 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             name: value for name, value in vars(self).items() if isinstance(value, tk.Variable)
             and name not in ("statusVar", "resultViewVar", "resultProvenanceVar", "tableMethodVar", "tableGroupVar", "tableStageVar")
             and not name.startswith("plot")
+            and name != "displayUnitVar"
         }
         for variable in self._variables.values():
             variable.trace_add("write", self._settings_changed)
         self.manualRangesVar.trace_add("write", self._manual_changed)
-        for variable in (self.modeVar, self.selectionModeVar, self.volumeModeVar, self.shapeModeVar, self.modernReconstructVar):
+        for variable in (self.modeVar, self.selectionModeVar, self.volumeModeVar, self.shapeModeVar, self.modernReconstructVar, self.modernClassModeVar):
             variable.trace_add("write", self._settings_visibility)
+        self.modernEdgesVar.trace_add("write", self._class_edges_changed)
         self._settings_visibility()
+        self._refresh_display_tables()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.geometry("1200x800")
         self.minsize(980, 640)
@@ -200,7 +225,18 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.snapshotSummary = ttk.Label(summary, justify="left")
         self.snapshotSummary.grid(row=0, column=0, sticky="w")
         self.includedSummary = ttk.Label(summary)
-        self.includedSummary.grid(row=0, column=1, sticky="e", padx=(12, 0))
+        self._method_header = ttk.Frame(summary)
+        self._method_header.grid(row=0, column=1, padx=6)
+        ttk.Label(self._method_header, text="Method").pack(side="left", padx=3)
+        self.methodPresetSelector = ttk.Combobox(self._method_header, textvariable=self.modeVar,
+            values=("Original FOAMS 1.0.5", "Modern analysis", "Compare methods"), state="readonly", width=24)
+        self.methodPresetSelector.pack(side="left")
+        self._units_header = ttk.Frame(summary)
+        self._units_header.grid(row=0, column=2)
+        ttk.Label(self._units_header, text="Display units").pack(side="left", padx=3)
+        self.displayUnitSelector = ttk.Combobox(self._units_header, textvariable=self.displayUnitVar, values=LENGTH_UNITS, state="readonly", width=5)
+        self.displayUnitSelector.pack(side="left")
+        self.displayUnitSelector.bind("<<ComboboxSelected>>", self._change_display_unit)
         self._summary_frame = summary
 
         setup = ttk.LabelFrame(root, text="Setup", padding=4)
@@ -245,21 +281,27 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         action_canvas.create_window((0, 0), window=actions, anchor="nw")
         actions.bind("<Configure>", lambda event: (action_canvas.configure(scrollregion=action_canvas.bbox("all")),
                               action_canvas.configure(height=actions.winfo_reqheight())))
-        self.suggestButton = ttk.Button(actions, text="Suggest cutoffs", command=self._suggest_cutoffs)
+        input_actions = ttk.LabelFrame(actions, text="Inputs", padding=2)
+        input_actions.pack(side="left", padx=3)
+        setup_actions = ttk.LabelFrame(actions, text="Setup", padding=2)
+        setup_actions.pack(side="left", padx=3)
+        self._saved_actions = ttk.LabelFrame(actions, text="Saved runs", padding=2)
+        self._saved_actions.pack(side="left", padx=3)
+        self.suggestButton = ttk.Button(input_actions, text="Suggest cutoffs", command=self._suggest_cutoffs)
         self.suggestButton.pack(side="left", padx=(8, 0))
-        self.saveSetupButton = ttk.Button(actions, text="Save setup", command=self._save_current_setup)
+        self.saveSetupButton = ttk.Button(setup_actions, text="Save setup", command=self._save_current_setup)
         self.saveSetupButton.pack(side="left", padx=8)
-        self.prepareButton = ttk.Button(actions, text="Prepare / inspect", command=lambda: self._start_job("prepare"))
+        self.prepareButton = ttk.Button(input_actions, text="Prepare / inspect", command=lambda: self._start_job("prepare"))
         self.prepareButton.pack(side="left", padx=8)
-        self.previewButton = ttk.Button(actions, text="Review selection", command=lambda: self._start_job("preview"))
+        self.previewButton = ttk.Button(input_actions, text="Review selection", command=lambda: self._start_job("preview"))
         self.previewButton.pack(side="left")
-        self.shapeUpdateButton = ttk.Button(actions, text="Update shape minimum", command=self._update_shape_minimum)
+        self.shapeUpdateButton = ttk.Button(setup_actions, text="Update shape minimum", command=self._update_shape_minimum)
         self.shapeUpdateButton.pack(side="left", padx=8)
-        self.useRunSettingsButton = ttk.Button(actions, text="Use this run's settings", command=self._use_run_settings)
+        self.useRunSettingsButton = ttk.Button(self._saved_actions, text="Use this run's settings", command=self._use_run_settings)
         self.useRunSettingsButton.pack(side="left", padx=8)
-        self.exportRunButton = ttk.Button(actions, text="Export selected run", command=self._export_run)
+        self.exportRunButton = ttk.Button(self._saved_actions, text="Export selected run", command=self._export_run)
         self.exportRunButton.pack(side="left", padx=8)
-        ttk.Button(actions, text="Measurements", command=self._open_measurements).pack(side="left", padx=8)
+        ttk.Button(input_actions, text="Measurements", command=self._open_measurements).pack(side="left", padx=8)
         status_frame = ttk.Frame(root)
         status_frame.grid(row=4, column=0, sticky="ew", pady=4)
         status_frame.columnconfigure(0, weight=1)
@@ -378,10 +420,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.resultProvenanceLabel.bind("<Configure>", self._queue_layout)
 
     def _build_method_settings(self, controls):
-        ttk.Label(controls, text="Method preset").pack(anchor="w")
-        self.methodPresetSelector = ttk.Combobox(controls, textvariable=self.modeVar,
-            values=("Original FOAMS 1.0.5", "Modern analysis", "Compare methods"), state="readonly", width=30)
-        self.methodPresetSelector.pack(anchor="w", pady=(0, 8))
+        self.readinessLabel = ttk.Label(controls, text="Accepted masks; choose method inputs, then Run analysis", wraplength=680)
+        self.readinessLabel.pack(fill="x", pady=(0, 4))
         self.originalSettingsToggle = ttk.Button(controls, text="Original settings", command=lambda: self._toggle_method_section("legacy"))
         self.originalSettingsToggle.pack(anchor="w")
         self.originalSettings = ttk.Frame(controls, padding=(0, 4))
@@ -392,63 +432,247 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.modernSettings.pack(fill="x")
         self._method_expanded = {"legacy": True, "modern": True}
         self._advanced_original_open = False
+        self._advanced_modern_open = False
+        self.advancedOriginalSettings = ttk.Frame(self.originalSettings)
+        self.advancedModernSettings = ttk.Frame(self.modernSettings)
         self.settingRows = {}
         self.settingInputs = {}
         self._modern_feedback = {}
         self._method_rows = {"legacy": [], "modern": []}
 
         def field(parent, key, label, variable, values=None, method="legacy"):
+            if key in ("normalization", "vesicularity", "category_lower", "category_upper", "shape_mode", "shape_minimum"):
+                parent = self.advancedOriginalSettings
+            if key == "reliability":
+                parent = self.advancedModernSettings
             row = ttk.Frame(parent)
             row.pack(fill="x", pady=3)
             ttk.Label(row, text=label).pack(anchor="w")
-            widget = ttk.Combobox(row, textvariable=variable, values=values, state="readonly", width=46) if values is not None else ttk.Entry(row, textvariable=variable, width=46)
-            widget.pack(anchor="w", fill="x")
+            if key == "manual":
+                widget = self.originalRangeEditor = GroupRangeEditor(row, variable, self.displayUnitVar, self._group_choices)
+            elif key == "edges":
+                widget = ttk.Frame(row)
+                self.classModeSelector = ttk.Combobox(widget, textvariable=self.modernClassModeVar,
+                    values=("Generated classes", "Custom classes"), state="readonly", width=24)
+                self.classModeSelector.pack(anchor="w")
+                self.classEditor = IntervalEditor(widget, variable, self.displayUnitVar)
+                self.generatedClasses = ttk.Frame(widget)
+                for name, title, source, physical, suffix in (
+                    ("start", "Starting diameter (optional; automatic if blank)", self.modernGeometricStartVar, True, ""),
+                    ("count", "Minimum number of classes", self.modernGeometricCountVar, False, "classes"),
+                    ("step", "Geometric log10 step", self.modernGeometricStepVar, False, "decades")):
+                    ttk.Label(self.generatedClasses, text=title).pack(anchor="w")
+                    number = CommittedNumber(self.generatedClasses, source, self.displayUnitVar, physical=physical, suffix=suffix, changed=self._preview_classes)
+                    number.pack(anchor="w")
+                    self._committed_fields["geometric_" + name] = ("modern", number)
+                self.classPreview = ttk.Label(widget, wraplength=620, justify="left")
+                self.classPreview.pack(fill="x")
+            elif key == "segments":
+                widget = self.modernRangeEditor = GroupRangeEditor(row, variable, self.displayUnitVar, self._group_choices, self._interval_choices)
+            elif values is not None:
+                widget = ttk.Combobox(row, textvariable=variable, values=values, state="readonly", width=46)
+            else:
+                physical = key in ("category_lower", "category_upper", "detection", "reliability")
+                widget = CommittedNumber(row, variable, self.displayUnitVar, physical=physical,
+                    suffix="%" if key == "vesicularity" else "px" if key in ("minimum", "shape_minimum") else "")
+                self._committed_fields[key] = (method, widget)
+            widget.pack(anchor="w", fill="none" if isinstance(widget, CommittedNumber) else "x")
             if method == "modern":
                 self._modern_feedback[key] = ttk.Label(row, foreground="#a32929", wraplength=660, justify="left")
             self.settingRows[key] = row
-            self.settingInputs[key] = widget
+            self.settingInputs[key] = widget.entry if isinstance(widget, CommittedNumber) else widget
             self._method_rows[method].append((key, row))
             return row
 
-        field(self.originalSettings, "minimum", "Minimum object diameter (pixels)", self.minimumDiameterVar)
+        field(self.originalSettings, "minimum", "Minimum diameter (px)", self.minimumDiameterVar)
         field(self.originalSettings, "selection", "Selection", self.selectionModeVar, ("autosmart", "manual"))
-        field(self.originalSettings, "manual", "Manual group:lower:upper labels (mm)", self.manualRangesVar)
+        field(self.originalSettings, "manual", "Manual source ranges", self.manualRangesVar)
         field(self.originalSettings, "normalization", "Normalization mode", self.volumeModeVar, ("unnormalized", "integrated_2d", "known_vesicularity"))
         field(self.originalSettings, "vesicularity", "Known vesicularity (%)", self.knownVesicularityVar)
-        field(self.originalSettings, "category_lower", "Lower size-category boundary (mm)", self.sizeLowerCutoffVar)
-        field(self.originalSettings, "category_upper", "Upper size-category boundary (mm)", self.sizeUpperCutoffVar)
+        field(self.originalSettings, "category_lower", "Lower size-category boundary", self.sizeLowerCutoffVar)
+        field(self.originalSettings, "category_upper", "Upper size-category boundary", self.sizeUpperCutoffVar)
         field(self.originalSettings, "shape_mode", "Shape mode", self.shapeModeVar, ("initial_analysis", "updated_minimum"))
         field(self.originalSettings, "shape_minimum", "Updated shape minimum (pixels)", self.shapeMinimumVar)
         self.advancedOriginalButton = ttk.Button(self.originalSettings, text="Advanced Original settings", command=self._toggle_advanced_original)
         self.advancedOriginalButton.pack(anchor="w", pady=4)
-        advanced = ttk.Frame(self.originalSettings)
+        advanced = self.advancedOriginalSettings
         advanced.pack(fill="x")
         self.advancedOriginalSettings = advanced
         field(advanced, "perimeter", "Perimeter calculation", self.perimeterProfileVar, tuple(_PERIMETER_ID_TO_LABEL.values()))
         self.perimeterHelp = ttk.Label(advanced, justify="left", wraplength=660,
             text="R2025b is the MATLAB release used to verify both perimeter estimators, not image resolution. No MATLAB installation is required. Estimates affect perimeter-dependent shape measures; PerimeterOld is not a separate old-runtime capture.")
         self.perimeterHelp.pack(fill="x", pady=4)
-        field(self.modernSettings, "detection", "Minimum detectable diameter (mm)", self.modernMinDetectableVar, method="modern")
-        self.detectionHelp = ttk.Label(self.modernSettings, text="Minimum pore diameter reliably detectable at this image resolution, in mm.", wraplength=660, justify="left")
+        field(self.modernSettings, "detection", "Smallest reliably detectable diameter", self.modernMinDetectableVar, method="modern")
+        self.detectionHelp = ttk.Label(self.modernSettings, text="Minimum pore diameter reliably detectable at this image resolution. This is not the segmentation area cutoff (px\u00b2) or Original's diameter cutoff (px).", wraplength=660, justify="left")
         self.detectionHelp.pack(fill="x")
         self.modernValidationLabel = self._modern_feedback["detection"]
-        field(self.modernSettings, "reliability", "Maximum reliable diameter (mm, optional)", self.modernMaxReliableVar, method="modern")
-        field(self.modernSettings, "edges", "Bin edges (mm)", self.modernEdgesVar, method="modern")
-        field(self.modernSettings, "segments", "Source-group plan: group:start:stop bins", self.modernSegmentsVar, method="modern")
+        field(self.modernSettings, "reliability", "Largest reliable diameter (optional)", self.modernMaxReliableVar, method="modern")
+        field(self.modernSettings, "edges", "Size classes", self.modernEdgesVar, method="modern")
+        field(self.modernSettings, "segments", "Source-group class ranges", self.modernSegmentsVar, method="modern")
         self.singleGroupHelp = ttk.Label(self.modernSettings, text="Single resolution group: all bins use that group's automatic ownership.", wraplength=660)
         self.singleGroupHelp.pack(fill="x")
-        self.modernReconstructionCheck = ttk.Checkbutton(self.modernSettings, text="Enable spherical 3D reconstruction", variable=self.modernReconstructVar)
+        self.advancedModernButton = ttk.Button(self.modernSettings, text="Advanced Modern settings", command=self._toggle_advanced_modern)
+        self.advancedModernButton.pack(anchor="w")
+        self.advancedModernSettings.pack(fill="x")
+        self.modernReconstructionCheck = ttk.Checkbutton(self.advancedModernSettings, text="Enable spherical 3D reconstruction", variable=self.modernReconstructVar)
         self.modernReconstructionCheck.pack(anchor="w", pady=4)
-        self.modernUpperTailCheck = ttk.Checkbutton(self.modernSettings, text="Assume no larger 3D pores above the selected upper edge", variable=self.modernUpperTailVar)
+        self.modernUpperTailCheck = ttk.Checkbutton(self.advancedModernSettings, text="Assume no larger 3D pores above the selected upper edge", variable=self.modernUpperTailVar)
         self.modernUpperTailCheck.pack(anchor="w")
-        self._modern_feedback["reconstruction"] = ttk.Label(self.modernSettings, foreground="#a32929", wraplength=660, justify="left")
+        self._modern_feedback["reconstruction"] = ttk.Label(self.advancedModernSettings, foreground="#a32929", wraplength=660, justify="left")
 
     def _toggle_method_section(self, method):
         self._method_expanded[method] = not self._method_expanded[method]
         self._settings_visibility()
 
+    def _group_choices(self):
+        groups = {}
+        for image in self.project.images:
+            scale = calibration_mm_per_px(image)
+            if image.analysis_included and scale is not None:
+                groups.setdefault(scale, []).append(image.display_name)
+        return {f"group-{index + 1}": f"Group {index + 1}: {', '.join(names)[:65]}"
+                for index, (_scale, names) in enumerate(sorted(groups.items(), reverse=True))}
+
+    def _class_edges_changed(self, *_args):
+        if self.modernEdgesVar.get().strip():
+            self.modernClassModeVar.set("Custom classes")
+        self._preview_classes()
+
+    def _preview_classes(self):
+        self._preview_edges = ()
+        try:
+            if self.modernClassModeVar.get() == "Custom classes":
+                self._preview_edges = tuple(float(part) for part in self.modernEdgesVar.get().split(",") if part.strip())
+            elif self.modernGeometricStartVar.get().strip():
+                self._preview_edges = geometric_diameter_bin_spec(float(self.modernGeometricStartVar.get()),
+                    int(float(self.modernGeometricCountVar.get())), float(self.modernGeometricStepVar.get())).edges_mm
+            elif self._prepared_modern is not None and self._displayed_request is not None:
+                config = self._displayed_request.modern_config
+                if (config is not None and config.bin_edges_mm is None
+                        and config.geometric_start_mm is None and self._displayed_request.input_signature == self._input_signature()
+                        and config.geometric_bin_count == int(float(self.modernGeometricCountVar.get()))
+                        and config.geometric_log10_step == float(self.modernGeometricStepVar.get())):
+                    self._preview_edges = self._prepared_modern.bin_edges_mm
+            choices = self._interval_choices()
+            message = " | ".join(choices[:12])
+            if len(choices) > 12:
+                message += f" | {len(choices)} classes total"
+            if not choices:
+                message = "Automatic class grid: use Prepare / inspect to preview accepted-object coverage. No detection limit is inferred."
+            elif self.modernClassModeVar.get() == "Generated classes":
+                message += " | Preparation extends upper coverage using the existing generation rule."
+            self.classPreview.configure(text=message)
+        except (ValueError, OverflowError) as exc:
+            self.classPreview.configure(text="Generated classes: " + str(exc))
+        if hasattr(self, "modernRangeEditor"):
+            self.modernRangeEditor.render()
+
+    def _interval_choices(self):
+        edges = getattr(self, "_preview_edges", ())
+        scale = unit_scale(self.displayUnitVar.get())
+        return tuple(f"{index + 1}: [{lower / scale:.8g}, {upper / scale:.8g}{']' if index == len(edges) - 2 else ')'} {self.displayUnitVar.get()}"
+                     for index, (lower, upper) in enumerate(zip(edges, edges[1:])))
+
+    def _field_applicable(self, key):
+        return not ((key == "vesicularity" and self.volumeModeVar.get() != "known_vesicularity")
+                    or (key == "shape_minimum" and self.shapeModeVar.get() != "updated_minimum")
+                    or (key.startswith("geometric_") and self.modernClassModeVar.get() != "Generated classes"))
+
+    def _commit_method_inputs(self, method):
+        valid = all([number.commit() for key, (owner, number) in self._committed_fields.items()
+                     if owner == method and self._field_applicable(key)])
+        if method == "legacy" and self.selectionModeVar.get() == "manual":
+            if not self.originalRangeEditor.commit():
+                raise SampleAnalysisError("Correct the highlighted Original source range")
+        if method == "modern":
+            if self.modernClassModeVar.get() == "Custom classes":
+                if not self.classEditor.commit():
+                    raise SampleAnalysisError("Bin edges: correct the highlighted size-class boundary")
+            if len(self._group_choices()) > 1:
+                if not self.modernRangeEditor.commit():
+                    raise SampleAnalysisError("Source-group plan: select both class endpoints")
+        if not valid:
+            raise SampleAnalysisError("Correct the highlighted input before running")
+
+    def _save_presentation(self):
+        previous = normalize_analysis_setup(self.project.analysis_setup)
+        if not previous:
+            previous = {"schema": 2, "mode": self.modeVar.get(), "legacy": {}, "modern": {}}
+        previous["presentation"] = {"length_unit": self._display_unit, "density_units": self.plotDensityUnitsVar.get()}
+        self.project.analysis_setup = previous
+        if self._mark_unsaved is not None:
+            self._mark_unsaved()
+
+    def _change_display_unit(self, _event=None):
+        requested = normalized_unit(self.displayUnitVar.get())
+        self._invalidate_pending_graph_history()
+        self.displayUnitVar.set(self._display_unit)
+        active = ("legacy", "modern") if self.modeVar.get() == "Compare methods" else ("modern" if self.modeVar.get() == "Modern analysis" else "legacy",)
+        numbers = [number for key, (method, number) in self._committed_fields.items() if method in active and self._field_applicable(key)]
+        if "legacy" in active and self.selectionModeVar.get() == "manual":
+            numbers += self.originalRangeEditor.numbers
+        if "modern" in active and self.modernClassModeVar.get() == "Custom classes":
+            numbers += self.classEditor.numbers
+        if not all([number.commit() for number in numbers]):
+            self.statusVar.set("Commit or correct the highlighted value before changing units")
+            return
+        pending = {}
+        for number in ([item for _method, item in self._committed_fields.values()]
+                       + self.classEditor.numbers + self.originalRangeEditor.numbers):
+            if number.text.get() != number._rendered:
+                raw = number.text.get()
+                try:
+                    value = float(raw)
+                    if number.physical:
+                        raw = format(value * unit_scale(self._display_unit) / unit_scale(requested), ".17g")
+                except ValueError:
+                    pass
+                pending[str(number.canonical)] = raw
+        self._display_unit = requested
+        self.displayUnitVar.set(requested)
+        for _method, number in self._committed_fields.values():
+            number.render()
+        self.classEditor.render()
+        self.originalRangeEditor.render()
+        self._preview_classes()
+        for number in ([item for _method, item in self._committed_fields.values()]
+                   + self.classEditor.numbers + self.originalRangeEditor.numbers):
+            if str(number.canonical) in pending:
+                number.text.set(pending[str(number.canonical)])
+        self._save_presentation()
+        self._refresh_display_tables()
+        self._refresh_graph()
+
+    def _refresh_display_tables(self):
+        unit = self.displayUnitVar.get()
+        for column, title in (("lower", f"Lower ({unit})"), ("upper", f"Upper ({unit})"), ("area", f"Area ({unit}^2)")):
+            if column in self.distributionTable["columns"]:
+                self.distributionTable.heading(column, text=title)
+            self.objectsTable.heading("diameter", text=f"Diameter ({unit})")
+            self.objectsTable.heading("area", text=f"Area ({unit}^2)")
+            self.distributionTable.heading("na", text=f"N_A ({self._density_unit()}^-2)")
+            self.distributionTable.heading("nv", text=f"N_V ({self._density_unit()}^-3)")
+        if self._distribution_rows:
+            self._filter_saved_tables()
+        if self._object_rows:
+            self._page_objects(0)
+
+    def _density_unit(self):
+        return self.displayUnitVar.get() if self.plotDensityUnitsVar.get() == "Match display units" else "mm"
+
+    def _display_units(self):
+        return {"length": self.displayUnitVar.get(), "area": self.displayUnitVar.get() + "^2",
+                "N_A": self._density_unit() + "^-2", "N_V": self._density_unit() + "^-3"}
+
+    def _scaled_cell(self, value, factor):
+        return value * factor if isinstance(value, (int, float)) else value
+
     def _toggle_advanced_original(self):
         self._advanced_original_open = not self._advanced_original_open
+        self._settings_visibility()
+
+    def _toggle_advanced_modern(self):
+        self._advanced_modern_open = not self._advanced_modern_open
         self._settings_visibility()
 
     def _settings_visibility(self, *_args):
@@ -485,7 +709,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.advancedOriginalButton.pack(anchor="w", pady=4, before=self.advancedOriginalSettings if self._advanced_original_open else None)
         for widget in (self.detectionHelp, self.modernReconstructionCheck):
             widget.pack_forget()
-        self.detectionHelp.pack(fill="x", before=self.settingRows["reliability"])
+        self.detectionHelp.pack(fill="x", before=self.settingRows["edges"])
         self.modernReconstructionCheck.pack(anchor="w", pady=4)
         self.modernUpperTailCheck.pack_forget()
         if self.modernReconstructVar.get():
@@ -502,6 +726,18 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         if original:
             self.suggestButton.pack(side="left", padx=8)
             self.shapeUpdateButton.pack(side="left", padx=8)
+        self.advancedModernSettings.pack_forget()
+        self.advancedModernButton.pack_forget()
+        self.advancedModernButton.pack(anchor="w", pady=4)
+        if self._advanced_modern_open:
+            self.advancedModernSettings.pack(fill="x")
+        self.classEditor.pack_forget()
+        self.generatedClasses.pack_forget()
+        if self.modernClassModeVar.get() == "Custom classes":
+            self.classEditor.pack(fill="x", before=self.classPreview)
+        else:
+            self.generatedClasses.pack(fill="x", before=self.classPreview)
+        self._preview_classes()
         self._queue_layout()
 
     def _build_plot_controls(self, parent):
@@ -523,7 +759,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             ("Method", self.plotMethodVar, ("All methods", "Original", "Modern"), 14),
             ("Series", self.plotStageVar, ("All series", "Prepared", "Selected"), 12),
             ("Y axis", self.plotScaleVar, ("Linear Y", "Log Y"), 10),
-            ("Diameter", self.plotXAxisVar, ("Log diameter", "Linear diameter"), 16)):
+            ("Diameter", self.plotXAxisVar, ("Log diameter", "Linear diameter"), 16),
+            ("Density units", self.plotDensityUnitsVar, ("Canonical mm", "Match display units"), 20)):
             group = ttk.Frame(toolbar)
             ttk.Label(group, text=label).pack(anchor="w")
             selector = ttk.Combobox(group, textvariable=variable, values=values, state="readonly", width=width)
@@ -551,7 +788,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.graphSettingsButton.pack_forget()
         self.signedGraphButton.pack_forget()
         self.graphInfoLabel = ttk.Label(toolbar, justify="left")
-        self.graphInfoLabel.grid(row=1, column=0, columnspan=6, sticky="w")
+        self.graphInfoLabel.grid(row=1, column=0, columnspan=7, sticky="w")
         for column, group in enumerate(self._plot_controls):
             group.grid(row=0, column=column, sticky="sw", padx=3)
             pending = [group]
@@ -560,14 +797,17 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 pending.extend(widget.winfo_children())
                 widget.bind("<FocusIn>", lambda event, target=widget: self._reveal_control(target, canvas, toolbar), add="+")
         toolbar.bind("<Configure>", lambda event: (canvas.configure(scrollregion=canvas.bbox("all"), height=toolbar.winfo_reqheight()), self._queue_layout()))
-        self.inverseGraphButton = ttk.Button(self._secondary_actions.children['!canvas'].children['!frame'],
-            text="View inverse reconstruction", command=self._open_inverse_graph)
+        self.inverseGraphButton = ttk.Button(self._saved_actions,
+            text="View 3D results", command=self._open_inverse_graph)
         self.inverseGraphButton.pack(side="left", padx=8)
 
     def _graph_option_changed(self, field):
         self._invalidate_pending_graph_history()
         if field == "Plot type":
             self.plotScaleVar.set("Linear Y" if self.plotTypeVar.get() == NV_PLOT else "Log Y")
+        if field == "Density units":
+            self._save_presentation()
+            self._refresh_display_tables()
         self._refresh_graph()
 
     def _show_signed_graph(self):
@@ -584,7 +824,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
     def _invalidate_pending_graph_history(self):
         if self._history_loading:
-            variables = (self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar)
+            variables = (self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar, self.plotDensityUnitsVar)
             values = tuple(variable.get() for variable in variables)
             self._invalidate_history()
             if self._history_previous is not None:
@@ -596,6 +836,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._set_setup_visible(True)
         self.modeVar.set("Modern analysis" if self.modeVar.get() != "Compare methods" else "Compare methods")
         self._method_expanded["modern"] = True
+        self._advanced_modern_open = True
         self._settings_visibility()
         self._reveal_control(self.modernReconstructionCheck, self._setup_canvas, self.setupControls)
 
@@ -620,6 +861,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             else:
                 self._plotted_metadata = {}
                 self._sync_graph_controls()
+                if (self._current_view is not None and self._current_view[0] == "prepared"
+                        and self._displayed_request is self._current_view[2]):
+                    self._render_prepared(*self._current_view[1])
+                    self._append_request_details(self._displayed_request)
                 self.graphInfoLabel.configure(text="Prepare or select a completed run to inspect its distribution")
         finally:
             self._graph_refreshing = False
@@ -649,6 +894,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         series, messages = reconstruction_series(data, tables)
         log_y = self.plotScaleVar.get() == "Log Y"
         log_x = self.plotXAxisVar.get() == "Log diameter"
+        length_factor = 1 / unit_scale(self.displayUnitVar.get())
+        density_factor = unit_scale(self._density_unit()) ** 3
         self._sync_graph_controls(messages)
         plotted = []
         all_omitted = {"invalid_diameter": 0, "unavailable": 0, "zero": 0, "negative": 0}
@@ -658,14 +905,16 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             points, omitted = visible_points(item["points"], log_x=log_x, log_y=log_y)
             for key, count in omitted.items():
                 all_omitted[key] += count
-            self.plotAxes.plot([point["diameter_mm"] for point in points], [point["signed_nv_per_mm3"] for point in points],
+            self.plotAxes.plot([point["diameter_mm"] * length_factor for point in points], [point["signed_nv_per_mm3"] * density_factor for point in points],
                                linestyle="none", marker="o" if item["method_id"] == "legacy" else "s", markersize=4,
                                label=item["title"])
             negatives = [point for point in points if point["signed_nv_per_mm3"] < 0]
             if negatives:
-                self.plotAxes.plot([point["diameter_mm"] for point in negatives], [point["signed_nv_per_mm3"] for point in negatives],
+                self.plotAxes.plot([point["diameter_mm"] * length_factor for point in negatives], [point["signed_nv_per_mm3"] * density_factor for point in negatives],
                                    color="#bb2638", marker="x", linestyle="none", label=("Original" if item["method_id"] == "legacy" else "Modern") + " signed negative values")
-            plotted.append({**item, "omitted": omitted})
+            plotted.append({**item, "omitted": omitted, "displayed_points": [
+                {"row_ordinal": point["row_ordinal"], "diameter": point["diameter_mm"] * length_factor,
+                 "number_density": point["signed_nv_per_mm3"] * density_factor} for point in points]})
         if not log_y:
             self.plotAxes.axhline(0, color="#555555", linewidth=0.8, label="Zero")
         self.plotAxes.set_xscale("log" if log_x else "linear")
@@ -675,8 +924,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 self.plotAxes.set_ylim(1, 10)
         else:
             self.plotAxes.set_yscale("linear")
-        self.plotAxes.set_xlabel(plotted[0]["coordinates"] if len(plotted) == 1 else "Diameter (mm): Original labels / Modern native upper-edge class representatives")
-        self.plotAxes.set_ylabel("N_V (mm^-3 per native class)")
+        coordinates = plotted[0]["coordinates"] if len(plotted) == 1 else "Diameter (mm): Original labels / Modern native upper-edge class representatives"
+        self.plotAxes.set_xlabel(coordinates.replace("(mm)", f"({self.displayUnitVar.get()})"))
+        self.plotAxes.set_ylabel(f"N_V ({self._density_unit()}^-3 per native class)")
         title = plotted[0]["title"] if len(plotted) == 1 else "Separate native inverse reconstructions"
         self.plotAxes.set_title(title, fontsize=10)
         if self.plotAxes.lines:
@@ -686,6 +936,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._plotted_metadata = {"run_id": data["run_id"], "project_id": data["project_id"], "sample_name": data["sample_name"],
             "plot_type": NV_PLOT, "x_scale": self.plotAxes.get_xscale(), "y_scale": self.plotAxes.get_yscale(),
             "omitted": all_omitted, "series": plotted, "messages": messages,
+            "display_units": self._display_units(), "native_coordinates": "diameter_mm; signed_nv_per_mm3",
             "caption": f"{data['sample_name'][:70]} | run {data['run_id'][:12]} | {title}"}
         self.plotCanvas.draw_idle()
 
@@ -780,6 +1031,14 @@ class SampleAnalysisWorkspace(tk.Toplevel):
 
     def _save_current_setup(self) -> None:
         try:
+            for key, (method, number) in self._committed_fields.items():
+                if self._field_applicable(key) and (self.modeVar.get() == "Compare methods" or
+                        (method == "modern") == (self.modeVar.get() == "Modern analysis")):
+                    number.commit()
+            if self.modeVar.get() != "Original FOAMS 1.0.5" and self.modernClassModeVar.get() == "Custom classes":
+                self.classEditor.commit()
+            if self.modeVar.get() != "Modern analysis" and self.selectionModeVar.get() == "manual":
+                self.originalRangeEditor.commit()
             self._save_setup(self.modeVar.get(), None, None)
             self.statusVar.set("Setup saved; no calculation performed")
         except SampleAnalysisError as exc:
@@ -798,6 +1057,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             self.modeVar.set(mode)
         legacy = setup.get("legacy", {}) if isinstance(setup.get("legacy"), dict) else {}
         modern = setup.get("modern", {}) if isinstance(setup.get("modern"), dict) else {}
+        for key, variable in (("geometric_start_mm", self.modernGeometricStartVar),
+                      ("geometric_bin_count", self.modernGeometricCountVar),
+                      ("geometric_log10_step", self.modernGeometricStepVar)):
+            if modern.get(key) is not None:
+                variable.set(str(modern[key]))
         legacy = {key: value for key, value in legacy.items() if value is not None}
         if "minimum_diameter_px" in legacy:
             self.minimumDiameterVar.set(str(legacy["minimum_diameter_px"]))
@@ -846,6 +1110,24 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 profile = _PERIMETER_LABEL_TO_ID.get(self.perimeterProfileVar.get())
                 if profile is not None:
                     self.perimeterProfileVar.set(_PERIMETER_ID_TO_LABEL[profile])
+        if "modernClassModeVar" not in drafts:
+            self.modernClassModeVar.set("Custom classes" if self.modernEdgesVar.get().strip() else "Generated classes")
+        editor_drafts = setup.get("editor_drafts", {})
+        if isinstance(editor_drafts, dict):
+            for key, (_method, number) in self._committed_fields.items():
+                raw = editor_drafts.get("numbers", {}).get(key)
+                if isinstance(raw, str):
+                    number.text.set(raw)
+            for name, editor, target in (("classes", self.classEditor, "boundaries"),
+                                         ("original", self.originalRangeEditor, "items"),
+                                         ("modern", self.modernRangeEditor, "items")):
+                values = editor_drafts.get(name)
+                if isinstance(values, list):
+                    if name == "classes" and all(isinstance(value, str) for value in values):
+                        editor.boundaries = [tk.StringVar(editor, value=value) for value in values]
+                    elif name != "classes" and all(isinstance(row, list) and len(row) == 3 and all(isinstance(value, str) for value in row) for row in values):
+                        setattr(editor, target, [tuple(tk.StringVar(editor, value=value) for value in row) for row in values])
+                    editor._draw()
         self.statusVar.set("Saved setup restored; no completed calculation restored")
         missing = set(setup.get("referenced_images", ())) - {image.image_id for image in self.project.images}
         if missing:
@@ -854,7 +1136,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
     def _refresh_summary_banner(self) -> None:
         included_count = sum(image.analysis_included for image in self.project.images)
         self.includedSummary.configure(text=f"{included_count} included images | Binary masks")
-        available = max(80, self._summary_frame.winfo_width() - self.includedSummary.winfo_reqwidth() - 16)
+        available = max(40, self._summary_frame.winfo_width() - self._method_header.winfo_reqwidth() - self._units_header.winfo_reqwidth() - 24)
         font = tkfont.nametofont("TkDefaultFont")
         name = self.project.sample_name
         while len(name) > 1 and font.measure("Sample: " + name) > available:
@@ -891,6 +1173,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         return tuple(result)
 
     def _parse_legacy_config(self) -> LegacyRunConfig:
+        self._commit_method_inputs("legacy")
         minimum = float(self.minimumDiameterVar.get())
         known_text = self.knownVesicularityVar.get().strip()
         known = float(known_text) if known_text and self.volumeModeVar.get() == "known_vesicularity" else None
@@ -919,6 +1202,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         )
 
     def _parse_modern_config(self) -> ModernRunConfig:
+        self._commit_method_inputs("modern")
+        if self.modernClassModeVar.get() == "Generated classes":
+            count = float(self.modernGeometricCountVar.get())
+            if not math.isfinite(count) or not count.is_integer() or count < 1:
+                raise SampleAnalysisError("Generated class count must be a positive whole number")
         def parse(text, converter, field):
             try:
                 return converter(text)
@@ -934,7 +1222,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             transitions = ()
         groups = {calibration_mm_per_px(image) for image in self.project.images if image.analysis_included}
         return ModernRunConfig(
-            bin_edges_mm=parse(self.modernEdgesVar.get(), lambda text: tuple(float(part) for part in text.split(",")), "Bin edges") if self.modernEdgesVar.get().strip() else None,
+            bin_edges_mm=parse(self.modernEdgesVar.get(), lambda text: tuple(float(part) for part in text.split(",")), "Bin edges") if self.modernClassModeVar.get() == "Custom classes" else None,
+            geometric_start_mm=float(self.modernGeometricStartVar.get()) if self.modernClassModeVar.get() == "Generated classes" and self.modernGeometricStartVar.get().strip() else None,
+            geometric_bin_count=int(float(self.modernGeometricCountVar.get())) if self.modernClassModeVar.get() == "Generated classes" else 8,
+            geometric_log10_step=float(self.modernGeometricStepVar.get()) if self.modernClassModeVar.get() == "Generated classes" else 0.1,
             min_detectable_mm=parse(min_text, float, "Minimum detectable diameter") if min_text else None,
             max_reliable_mm=parse(max_text, float, "Maximum reliable diameter") if max_text else None,
             transition_bins=transitions,
@@ -977,6 +1268,16 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             "drafts": {name: variable.get() for name, variable in getattr(self, "_variables", {}).items()},
             "referenced_images": [image.image_id for image in self.snapshot.images] if getattr(self, "snapshot", None) is not None else previous.get("referenced_images", []),
         }
+        for key in ("presentation", "editor_drafts"):
+            if key in previous:
+                payload[key] = previous[key]
+        if hasattr(self, "_display_unit"):
+            payload["presentation"] = {"length_unit": self._display_unit, "density_units": self.plotDensityUnitsVar.get()}
+            payload["editor_drafts"] = {"numbers": {key: number.text.get() for key, (_method, number) in self._committed_fields.items()
+                                                   if number.text.get() != number._rendered},
+                                       "classes": [variable.get() for variable in self.classEditor.boundaries],
+                                       "original": [[variable.get() for variable in row] for row in self.originalRangeEditor.items],
+                                       "modern": [[variable.get() for variable in row] for row in self.modernRangeEditor.items]}
         validate_analysis_setup(payload)
         self.project.analysis_setup = payload
         if self._mark_unsaved is not None:
@@ -1017,6 +1318,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         if self._displayed_request is not None and self._view_settings_stale():
             self.statusVar.set("Settings changed - rerun required; previous result retained")
         self._refresh_result_provenance()
+        if hasattr(self, "readinessLabel"):
+            modern = self.modeVar.get() in ("Modern analysis", "Compare methods")
+            text = self._current_input_problem() or ("Enter the smallest reliably detectable diameter" if modern and not self.modernMinDetectableVar.get().strip()
+                else "Ready for explicit Run analysis; class edits change scientific inputs, display units do not")
+            self.readinessLabel.configure(text=text)
 
     def _manual_changed(self, *_args) -> None:
         if not self._setting_proposal:
@@ -1080,6 +1386,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._append_details([f"Request ID: {request.request_id}", f"Session ID: {request.session_id}",
             f"Sample: {saved['sample_name'] if saved else self.project.sample_name}",
             f"Captured request: {request.mode} / {request.action}",
+            "Methods: Original FOAMS 3D conversion uses the retained FOAMS 1.0.5 histogram/conversion pipeline. "
+            "Modern uses spherical_upper_edge_triangular_v1 with native upper-edge sphere representatives. "
+            "Neither screen implements the Jeppsson et al. KDE estimator and iterative optimizer (10.1016/j.actamat.2010.09.046).",
             f"Legacy settings: {request.legacy_config!r}", f"Modern settings: {request.modern_config!r}",
             f"Captured editable settings: {request.draft_settings!r}", f"Project: {request.snapshot.project_id}"]
             + [f"{item.image_id} snapshot={item.snapshot_id} calibration={item.mm_per_px!r} mm/px "
@@ -1123,6 +1432,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                         (kind, "prepared" if kind == "prepared" else "success"),)
         self._selected_view_label = self.resultViewVar.get()
         self._refresh_result_provenance()
+        self._preview_classes()
         data = self._projection_views.get(request.request_id)
         if data is not None:
             self._populate_saved_supplement(data, data["tables"])
@@ -1189,7 +1499,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._busy = busy
         if busy:
             self._control_states = []
-            pending = [self.setupControls, self.binGroupSelector, self.applyBinsButton, self.resultViewSelector]
+            pending = [self.setupControls, self.methodPresetSelector, self.displayUnitSelector,
+                       self.binGroupSelector, self.applyBinsButton, self.resultViewSelector]
             while pending:
                 widget = pending.pop()
                 pending.extend(widget.winfo_children())
@@ -1615,9 +1926,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             methods = "/".join("Original" if method == "legacy" else "Modern" for method in sorted({row["method_id"] for row in plotted_rows}))
             self._plotted_metadata = {"run_id": data["run_id"], "project_id": data["project_id"], "sample_name": data["sample_name"],
                 "plot_type": NA_PLOT, "x_scale": self.plotAxes.get_xscale(), "y_scale": self.plotAxes.get_yscale(),
+                "display_units": self._display_units(), "native_coordinates": "rows retain explicitly named canonical mm columns",
                 "omitted_nonpositive_or_unavailable": self._nonpositive_plot_count, "rows": plotted_rows,
                 "messages": messages, "caption": f"{data['sample_name'][:70]} | run {data['run_id'][:12]} | {methods} native 2D number density"}
-        self.graphInfoLabel.configure(text=" | ".join(messages + [f"Selected-scale omissions: {self._nonpositive_plot_count}; N_A in mm^-2"]))
+        self.graphInfoLabel.configure(text=" | ".join(messages + [f"Selected-scale omissions: {self._nonpositive_plot_count}; N_A in {self._density_unit()}^-2"]))
 
     def _page_distributions(self, offset):
         self._distribution_page = max(0, min(max(0, (len(self._distribution_rows) - 1) // 250), self._distribution_page + offset))
@@ -1629,8 +1941,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._object_row_by_id = {}
         for row in self._object_rows[self._object_page * 250:(self._object_page + 1) * 250]:
             row_id = self.objectsTable.insert("", "end", values=tuple(self._display_cell(value) for value in (
-                row["method_id"], row["image_id"], row["object_id"], row.get("equivalent_diameter_mm", row.get("eq_diam_units")),
-                row.get("area_mm2", row.get("area_units2")), row.get("selected"), row.get("shape_population"))))
+                row["method_id"], row["image_id"], row["object_id"], self._scaled_cell(row.get("equivalent_diameter_mm", row.get("eq_diam_units")), 1 / unit_scale(self.displayUnitVar.get())),
+                self._scaled_cell(row.get("area_mm2", row.get("area_units2")), 1 / unit_scale(self.displayUnitVar.get()) ** 2), row.get("selected"), row.get("shape_population"))))
             self._object_row_by_id[row_id] = row
         self.objectPageLabel.configure(text=f"Page {self._object_page + 1} | {len(self._object_rows)} native objects")
 
@@ -1669,6 +1981,16 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         for name, value in data["draft_settings"].items():
             if name in self._variables:
                 self._variables[name].set(value)
+        if "modernClassModeVar" not in data["draft_settings"]:
+            self.modernClassModeVar.set("Custom classes" if self.modernEdgesVar.get().strip() else "Generated classes")
+        modern = next((method for method in data["methods"] if method["method_id"] == "modern"), None)
+        if modern is not None and modern["settings"] is not None:
+            for name, key, default in (("modernGeometricStartVar", "geometric_start_mm", None),
+                                       ("modernGeometricCountVar", "geometric_bin_count", 8),
+                                       ("modernGeometricStepVar", "geometric_log10_step", 0.1)):
+                if name not in data["draft_settings"]:
+                    value = modern["settings"].get(key, default)
+                    getattr(self, name).set("" if value is None else str(value))
         legacy = next((method for method in data["methods"] if method["method_id"] == "legacy"), None)
         if legacy is not None and legacy["settings"] is not None:
             self._source_keys = tuple(tuple(item) for item in legacy["settings"].get("source_keys", ()))
@@ -1751,6 +2073,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         label = self._modern_feedback[key]
         label.configure(text=", ".join(image.display_name for image in included) + ": " + message)
         label.pack(fill="x")
+        if key in ("reliability", "reconstruction"):
+            self._advanced_modern_open = True
+            self._settings_visibility()
 
     def _clear_distribution(self) -> None:
         self.distributionTable.delete(*self.distributionTable.get_children())
@@ -1771,7 +2096,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 (self._selected_saved_run, self._saved_view_data, self._distribution_rows, self._object_rows, self._table_run_id,
                  self.overviewText.get("1.0", "end-1c"), self._object_page, self._distribution_page),
                 (self._plotted_metadata, self._plot_data, self.graphInfoLabel.cget("text"),
-                 tuple(variable.get() for variable in (self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar)),
+                 tuple(variable.get() for variable in (self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar, self.plotDensityUnitsVar)),
                  self.plotAxes.get_xscale(), self.plotAxes.get_yscale(), self.plotAxes.get_xlim(), self.plotAxes.get_ylim(),
                  self.plotAxes.get_xlabel(), self.plotAxes.get_ylabel(), self.plotAxes.get_title()))
 
@@ -1801,7 +2126,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.overviewText.configure(state="disabled")
         self._page_objects(0)
         (self._plotted_metadata, self._plot_data, notice, options, xscale, yscale, xlim, ylim, xlabel, ylabel, title) = graph
-        for variable, value in zip((self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar), options):
+        for variable, value in zip((self.plotTypeVar, self.plotMethodVar, self.plotStageVar, self.plotScaleVar, self.plotXAxisVar, self.plotDensityUnitsVar), options):
             variable.set(value)
         self.graphInfoLabel.configure(text=notice)
         self._sync_graph_controls(self._plotted_metadata.get("messages", ()))
@@ -1817,7 +2142,11 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.plotCanvas.draw_idle()
 
     def _add_row(self, method, group, index, lower, upper, count, area, na, nv="", volume="", kind="selected") -> None:
-        row_id = self.distributionTable.insert("", "end", values=(method, group, index, lower, upper, count, area, na, nv, volume))
+        length = 1 / unit_scale(self.displayUnitVar.get())
+        density = unit_scale(self._density_unit())
+        row_id = self.distributionTable.insert("", "end", values=(method, group, index,
+            self._scaled_cell(lower, length), self._scaled_cell(upper, length), count, self._scaled_cell(area, length ** 2),
+            self._scaled_cell(na, density ** 2), self._scaled_cell(nv, density ** 3), volume))
         self._table_rows[row_id] = (kind, group, index, lower, upper)
 
     def _plot_values(self, name, diameters, values) -> None:
@@ -1827,11 +2156,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                  and (self.plotScaleVar.get() != "Log Y" or value > 0)]
         self._nonpositive_plot_count += len(values) - len(pairs)
         if pairs:
-            self.plotAxes.plot([pair[0] for pair in pairs], [pair[1] for pair in pairs], marker=".", label=name)
+            self.plotAxes.plot([pair[0] / unit_scale(self.displayUnitVar.get()) for pair in pairs],
+                               [pair[1] * unit_scale(self._density_unit()) ** 2 for pair in pairs], marker=".", label=name)
 
     def _finish_plot(self) -> None:
-        self.plotAxes.set_xlabel("Diameter / label (mm)")
-        self.plotAxes.set_ylabel("N_A (mm^-2)")
+        self.plotAxes.set_xlabel(f"Diameter / label ({self.displayUnitVar.get()})")
+        self.plotAxes.set_ylabel(f"N_A ({self._density_unit()}^-2)")
         if self.plotAxes.lines:
             self.plotAxes.set_xscale("log" if self.plotXAxisVar.get() == "Log diameter" else "linear")
             self.plotAxes.set_yscale("log" if self.plotScaleVar.get() == "Log Y" else "linear")
