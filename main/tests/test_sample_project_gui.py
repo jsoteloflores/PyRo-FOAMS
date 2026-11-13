@@ -119,8 +119,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         self.stderr_redirect.__exit__(None, None, None)
 
     def tearDown(self):
-        if hasattr(self, "root"):
-            try:
+        try:
+            if hasattr(self, "root") and self.root.tk.call("info", "commands", str(self.root)):
                 for child in tuple(self.root.winfo_children()):
                     if isinstance(child, tk.Toplevel):
                         close = getattr(child, "_on_close", None)
@@ -130,9 +130,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                             child.destroy()
                 preprocessing.cancel_debounced_callbacks(self.root)
                 self.root.destroy()
-            except tk.TclError:
-                pass
-        self.stderr_redirect.__exit__(None, None, None)
+        finally:
+            self.stderr_redirect.__exit__(None, None, None)
         self.assertNotRegex(
             self.tk_stderr.getvalue(),
             r"invalid command name|Exception in Tkinter callback|Traceback \(most recent call last\)",
@@ -914,15 +913,17 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 transitions.append(widget)
 
         bindings = []
-        focus_command = self.root.register(record_focus)
+        focus_command = None
+        probe_binding = None
         try:
+            focus_command = self.root.register(record_focus)
             source.bindtags((probe_tag, *original_tags))
-            probe_binding = source.bind_class(probe_tag, "<KeyPress>", record_key)
+            probe_binding = self.root.bind_class(probe_tag, "<KeyPress>", record_key)
             for control in dict.fromkeys((*self.app.workspaceFocusControls,
                                          self.app.imagesVerticalScrollbar, self.app.imagesHorizontalScrollbar)):
                 original_binding = control.bind("<FocusIn>")
-                self.root.tk.call("bind", str(control), "<FocusIn>", f"+{focus_command} %W %d")
                 bindings.append((control, original_binding))
+                self.root.tk.call("bind", str(control), "<FocusIn>", f"+{focus_command} %W %d")
             source.event_generate(sequence, when="tail")
             self.root.update()
             self._record_geometry(self.root, "forward-tab" if sequence == "<Tab>" else "reverse-tab", generated_sequence=sequence,
@@ -944,11 +945,40 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 self.assertLessEqual(expected.winfo_rooty() + expected.winfo_height(), canvas.winfo_rooty() + canvas.winfo_height(), repr(events))
         finally:
             source.bindtags(original_tags)
-            source.unbind_class(probe_tag, "<KeyPress>")
-            source.deletecommand(probe_binding)
+            if probe_binding is not None:
+                self.root.unbind_class(probe_tag, "<KeyPress>")
+                self.root.deletecommand(probe_binding)
             for control, binding in bindings:
                 self.root.tk.call("bind", str(control), "<FocusIn>", binding)
-            self.root.deletecommand(focus_command)
+            if focus_command is not None:
+                self.root.deletecommand(focus_command)
+
+    def test_keyboard_probe_cleanup_allows_fresh_root_fonts(self):
+        source = self.app.addImagesButton
+        original_tags = source.bindtags()
+        original_focus = source.bind("<FocusIn>")
+        with patch.object(self.root, "bind_class", side_effect=RuntimeError("injected probe registration failure")):
+            with self.assertRaisesRegex(RuntimeError, "injected probe registration failure"):
+                self._assert_dispatched_preparation_tab(source, self.app.saveProjectButton)
+        self.assertEqual(source.bindtags(), original_tags)
+        self.assertEqual(source.bind("<FocusIn>"), original_focus)
+        for _ in range(3):
+            for source, expected in ((self.app.addImagesButton, self.app.saveProjectButton),
+                                     (self.app.imagesCanvas, self.app.saveProjectButton),
+                                     (self.app.setCalibrationButton, self.app.renameImageButton)):
+                original_tags = source.bindtags()
+                original_focus = source.bind("<FocusIn>")
+                self._assert_dispatched_preparation_tab(source, expected)
+                self.assertEqual(source.bindtags(), original_tags)
+                self.assertEqual(source.bind("<FocusIn>"), original_focus)
+                self.assertEqual(self.root.bind_class(f"ReverseTabProbe{id(source)}", "<KeyPress>"), "")
+        preprocessing.cancel_debounced_callbacks(self.root)
+        self.root.destroy()
+        self.root = tk.Tk()
+        self.root.report_callback_exception = self._report_callback_exception
+        self.assertGreater(tkfont.nametofont("TkDefaultFont").metrics("linespace"), 0)
+        self.assertGreater(tkfont.nametofont("TkDefaultFont", root=self.root).metrics("linespace"), 0)
+        self.root.update()
 
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self._request_geometry(self.root, width, height)
