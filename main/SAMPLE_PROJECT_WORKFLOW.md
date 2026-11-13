@@ -31,7 +31,25 @@ Use **Set Calibration…** for the active image or selected batch images. The va
 - Layout was exercised at 1280×800 and 1400×900 using ordinary fonts and doubled Tk named-font sizes. This is not OS-DPI certification.
 - Batch threshold/separation runs use the active processing controls for every selected target. Background workers operate on one owned dispatch snapshot; only Tk's UI thread drains events and commits results.
 - No immutable analysis-run history or automatic result-cache persistence is implemented.
-- Original FOAMS setup, immutable analysis history, the future joinable export bundle, and same-real-image MATLAB comparison remain future work.
+- Brief 21 remains pending independent acceptance. Original FOAMS remains NOT COMPLETE; accepted multiphase project inputs and same-real-image MATLAB comparison remain outstanding. No material phases are inferred from object labels.
+
+## Analysis corrections (Brief 21a, pending)
+
+The shared analysis window now offers **Prepare / inspect**, **Suggest cutoffs**, **Review selection**, **Run analysis**, **Save setup**, and **Update shape minimum**. Preparation/suggestion/calculation run on owned workers. Conflicting edits are disabled during jobs; Cancel/close invalidates completion rather than interrupting scientific kernels. The Measurements action retains access to the existing modern inspection tool.
+
+The Distributions tab contains native prepared and selected values with counts, corrected/eligible areas, N_A, and available signed N_V/volume values. Select contiguous prepared rows and choose a group to apply exact legacy labels or explicit modern half-open bin ranges. Raw legacy memberships and method-specific diagnostics are in Details. Log plots omit nonpositive/unavailable values only visually; tables retain them.
+
+Modern multi-group analysis requires explicit `group:start:stop` segments; transition numbers alone are rejected. Group IDs retain coarse-to-fine calibration ordering, but ownership of small/large bins is chosen explicitly, not inferred from that order. Minimum detection and maximum reliability remain `None` when unspecified. Measurements can be inspected even when missing detection limits block N_A or when a composite plan is not ready. Reconstruction requires separate selection of **No 3D size classes above the selected upper edge**.
+
+Setup schema 2 saves independent method settings, editable drafts, stable image/source-key assignments, and referenced image IDs. Schema-1 null inactive-method fields no longer become the text `None`. Future schemas and malformed mappings are reported, not silently treated as completed runs. Save Setup stores configuration without running science; Save Project persists it using existing atomic project I/O. Reopening restores configuration, not a completed calculation.
+
+Captured jobs retain settings, project/session and accepted input identities. Inclusion, calibration and reacceptance changes mark results stale and reject late completions; Run captures fresh inputs. Draft-only edits and display renaming do not change scientific identity. Legacy preparation keys omit display/list order and unrelated project revisions. Selection, normalization, categories and shape summaries reuse canonical prepared results. Calculation/render failures retain earlier results and identify the failed method/stage.
+
+Regression coverage is in `tests/test_sample_analysis.py` and the live `test_analysis_settings_workers_and_native_rendering` / `test_analysis_explicit_modern_plan_and_cancellation` tests. It includes both perimeter renders, direct API result checks, manual raw membership, normalization/shape preparation-call counts, settings disk round trips, asymmetric group ownership, explicit reconstruction consent, both Compare partial-success directions, cancellation, reacceptance and stale completion. Local populated screenshots include `analysis-distributions.png`, `analysis-manual-cutoffs.png`, `analysis-comparison.png`, `analysis-validation-error.png`, and plots at both window/font settings.
+
+These corrections are uncommitted work on base `4a5fcb4c2affde05ff912440ff48a370b899eca8`; no corrected hosted run is claimed. Reviewed foundation commit `025ed6dd64db63477789188ea463b6f471d9d22b` had [run 43363606911](https://github.com/jsoteloflores/PyRo-FOAMS/actions/runs/43363606911): lint and all four unit jobs passed, but the Windows live-Tk job failed after its 10-minute workflow-test timeout. Brief 21 requires corrected-commit hosted evidence and independent acceptance before Brief 22.
+
+Local validation of this worktree: `python -m ruff check main/` passed; `python -m unittest discover main/tests` passed (676 discovered, 670 executed, 6 live tests skipped). A separate `PYRO_FOAMS_LIVE_TK=1 python -m unittest -v main.tests.test_sample_project_gui` run passed all 6 live tests with no skips. Populated plot captures were visually checked after fixing owned-window foreground capture; these are local evidence, not a hosted-CI result or complete OS-DPI certification.
 
 ## Live GUI test
 
@@ -43,7 +61,7 @@ $env:PYRO_FOAMS_GUI_ARTIFACTS = "artifacts/gui-smoke"
 python -m unittest -v main.tests.test_sample_project_gui
 ```
 
-The test drives real workspace and processing-window buttons, delays batch computation to verify Tk timer responsiveness, checks accepted-input export routing, draft file round-trips and partial failures, cancellation-safe cleanup, keyboard traversal, and layout bounds. Screenshots are `workspace_1280x800_font1x.png`, `workspace_1280x800_font2x.png`, `workspace_1400x900_font1x.png`, `workspace_1400x900_font2x.png`, and `workspace_populated_1280x800_font1x.png`. GitHub Actions runs it in a dedicated Windows Python 3.12 job and uploads the screenshots. Run without `PYRO_FOAMS_LIVE_TK=1` only for discovery; the four live tests will be skipped, which is not GUI acceptance.
+The test drives real workspace and processing-window buttons, delays batch computation to verify Tk timer responsiveness, checks accepted-input export routing, draft file round-trips and partial failures, cancellation-safe cleanup, keyboard traversal, and layout bounds. Screenshots are `workspace_1280x800_font1x.png`, `workspace_1280x800_font2x.png`, `workspace_1400x900_font1x.png`, `workspace_1400x900_font2x.png`, and `workspace_populated_1280x800_font1x.png`, plus the analysis captures above. GitHub Actions runs it in a dedicated Windows Python 3.12 job and uploads the screenshots. Run without `PYRO_FOAMS_LIVE_TK=1` only for discovery; live tests will be skipped, which is not GUI acceptance.
 
 Commit `4928e03f3844919ded6716d0f93075174e530ec9` passed hosted run [42262702398](https://github.com/jsoteloflores/PyRo-FOAMS/actions/runs/42262702398): lint, all four Linux/Windows Python 3.11/3.12 unit jobs, and the Windows Python 3.12 live-Tk job succeeded. The GUI job uploaded artifact `windows-live-tk-gui-smoke` (artifact ID `13526245699`), containing the screenshots listed above.
 

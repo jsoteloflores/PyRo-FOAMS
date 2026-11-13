@@ -32,6 +32,37 @@ class SampleAnalysisError(ValueError):
     """Raised when sample analysis setup or execution is invalid."""
 
 
+def validate_analysis_setup(setup: object) -> None:
+    if not isinstance(setup, dict):
+        raise SampleAnalysisError("analysis setup must be a dictionary")
+    if not setup:
+        return
+    if type(setup.get("schema")) is not int or setup["schema"] not in (1, 2):
+        raise SampleAnalysisError("Saved setup schema is unsupported")
+    if setup.get("mode") not in ("Original FOAMS 1.0.5", "Modern analysis", "Compare methods"):
+        raise SampleAnalysisError("Saved method preset is unsupported")
+    for method in ("legacy", "modern"):
+        if not isinstance(setup.get(method, {}), dict):
+            raise SampleAnalysisError(f"Saved {method} settings must be a dictionary")
+    if setup["schema"] == 2:
+        drafts = setup.get("drafts", {})
+        if not isinstance(drafts, dict) or any(not isinstance(name, str) or not isinstance(value, (str, bool))
+                                             for name, value in drafts.items()):
+            raise SampleAnalysisError("Saved editable settings must contain text or boolean values")
+        mapping = setup.get("source_keys", ())
+        if not isinstance(mapping, (list, tuple)) or any(
+            not isinstance(pair, (list, tuple)) or len(pair) != 2
+            or not all(isinstance(value, str) and value for value in pair)
+            or pair[1] not in FOAMS105_AREA_OUTPUT_SOURCE_KEYS for pair in mapping
+        ):
+            raise SampleAnalysisError("Saved legacy source assignments are invalid")
+        if len({pair[0] for pair in mapping}) != len(mapping) or len({pair[1] for pair in mapping}) != len(mapping):
+            raise SampleAnalysisError("Saved legacy source assignments contain duplicates")
+        references = setup.get("referenced_images", ())
+        if not isinstance(references, (list, tuple)) or any(not isinstance(value, str) or not value for value in references):
+            raise SampleAnalysisError("Saved image references are invalid")
+
+
 @dataclass(frozen=True)
 class SnapshotGroup:
     group_id: str
@@ -88,6 +119,7 @@ class LegacyRunConfig:
     size_upper_cutoff_mm: float = 1.0
     shape_minimum_diameter_px: Optional[float] = None
     shape_statistics_mode: str = "initial_analysis"
+    source_keys: Tuple[Tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -100,6 +132,18 @@ class ModernRunConfig:
     max_reliable_mm: Optional[float] = None
     transition_bins: Tuple[int, ...] = ()
     enable_reconstruction: bool = False
+    nesting_segments: Tuple[Tuple[str, int, int], ...] = ()
+    upper_tail_assumption: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ModernPreparedResult:
+    distribution_result: Optional[object]
+    distribution_error: Optional[Exception]
+    measurements: Tuple[object, ...]
+    image_records: Tuple[object, ...]
+    bin_edges_mm: Tuple[float, ...]
+    group_ids: Tuple[str, ...]
 
 
 def _finite_positive(value: object, field: str) -> float:
@@ -151,11 +195,17 @@ def _phase_from_mask(mask: np.ndarray) -> np.ndarray:
 
 def build_legacy_group_inputs(
     snapshot: ProjectAnalysisSnapshot,
+    source_keys: Tuple[Tuple[str, str], ...] = (),
 ) -> Tuple[Tuple[Foams105PipelineGroupInput, ...], Tuple[SnapshotGroup, ...], Tuple[LegacySourceAssignment, ...]]:
     groups = _normalize_legacy_groups(snapshot)
     assignments: List[LegacySourceAssignment] = []
     group_inputs: List[Foams105PipelineGroupInput] = []
     source_order = 0
+    mapping = dict(source_keys)
+    if len(mapping) != len(source_keys) or len(set(mapping.values())) != len(mapping):
+        raise SampleAnalysisError("duplicate image IDs or source keys in legacy assignment")
+    if any(key not in FOAMS105_AREA_OUTPUT_SOURCE_KEYS for key in mapping.values()):
+        raise SampleAnalysisError("unsupported legacy source key")
 
     if len(snapshot.images) > len(FOAMS105_AREA_OUTPUT_SOURCE_KEYS):
         raise SampleAnalysisError(
@@ -164,9 +214,19 @@ def build_legacy_group_inputs(
 
     for group in groups:
         images: List[Foams105SegmentedImageInput] = []
-        for index in group.image_indices:
+        indices = sorted(group.image_indices, key=lambda index: (
+            FOAMS105_AREA_OUTPUT_SOURCE_KEYS.index(mapping[snapshot.images[index].image_id])
+            if snapshot.images[index].image_id in mapping else len(FOAMS105_AREA_OUTPUT_SOURCE_KEYS),
+            snapshot.images[index].image_id if source_keys else index,
+        ))
+        for index in indices:
             item: ProjectAnalysisImage = snapshot.images[index]
-            source_key = FOAMS105_AREA_OUTPUT_SOURCE_KEYS[source_order]
+            source_key = mapping.get(item.image_id)
+            if source_key is None:
+                source_key = next((key for key in FOAMS105_AREA_OUTPUT_SOURCE_KEYS if key not in mapping.values()), None)
+                if source_key is None:
+                    raise SampleAnalysisError("legacy source-key capacity exhausted")
+                mapping[item.image_id] = source_key
             source_order += 1
             phase = _phase_from_mask(item.accepted_mask)
             images.append(
@@ -215,7 +275,7 @@ def prepare_legacy_analysis(
     config: Optional[LegacyRunConfig] = None,
 ) -> LegacyPreparedContext:
     active = config or LegacyRunConfig()
-    group_inputs, groups, assignments = build_legacy_group_inputs(snapshot)
+    group_inputs, groups, assignments = build_legacy_group_inputs(snapshot, active.source_keys)
     minimum = _finite_positive(active.minimum_diameter_px, "minimum_diameter_px")
     prepared = prepare_foams105_analysis(
         group_inputs,
@@ -260,7 +320,7 @@ def analyze_legacy_prepared(
 ) -> LegacyRunResult:
     active = config or LegacyRunConfig()
     minimum = _finite_positive(active.minimum_diameter_px, "minimum_diameter_px")
-    shape_minimum = minimum if active.shape_minimum_diameter_px is None else _finite_positive(
+    shape_minimum = minimum if active.shape_statistics_mode == "initial_analysis" or active.shape_minimum_diameter_px is None else _finite_positive(
         active.shape_minimum_diameter_px, "shape_minimum_diameter_px"
     )
     manual_ranges = _manual_ranges_for_prepared(context.prepared, active)
@@ -320,7 +380,12 @@ def _default_edges_from_measurements(measurements: Sequence[object], cfg: Modern
     return spec.edges_mm
 
 
-def _build_modern_plan(sample_id: str, group_ids: Tuple[str, ...], bin_count: int, transition_bins: Tuple[int, ...]) -> NestingPlan:
+def _build_modern_plan(sample_id: str, group_ids: Tuple[str, ...], bin_count: int, config: ModernRunConfig) -> NestingPlan:
+    if config.nesting_segments:
+        segments = tuple(NestingSegment(*segment) for segment in config.nesting_segments)
+        return NestingPlan(sample_id, segments[0].start_bin, segments[-1].stop_bin, segments)
+    if config.transition_bins:
+        raise SampleAnalysisError("transition numbers alone are not a nesting plan; select each group and bin range")
     if len(group_ids) == 1:
         return NestingPlan(
             sample_id=sample_id,
@@ -329,38 +394,13 @@ def _build_modern_plan(sample_id: str, group_ids: Tuple[str, ...], bin_count: in
             segments=(NestingSegment(group_ids[0], 0, bin_count),),
         )
 
-    if transition_bins:
-        boundaries = [int(value) for value in transition_bins]
-    else:
-        step = max(1, bin_count // len(group_ids))
-        boundaries = [step * index for index in range(1, len(group_ids))]
-    boundaries = [value for value in boundaries if 0 < value < bin_count]
-
-    if len(boundaries) != len(group_ids) - 1:
-        raise SampleAnalysisError(
-            "transition_bins must contain exactly one interior boundary per adjacent group pair"
-        )
-
-    if any(right <= left for left, right in zip(boundaries, boundaries[1:])):
-        raise SampleAnalysisError("transition_bins must be strictly increasing")
-
-    segments: List[NestingSegment] = []
-    start = 0
-    for group_id, stop in zip(group_ids, boundaries + [bin_count]):
-        segments.append(NestingSegment(group_id, start, stop))
-        start = stop
-    return NestingPlan(
-        sample_id=sample_id,
-        start_bin=0,
-        stop_bin=bin_count,
-        segments=tuple(segments),
-    )
+    raise SampleAnalysisError("multi-group analysis requires an explicit group-to-bin-range nesting plan")
 
 
-def run_modern_analysis(
+def prepare_modern_analysis(
     snapshot: ProjectAnalysisSnapshot,
     config: Optional[ModernRunConfig] = None,
-) -> ModernRunResult:
+) -> ModernPreparedResult:
     active = config or ModernRunConfig()
     groups = _normalize_groups(snapshot)
 
@@ -399,35 +439,47 @@ def run_modern_analysis(
         edges = _default_edges_from_measurements(all_measurements, active)
     spec = create_diameter_bin_spec(edges)
 
-    if active.min_detectable_mm is None:
-        raise SampleAnalysisError(
-            "modern analysis requires an explicit minimum detectable diameter to compute eligibility-aware N_A distributions"
-        )
-    distribution = calculate_2d_number_densities(dataset, spec)
+    distribution = None
+    distribution_error = None
+    try:
+        distribution = calculate_2d_number_densities(dataset, spec)
+    except ValueError as exc:
+        distribution_error = exc
+    return ModernPreparedResult(
+        distribution, distribution_error, tuple(all_measurements), tuple(image_records),
+        spec.edges_mm, tuple(group.group_id for group in groups),
+    )
 
-    group_ids = tuple(group.group_id for group in groups)
-    if len(group_ids) > 1 and not active.transition_bins:
-        raise SampleAnalysisError(
-            "modern analysis requires explicit transition bins for multi-group nesting"
-        )
-    plan = _build_modern_plan(snapshot.project_id, group_ids, len(spec.bins), active.transition_bins)
+
+def analyze_modern_prepared(snapshot: ProjectAnalysisSnapshot, prepared: ModernPreparedResult, active: ModernRunConfig) -> ModernRunResult:
+    if prepared.distribution_error is not None:
+        raise prepared.distribution_error
+    distribution = prepared.distribution_result
+    plan = _build_modern_plan(snapshot.project_id, prepared.group_ids, len(prepared.bin_edges_mm) - 1, active)
     nested = nest_2d_distribution(distribution, plan)
 
     reconstruction = None
     if active.enable_reconstruction:
+        if active.upper_tail_assumption != UPPER_TAIL_ASSUMPTION:
+            raise SampleAnalysisError("Reconstruction requires explicit selection: No 3D size classes above the selected upper edge")
         reconstruction = reconstruct_spherical_3d(
             distribution,
             plan,
-            upper_tail_assumption=UPPER_TAIL_ASSUMPTION,
+            upper_tail_assumption=active.upper_tail_assumption,
         )
 
     return ModernRunResult(
         distribution_result=distribution,
         nesting_result=nested,
         reconstruction_result=reconstruction,
-        bin_edges_mm=spec.edges_mm,
-        group_ids=group_ids,
+        bin_edges_mm=prepared.bin_edges_mm,
+        group_ids=prepared.group_ids,
     )
+
+
+def run_modern_analysis(snapshot: ProjectAnalysisSnapshot, config: Optional[ModernRunConfig] = None) -> ModernRunResult:
+    active = config or ModernRunConfig()
+    return analyze_modern_prepared(snapshot, prepare_modern_analysis(snapshot, active), active)
 
 
 def run_compare_analysis(

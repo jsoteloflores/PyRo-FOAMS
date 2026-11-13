@@ -82,8 +82,192 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         deadline = time.monotonic() + timeout
         while not predicate() and time.monotonic() < deadline:
             root.update()
+            self.assertFalse(self.callback_errors, repr(self.callback_errors))
             threading.Event().wait(0.005)
         self.assertTrue(predicate(), "timed out waiting for live Tk workflow state")
+        self.assertFalse(self.callback_errors, repr(self.callback_errors))
+
+    def test_analysis_settings_workers_and_native_rendering(self):
+        from main.core.sample_analysis import prepare_legacy_analysis, run_legacy_analysis, run_modern_analysis
+        from main.core.sample_project_io import open_project, save_project
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        set_analysis_included(project.images[2], False)
+        project.analysis_setup = {"schema": 1, "mode": "Modern analysis", "legacy": {
+            "minimum_diameter_px": None, "size_lower_cutoff_mm": None, "size_upper_cutoff_mm": None,
+            "selection_mode": None, "perimeter_profile": None, "shape_statistics_mode": None}}
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, create_analysis_snapshot(project))
+        window.modeVar.set("Original FOAMS 1.0.5")
+        artifacts = Path(os.environ.get("PYRO_FOAMS_GUI_ARTIFACTS", "main/tests/gui_smoke_artifacts"))
+
+        def finish(allow_render_error=False):
+            self._wait_until(lambda: not window._busy, self.root)
+            if not allow_render_error:
+                self.assertNotIn("Rendering failed", window.statusVar.get())
+
+        def capture(name):
+            artifacts.mkdir(parents=True, exist_ok=True)
+            window.deiconify()
+            window.lift()
+            window.attributes("-topmost", True)
+            self.root.update()
+            left, top = window.winfo_rootx(), window.winfo_rooty()
+            ImageGrab.grab(bbox=(left, top, left + window.winfo_width(), top + window.winfo_height())).save(artifacts / name)
+            window.attributes("-topmost", False)
+
+        with patch("tkinter.messagebox.showerror", side_effect=AssertionError("unexpected modal error")):
+            with patch("main.gui.sample_analysis.prepare_legacy_analysis", wraps=prepare_legacy_analysis) as preparation:
+                for profile in ("R2025b", "PerimeterOld"):
+                    window.perimeterProfileVar.set(profile)
+                    window.runButton.invoke()
+                    finish()
+                    self.assertEqual(window.statusVar.get(), "Original run complete", window.resultsText.get("1.0", "end"))
+                    direct = run_legacy_analysis(window.snapshot, window._parse_legacy_config())
+                    actual = window._latest_legacy.analysis
+                    self.assertEqual(actual.binned_selection_result.rows, direct.analysis.binned_selection_result.rows)
+                    self.assertEqual(actual.raw_selection_result.selected_identities, direct.analysis.raw_selection_result.selected_identities)
+                    self.assertEqual(actual.volume_result.adjusted_volume_fractions, direct.analysis.volume_result.adjusted_volume_fractions)
+                    self.assertGreater(len(window.distributionTable.get_children()), 0)
+                capture("analysis-distributions.png")
+                calls = preparation.call_count
+                window.volumeModeVar.set("integrated_2d")
+                window.runButton.invoke()
+                finish()
+                self.assertEqual(preparation.call_count, calls)
+                rows = [row_id for row_id, row in window._table_rows.items() if row[0] == "legacy"]
+                window.distributionTable.selection_set(rows)
+                window.binGroupVar.set("group-1")
+                window.applyBinsButton.invoke()
+                self.assertEqual(window.selectionModeVar.get(), "manual")
+                window.runButton.invoke()
+                finish()
+                self.assertEqual(window.statusVar.get(), "Original run complete")
+                self.assertEqual(preparation.call_count, calls)
+                capture("analysis-manual-cutoffs.png")
+                direct = run_legacy_analysis(window.snapshot, window._parse_legacy_config())
+                self.assertEqual(window._latest_legacy.analysis.raw_selection_result.selected_identities,
+                                 direct.analysis.raw_selection_result.selected_identities)
+                self.assertGreater(window._latest_legacy.analysis.raw_selection_result.selected_count, 0)
+                window.volumeModeVar.set("known_vesicularity")
+                window.knownVesicularityVar.set("25")
+                window.runButton.invoke()
+                finish()
+                self.assertEqual(window.statusVar.get(), "Original run complete")
+                self.assertEqual(preparation.call_count, calls)
+                window.shapeMinimumVar.set("2.5")
+                window.shapeUpdateButton.invoke()
+                finish()
+                self.assertEqual(window._latest_legacy.analysis.analysis_settings.shape_statistics_mode, "updated_minimum")
+                self.assertEqual(preparation.call_count, calls)
+                window.suggestButton.invoke()
+                finish()
+                self.assertIn("Suggested ranges", window.statusVar.get())
+                suggestion = window.manualRangesVar.get()
+                window.selectionModeVar.set("autosmart")
+                window.manualRangesVar.set(suggestion)
+                self.assertEqual(window.selectionModeVar.get(), "manual")
+            window.modeVar.set("Modern analysis")
+            window.modernMinDetectableVar.set("0.001")
+            window.modernEdgesVar.set("0.001,0.01,0.1")
+            window.minimumDiameterVar.set("unfinished")
+            window.runButton.invoke()
+            finish()
+            self.assertEqual(window.statusVar.get(), "Modern run complete")
+            window.saveSetupButton.invoke()
+            setup = dict(project.analysis_setup)
+            window._on_close()
+            with tempfile.TemporaryDirectory() as folder:
+                save_project(project, Path(folder))
+                project = open_project(Path(folder))
+            window = sample_analysis.SampleAnalysisWorkspace(self.root, project, create_analysis_snapshot(project))
+            self.assertEqual(window.modernEdgesVar.get(), "0.001,0.01,0.1")
+            self.assertEqual(window.minimumDiameterVar.get(), "unfinished")
+            self.assertEqual(window.manualRangesVar.get(), setup["drafts"]["manualRangesVar"])
+            self.assertEqual(window.volumeModeVar.get(), "known_vesicularity")
+            self.assertEqual(window.shapeModeVar.get(), "updated_minimum")
+            window.minimumDiameterVar.set("2")
+            window.modeVar.set("Original FOAMS 1.0.5")
+            window.runButton.invoke()
+            finish()
+            self.assertEqual(window.statusVar.get(), "Original run complete")
+            self.assertEqual(tuple(tuple(item) for item in project.analysis_setup["legacy"]["manual_ranges"]),
+                             window._parse_manual_ranges())
+            window.modeVar.set("Compare methods")
+            window.runButton.invoke()
+            finish()
+            self.assertIsNotNone(window._latest_compare.legacy_result)
+            self.assertIsNotNone(window._latest_compare.modern_result)
+            direct = run_modern_analysis(window.snapshot, window._parse_modern_config())
+            self.assertEqual(window._latest_compare.modern_result.nesting_result.counts, direct.nesting_result.counts)
+            capture("analysis-comparison.png")
+            window.modernMinDetectableVar.set("")
+            window.runButton.invoke()
+            finish()
+            self.assertIsNotNone(window._latest_compare.legacy_result)
+            self.assertIsNone(window._latest_compare.modern_result)
+            window.modernMinDetectableVar.set("0.001")
+            window.runButton.invoke()
+            finish()
+            fonts = {name: tkfont.nametofont(name).cget("size") for name in tkfont.names()}
+            try:
+                for scale in (1, 2):
+                    for name, size in fonts.items():
+                        tkfont.nametofont(name).configure(size=size * scale)
+                    for width, height in ((1280, 800), (1400, 900)):
+                        window.geometry(f"{width}x{height}+0+0")
+                        self.root.update()
+                        window.plotCanvas.get_tk_widget().master.master.select(1)
+                        self.root.update()
+                        capture(f"analysis-plot-{width}x{height}-font{scale}x.png")
+                        self.assertGreater(window.plotCanvas.get_tk_widget().winfo_height(), 100)
+                        window.plotCanvas.draw()
+                        pixels = np.asarray(window.plotCanvas.buffer_rgba())
+                        self.assertGreater(np.count_nonzero(np.any(pixels[:, :, :3] < 200, axis=2)), 100)
+                        self.assertTrue(window.runButton.winfo_ismapped())
+                        self.assertLessEqual(window.statusVar.get().count("\n"), 1)
+            finally:
+                for name, size in fonts.items():
+                    tkfont.nametofont(name).configure(size=size)
+                window.plotCanvas.get_tk_widget().master.master.select(0)
+            previous_text = window.resultsText.get("1.0", "end")
+            previous_values = [window.distributionTable.item(row_id, "values") for row_id in window.distributionTable.get_children()]
+            with patch.object(window, "_render_compare", side_effect=RuntimeError("injected renderer failure")):
+                window.runButton.invoke()
+                finish(allow_render_error=True)
+            self.assertIn(previous_text.strip(), window.resultsText.get("1.0", "end"))
+            self.assertEqual(previous_values, [window.distributionTable.item(row_id, "values") for row_id in window.distributionTable.get_children()])
+            self.assertIn("Rendering failed", window.statusVar.get())
+            window.manualRangesVar.set("group-1:123:456")
+            window.runButton.invoke()
+            finish()
+            self.assertIsNone(window._latest_compare.legacy_result)
+            self.assertIsNotNone(window._latest_compare.modern_result)
+            self.assertIn("failed", window.statusVar.get())
+            capture("analysis-validation-error.png")
+
+            entered, release = threading.Event(), threading.Event()
+            thread_ids = []
+            real_prepare = prepare_legacy_analysis
+
+            def slow_prepare(*args, **kwargs):
+                thread_ids.append(threading.get_ident())
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError("test worker timeout")
+                return real_prepare(*args, **kwargs)
+
+            window._legacy_prepare_cache.clear()
+            with patch("main.gui.sample_analysis.prepare_legacy_analysis", side_effect=slow_prepare):
+                window.suggestButton.invoke()
+                self._wait_until(entered.is_set, self.root)
+                self.assertNotEqual(thread_ids[0], threading.get_ident())
+                self.assertEqual(str(window.setupControls.children['!combobox'].cget("state")), "disabled")
+                set_calibration(project.images[0], 0.004, "mm")
+                release.set()
+                finish()
+                self.assertIn("Discarded stale", window.statusVar.get())
+            window._on_close()
 
     def _capture_workspace(self, artifact_dir, name):
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -97,6 +281,67 @@ class TestLiveSampleProjectGui(unittest.TestCase):
         bottom = top + self.root.winfo_height()
         ImageGrab.grab(bbox=(left, top, right, bottom)).save(artifact_dir / name)
         self.root.attributes("-topmost", False)
+
+    def test_analysis_explicit_modern_plan_and_cancellation(self):
+        from main.core.sample_analysis import prepare_modern_analysis
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, snapshot = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, snapshot)
+        window.modeVar.set("Modern analysis")
+        window.modernMinDetectableVar.set("0.001")
+        window.prepareButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertIsNotNone(window._prepared_modern.distribution_result)
+        self.assertIsNone(window._latest_modern)
+        for group, start, stop in (("group-2", 0, 4), ("group-1", 4, 8)):
+            rows = [row_id for row_id, row in window._table_rows.items()
+                    if row[0] == "modern" and row[1] == group and start <= row[2] < stop]
+            self.assertEqual(len(rows), stop - start)
+            window.distributionTable.selection_set(rows)
+            window.binGroupVar.set(group)
+            window.applyBinsButton.invoke()
+        self.assertEqual(window.modernSegmentsVar.get(), "group-2:0:4;group-1:4:8")
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        nested = window._latest_modern.nesting_result
+        self.assertEqual(nested.source_group_ids, ("group-2",) * 4 + ("group-1",) * 4)
+        for index, group in enumerate(nested.source_group_ids):
+            native = window._latest_modern.distribution_result.groups[(project.project_id, group)]
+            self.assertEqual(nested.eligible_areas_mm2[index], native.eligible_areas_mm2[index])
+            self.assertEqual(nested.counts[index], native.counts[index])
+
+        completed = window._latest_modern
+        entered, release = threading.Event(), threading.Event()
+
+        def delayed(*args, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError("test cancellation timeout")
+            return prepare_modern_analysis(*args, **kwargs)
+
+        try:
+            with patch("main.gui.sample_analysis.prepare_modern_analysis", side_effect=delayed):
+                window.runButton.invoke()
+                self._wait_until(entered.is_set, self.root)
+                window.cancelButton.invoke()
+                self.assertFalse(window._busy)
+                release.set()
+                self._wait_until(lambda: not window._worker.is_alive(), self.root)
+                self.assertIs(window._latest_modern, completed)
+                self.assertIn("Cancelled", window.statusVar.get())
+        finally:
+            release.set()
+        image = project.images[0]
+        update_draft(image, mask=np.zeros_like(image.accepted_mask), labels=None, settings={})
+        self.assertEqual(window._completed_inputs, window._input_signature())
+        accept_draft(image)
+        self._wait_until(lambda: "Inputs changed" in window.statusVar.get(), self.root)
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertEqual(window._last_completed_snapshot.images[0].snapshot_id, image.accepted_snapshot.snapshot_id)
+        self.assertIsNot(window._latest_modern, completed)
+        window._on_close()
 
     def _assert_keyboard_traversal_reaches_primary_controls(self):
         expected = set(self.app.workspaceFocusControls)
@@ -425,7 +670,7 @@ class TestLiveSampleProjectGui(unittest.TestCase):
                 analysis_window.snapshot.images[0].accepted_labels,
                 self.app.project.images[0].accepted_labels,
             )
-            with patch("main.gui.sample_analysis.messagebox.showerror") as analysis_error:
+            with patch("tkinter.messagebox.showerror") as analysis_error:
                 analysis_window.runButton.invoke()
                 self._wait_until(lambda: str(analysis_window.runButton.cget("state")) == "normal", self.root)
                 analysis_error.assert_not_called()
@@ -437,8 +682,8 @@ class TestLiveSampleProjectGui(unittest.TestCase):
 
             analysis_window.modeVar.set("Compare methods")
             analysis_window.modernMinDetectableVar.set("0.001")
-            analysis_window.modernTransitionBinsVar.set("4")
-            with patch("main.gui.sample_analysis.messagebox.showerror") as compare_error:
+            analysis_window.modernSegmentsVar.set("group-2:0:4;group-1:4:8")
+            with patch("tkinter.messagebox.showerror") as compare_error:
                 analysis_window.runButton.invoke()
                 self._wait_until(lambda: str(analysis_window.runButton.cget("state")) == "normal", self.root)
                 compare_error.assert_not_called()
