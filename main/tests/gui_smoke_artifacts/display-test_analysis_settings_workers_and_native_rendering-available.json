@@ -612,7 +612,7 @@
       800
     ],
     "font_scale": 1,
-    "plot_height": 543,
+    "plot_height": 553,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -862,7 +862,7 @@
       900
     ],
     "font_scale": 1,
-    "plot_height": 643,
+    "plot_height": 653,
     "plot_width": 1376,
     "setup_visible": false
   },
@@ -1174,7 +1174,7 @@
       800
     ],
     "font_scale": 2,
-    "plot_height": 390,
+    "plot_height": 400,
     "plot_width": 1256,
     "setup_visible": false
   },
@@ -1424,7 +1424,7 @@
       900
     ],
     "font_scale": 2,
-    "plot_height": 490,
+    "plot_height": 500,
     "plot_width": 1376,
     "setup_visible": false
   },

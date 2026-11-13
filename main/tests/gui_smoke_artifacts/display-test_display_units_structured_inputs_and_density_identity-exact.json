@@ -1,0 +1,1557 @@
+[
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": null,
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "environment",
+    "requested_size": [
+      1280,
+      800
+    ],
+    "settled": true
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": null,
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "declared-matrix",
+    "tested_sizes": [
+      [
+        1280,
+        800
+      ],
+      [
+        1400,
+        900
+      ]
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      120,
+      1
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "geometry-request",
+    "requested_size": [
+      1280,
+      800
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace.!frame.!labelframe.!canvas.!frame.!frame2.!frame3.!frame.!frame.!committednumber3.!entry",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1200,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1208,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1216,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "declared-matrix",
+    "tested_sizes": [
+      [
+        1280,
+        800
+      ],
+      [
+        1400,
+        900
+      ]
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "geometry-request",
+    "requested_size": [
+      1280,
+      800
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-inputs",
+    "requested_size": [
+      1280,
+      800
+    ],
+    "actual_size": [
+      1280,
+      800
+    ],
+    "font_scale": 1,
+    "plot_height": 253,
+    "plot_width": 1256,
+    "setup_visible": true
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-inputs-1280x800-font1x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "screenshot_size": [
+      1296,
+      839
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-3d",
+    "requested_size": [
+      1280,
+      800
+    ],
+    "actual_size": [
+      1280,
+      800
+    ],
+    "font_scale": 1,
+    "plot_height": 553,
+    "plot_width": 1256,
+    "setup_visible": false
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-3d-1280x800-font1x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "screenshot_size": [
+      1296,
+      839
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "geometry-request",
+    "requested_size": [
+      1400,
+      900
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-inputs",
+    "requested_size": [
+      1400,
+      900
+    ],
+    "actual_size": [
+      1400,
+      900
+    ],
+    "font_scale": 1,
+    "plot_height": 306,
+    "plot_width": 1376,
+    "setup_visible": true
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-inputs-1400x900-font1x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "screenshot_size": [
+      1416,
+      939
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-3d",
+    "requested_size": [
+      1400,
+      900
+    ],
+    "actual_size": [
+      1400,
+      900
+    ],
+    "font_scale": 1,
+    "plot_height": 653,
+    "plot_width": 1376,
+    "setup_visible": false
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-3d-1400x900-font1x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "screenshot_size": [
+      1416,
+      939
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "declared-matrix",
+    "tested_sizes": [
+      [
+        1280,
+        800
+      ],
+      [
+        1400,
+        900
+      ]
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "geometry-request",
+    "requested_size": [
+      1280,
+      800
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-inputs",
+    "requested_size": [
+      1280,
+      800
+    ],
+    "actual_size": [
+      1280,
+      800
+    ],
+    "font_scale": 2,
+    "plot_height": 245,
+    "plot_width": 1256,
+    "setup_visible": true
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-inputs-1280x800-font2x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "screenshot_size": [
+      1296,
+      839
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-3d",
+    "requested_size": [
+      1280,
+      800
+    ],
+    "actual_size": [
+      1280,
+      800
+    ],
+    "font_scale": 2,
+    "plot_height": 400,
+    "plot_width": 1256,
+    "setup_visible": false
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1280,
+      800
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1288,
+      831
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-3d-1280x800-font2x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1296,
+      839
+    ],
+    "screenshot_size": [
+      1296,
+      839
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "geometry-request",
+    "requested_size": [
+      1400,
+      900
+    ]
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-inputs",
+    "requested_size": [
+      1400,
+      900
+    ],
+    "actual_size": [
+      1400,
+      900
+    ],
+    "font_scale": 2,
+    "plot_height": 264,
+    "plot_width": 1376,
+    "setup_visible": true
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-inputs-1400x900-font2x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "screenshot_size": [
+      1416,
+      939
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "24a-micrometre-3d",
+    "requested_size": [
+      1400,
+      900
+    ],
+    "actual_size": [
+      1400,
+      900
+    ],
+    "font_scale": 2,
+    "plot_height": 500,
+    "plot_width": 1376,
+    "setup_visible": false
+  },
+  {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.5 (tags/v3.11.5:cce6ba9, Aug 24 2023, 14:38:34) [MSC v.1936 64 bit (AMD64)]",
+    "mode": "exact",
+    "windowing_system": "win32",
+    "display": null,
+    "window_manager_probe": null,
+    "focused_widget": ".!sampleanalysisworkspace",
+    "screen": [
+      3440,
+      1440
+    ],
+    "virtual_root": [
+      0,
+      -290,
+      6440,
+      1920
+    ],
+    "tk_scaling": 1.3335775335775335,
+    "tk_patchlevel": "8.6.12",
+    "wm_min_size": [
+      980,
+      640
+    ],
+    "wm_max_size": [
+      6444,
+      1901
+    ],
+    "client_size": [
+      1400,
+      900
+    ],
+    "client_bounds": [
+      8,
+      31,
+      1408,
+      931
+    ],
+    "decorated_outer_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "work_area": [
+      0,
+      0,
+      3440,
+      1392
+    ],
+    "state": "screenshot",
+    "screenshot": "analysis-21c-24a-micrometre-3d-1400x900-font2x.png",
+    "screenshot_bounds": [
+      0,
+      0,
+      1416,
+      939
+    ],
+    "screenshot_size": [
+      1416,
+      939
+    ],
+    "complete_owned_window": true,
+    "screenshot_scope": "decorated"
+  }
+]
