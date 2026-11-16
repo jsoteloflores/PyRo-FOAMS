@@ -1660,6 +1660,63 @@ class TestLiveSampleProjectGui(unittest.TestCase):
             self.assertEqual(reopened.analysis_runs[-1].payload, payload)
             window._on_close()
 
+    def test_guided_stage_flow_and_requested_plot(self):
+        from main.tests.test_sample_analysis import TestSampleAnalysisAdapters
+
+        project, _ = TestSampleAnalysisAdapters()._snapshot_with_three_images()
+        window = sample_analysis.SampleAnalysisWorkspace(self.root, project, create_analysis_snapshot(project))
+        self.root.update()
+
+        self.assertEqual(window.stageVar.get(), "Inputs")
+        self.assertEqual(window.stagePrimaryButton.cget("text"), "Continue to analysis")
+        self.assertEqual(str(window.stagePrimaryButton.cget("state")), "normal")
+        self.assertGreater(len(window.inputsTable.get_children()), 0)
+
+        set_analysis_included(project.images[0], False)
+        set_analysis_included(project.images[1], False)
+        set_analysis_included(project.images[2], False)
+        window._refresh_input_stage_table()
+        window._refresh_stage_controls()
+        self.assertEqual(str(window.stagePrimaryButton.cget("state")), "disabled")
+
+        set_analysis_included(project.images[0], True)
+        set_analysis_included(project.images[1], True)
+        set_analysis_included(project.images[2], True)
+        window._refresh_input_stage_table()
+        window._refresh_stage_controls()
+        self.assertEqual(str(window.stagePrimaryButton.cget("state")), "normal")
+
+        window.stagePrimaryButton.invoke()
+        self.root.update()
+        self.assertEqual(window.stageVar.get(), "Analysis")
+        self.assertEqual(window.stagePrimaryButton.cget("text"), "Run analysis")
+
+        window.modeVar.set("Modern analysis")
+        window.modernMinDetectableVar.set("0.001")
+        window.modernEdgesVar.set("0.001,0.01,0.1")
+        window.outputIntentVar.set("Include 3D size distribution")
+        window.modernUpperTailVar.set(True)
+        self.assertTrue(window.modernReconstructVar.get())
+
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertEqual(window.statusVar.get(), "Modern run complete", window.resultsText.get("1.0", "end"))
+        self.assertEqual(window.stageVar.get(), "Results")
+        self.assertEqual(window.plotTypeVar.get(), sample_analysis.NV_PLOT)
+        self.assertEqual(window.resultsNotebook.select(), str(window._plot_frame))
+
+        window.stageBackButton.invoke()
+        self.root.update()
+        self.assertEqual(window.stageVar.get(), "Analysis")
+        window.outputIntentVar.set("2D measurements and size distribution")
+        self.assertFalse(window.modernReconstructVar.get())
+        window.runButton.invoke()
+        self._wait_until(lambda: not window._busy, self.root)
+        self.assertEqual(window.statusVar.get(), "Modern run complete", window.resultsText.get("1.0", "end"))
+        self.assertEqual(window.stageVar.get(), "Results")
+        self.assertEqual(window.plotTypeVar.get(), sample_analysis.NA_PLOT)
+        window._on_close()
+
     def _assert_workspace_controls_fit(self, width, height, artifact_dir, font_scale):
         self._request_geometry(self.root, width, height)
         self._record_geometry(self.root, "preparation-layout", requested_size=[width, height], font_scale=font_scale)

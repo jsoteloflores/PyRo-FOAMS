@@ -52,6 +52,42 @@ The application exposes the existing Original FOAMS 1.0.5 histogram/conversion p
 
 This increment changes presentation, not measurement, inversion, normalization, canonical Original artifacts, run schemas or CSV contracts. Brief 23 identical-input MATLAB validation remains outstanding. The separate hidden Pick-threshold median-smoothing preparation issue remains tracked; its scientific default is unchanged.
 
+## Guided workflow (Brief 25)
+
+The analysis workspace now keeps one visible route with three stages:
+
+- **Inputs**: verify what will be analyzed from included accepted snapshots, calibration and readiness notes.
+- **Analysis**: choose method and output intent, then run explicitly.
+- **Results**: inspect/export the selected run and return to adjust settings.
+
+The stage selector is presentation state only. Switching stages does not run preparation or analysis, does not append run history, and does not alter accepted inputs.
+
+### Inputs stage
+
+The Inputs table reports each image's included status, accepted status, calibration and actionable issues. If an image has a newer unaccepted draft, the stage explains that analysis still uses the accepted snapshot until replacement is explicitly accepted in preparation. No silent include/exclude/accept/calibration edits are made.
+
+Primary action is **Continue to analysis** and is disabled when required current inputs are invalid. Saved-run history remains available even when current inputs are invalid.
+
+### Analysis stage
+
+Method choices remain explicit: **Original FOAMS 1.0.5**, **Modern analysis**, and **Compare methods**. Output intent is explicit:
+
+- **2D measurements and size distribution**
+- **Include 3D size distribution**
+
+For Modern (and the Modern side of Compare), 3D intent maps to the existing reconstruction setting and still requires explicit upper-tail assumption consent. Original keeps its existing built-in 3D conversion path and 2D outputs; no new kernel switch is introduced.
+
+When multiple resolutions are included for Modern, **Review selection** is relabeled **Review image ranges**, and run validation reports explicit guidance when assignments are missing.
+
+### Results stage
+
+After a successful explicit run, the plot opens automatically:
+
+- 3D inverse graph when 3D was requested and available for the selected method outcome.
+- Otherwise 2D distribution graph.
+
+Results stage keeps run identity/provenance behavior from Briefs 22-24a, including saved-run selection, immutable history, and graph/export metadata identity.
+
 ## Current limitations
 
 - The workspace retains the existing thumbnail grid rather than a new dedicated image-list/editor layout.

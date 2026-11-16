@@ -137,6 +137,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._plotted_metadata = {}
         self._plot_data = None
         self._graph_refreshing = False
+        self._syncing_output_intent = False
+        self._input_table_signature = None
 
         self.modeVar = tk.StringVar(value="Original FOAMS 1.0.5")
         self.minimumDiameterVar = tk.StringVar(value="2.0")
@@ -170,6 +172,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._committed_fields = {}
 
         self.statusVar = tk.StringVar(value="Ready")
+        self.stageVar = tk.StringVar(value="Inputs")
+        self.outputIntentVar = tk.StringVar(value="2D measurements and size distribution")
         self.plotTypeVar = tk.StringVar(value=NA_PLOT)
         self.plotMethodVar = tk.StringVar(value="All methods")
         self.plotStageVar = tk.StringVar(value="All series")
@@ -187,15 +191,19 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             name: value for name, value in vars(self).items() if isinstance(value, tk.Variable)
             and name not in ("statusVar", "resultViewVar", "resultProvenanceVar", "tableMethodVar", "tableGroupVar", "tableStageVar")
             and not name.startswith("plot")
-            and name != "displayUnitVar"
+            and name not in ("displayUnitVar", "stageVar", "outputIntentVar")
         }
         for variable in self._variables.values():
             variable.trace_add("write", self._settings_changed)
         self.manualRangesVar.trace_add("write", self._manual_changed)
         for variable in (self.modeVar, self.selectionModeVar, self.volumeModeVar, self.shapeModeVar, self.modernReconstructVar, self.modernClassModeVar):
             variable.trace_add("write", self._settings_visibility)
+        self.stageVar.trace_add("write", self._stage_changed)
+        self.outputIntentVar.trace_add("write", self._output_intent_changed)
         self.modernEdgesVar.trace_add("write", self._class_edges_changed)
         self._settings_visibility()
+        self._refresh_input_stage_table()
+        self._refresh_stage_controls()
         self._refresh_display_tables()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.geometry("1200x800")
@@ -217,7 +225,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._setup_visible = True
         self._plot_entered = False
         root.columnconfigure(0, weight=1)
-        root.rowconfigure(5, weight=1)
+        root.rowconfigure(6, weight=1)
 
         summary = ttk.Frame(root)
         summary.grid(row=0, column=0, sticky="ew")
@@ -239,8 +247,30 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.displayUnitSelector.bind("<<ComboboxSelected>>", self._change_display_unit)
         self._summary_frame = summary
 
+        stage = ttk.LabelFrame(root, text="Workflow", padding=(6, 4))
+        stage.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        stage.columnconfigure(0, weight=1)
+        self._stage_frame = stage
+        nav = ttk.Frame(stage)
+        nav.grid(row=0, column=0, sticky="ew")
+        nav.columnconfigure(0, weight=1)
+        self.stageIndicatorLabel = ttk.Label(nav, text="Inputs -> Analysis -> Results", justify="left")
+        self.stageIndicatorLabel.grid(row=0, column=0, sticky="w")
+        selectors = ttk.Frame(nav)
+        selectors.grid(row=0, column=1, sticky="e")
+        for text in ("Inputs", "Analysis", "Results"):
+            ttk.Radiobutton(selectors, text=text, value=text, variable=self.stageVar).pack(side="left", padx=4)
+        self.stageGuideLabel = ttk.Label(stage, justify="left", wraplength=900)
+        self.stageGuideLabel.grid(row=1, column=0, sticky="ew", pady=(3, 0))
+        stage_actions = ttk.Frame(stage)
+        stage_actions.grid(row=2, column=0, sticky="w", pady=(3, 0))
+        self.stagePrimaryButton = ttk.Button(stage_actions)
+        self.stagePrimaryButton.pack(side="left")
+        self.stageBackButton = ttk.Button(stage_actions)
+        self.stageBackButton.pack(side="left", padx=8)
+
         setup = ttk.LabelFrame(root, text="Setup", padding=4)
-        setup.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        setup.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         self.setupBody = setup
         setup_canvas = tk.Canvas(setup, height=230, highlightthickness=0)
         self._setup_canvas = setup_canvas
@@ -259,7 +289,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._build_method_settings(controls)
 
         primary = ttk.Frame(root)
-        primary.grid(row=2, column=0, sticky="ew", pady=4)
+        primary.grid(row=3, column=0, sticky="ew", pady=4)
         self._primary_actions = primary
         self.runButton = ttk.Button(primary, text="Run analysis", command=self._run_analysis)
         self.runButton.grid(row=0, column=0, sticky="w")
@@ -270,7 +300,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.backButton = ttk.Button(primary, text="Back to preparation", command=self._on_close)
         self.backButton.grid(row=0, column=3, sticky="w", padx=8)
         action_frame = ttk.Frame(root)
-        action_frame.grid(row=3, column=0, sticky="ew")
+        action_frame.grid(row=4, column=0, sticky="ew")
         self._secondary_actions = action_frame
         action_canvas = tk.Canvas(action_frame, height=44, highlightthickness=0)
         action_canvas.pack(fill="x")
@@ -303,7 +333,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.exportRunButton.pack(side="left", padx=8)
         ttk.Button(input_actions, text="Measurements", command=self._open_measurements).pack(side="left", padx=8)
         status_frame = ttk.Frame(root)
-        status_frame.grid(row=4, column=0, sticky="ew", pady=4)
+        status_frame.grid(row=5, column=0, sticky="ew", pady=4)
         status_frame.columnconfigure(0, weight=1)
         self._status_frame = status_frame
         self._status_canvas = tk.Canvas(status_frame, height=24, highlightthickness=0)
@@ -315,7 +345,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.statusLabel.bind("<Configure>", self._queue_layout)
 
         results = ttk.Frame(root, padding=(0, 4))
-        results.grid(row=5, column=0, sticky="nsew")
+        results.grid(row=6, column=0, sticky="nsew")
         results.columnconfigure(0, weight=1)
         results.rowconfigure(2, weight=1)
         self._results_frame = results
@@ -420,8 +450,32 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self.resultProvenanceLabel.bind("<Configure>", self._queue_layout)
 
     def _build_method_settings(self, controls):
+        self.inputsStage = ttk.LabelFrame(controls, text="Inputs - confirm accepted snapshots", padding=(6, 4))
+        self.inputsStage.pack(fill="x", pady=(0, 6))
+        self.inputsTable = ttk.Treeview(self.inputsStage, columns=("name", "included", "accepted", "calibration", "status"),
+            show="headings", height=5)
+        for key, title, width in (("name", "Image", 210), ("included", "Included", 80),
+                                  ("accepted", "Accepted", 80), ("calibration", "Calibration", 130), ("status", "Status", 340)):
+            self.inputsTable.heading(key, text=title)
+            self.inputsTable.column(key, width=width, stretch=False)
+        self.inputsTable.grid(row=0, column=0, sticky="ew")
+        self.inputsTable.bind("<<TreeviewSelect>>", self._select_input_stage_row)
+        self.inputsStage.columnconfigure(0, weight=1)
+        self.inputsSelectionLabel = ttk.Label(self.inputsStage, justify="left", wraplength=760)
+        self.inputsSelectionLabel.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+
         self.readinessLabel = ttk.Label(controls, text="Accepted masks; choose method inputs, then Run analysis", wraplength=680)
         self.readinessLabel.pack(fill="x", pady=(0, 4))
+        self.analysisStage = ttk.LabelFrame(controls, text="Analysis - method and outputs", padding=(6, 4))
+        self.analysisStage.pack(fill="x", pady=(0, 6))
+        intent = ttk.Frame(self.analysisStage)
+        intent.pack(fill="x")
+        ttk.Radiobutton(intent, text="2D measurements and size distribution", value="2D measurements and size distribution",
+            variable=self.outputIntentVar).pack(anchor="w")
+        ttk.Radiobutton(intent, text="Include 3D size distribution", value="Include 3D size distribution",
+            variable=self.outputIntentVar).pack(anchor="w")
+        self.outputIntentHelp = ttk.Label(self.analysisStage, justify="left", wraplength=760)
+        self.outputIntentHelp.pack(fill="x", pady=(4, 0))
         self.originalSettingsToggle = ttk.Button(controls, text="Original settings", command=lambda: self._toggle_method_section("legacy"))
         self.originalSettingsToggle.pack(anchor="w")
         self.originalSettings = ttk.Frame(controls, padding=(0, 4))
@@ -679,6 +733,22 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         mode = self.modeVar.get()
         original = mode in ("Original FOAMS 1.0.5", "Compare methods")
         modern = mode in ("Modern analysis", "Compare methods")
+        self._syncing_output_intent = True
+        try:
+            if modern:
+                self.outputIntentVar.set("Include 3D size distribution" if self.modernReconstructVar.get() else "2D measurements and size distribution")
+            else:
+                self.outputIntentVar.set("Include 3D size distribution" if self.outputIntentVar.get() == "Include 3D size distribution" else "2D measurements and size distribution")
+        finally:
+            self._syncing_output_intent = False
+        if mode == "Original FOAMS 1.0.5":
+            self.outputIntentHelp.configure(text="Original FOAMS includes its built-in 3D conversion path and also provides 2D outputs.")
+        elif mode == "Compare methods":
+            self.outputIntentHelp.configure(text=("Compare runs both methods independently. If Modern 3D is not requested, "
+                "Original 3D remains available but is not shown as a two-method 3D comparison."))
+        else:
+            self.outputIntentHelp.configure(text=("Modern 3D maps to the existing reconstruction setting and requires explicit upper-tail assumption consent. "
+                "No reconstruction runs until the required settings are valid."))
         for widget in (self.originalSettings, self.modernSettings, self.originalSettingsToggle, self.modernSettingsToggle):
             widget.pack_forget()
         if original:
@@ -726,6 +796,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         if original:
             self.suggestButton.pack(side="left", padx=8)
             self.shapeUpdateButton.pack(side="left", padx=8)
+        scales = {calibration_mm_per_px(image) for image in self.project.images if image.analysis_included and calibration_mm_per_px(image) is not None}
+        self.previewButton.configure(text="Review image ranges" if modern and len(scales) > 1 else "Review selection")
         self.advancedModernSettings.pack_forget()
         self.advancedModernButton.pack_forget()
         self.advancedModernButton.pack(anchor="w", pady=4)
@@ -738,6 +810,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         else:
             self.generatedClasses.pack(fill="x", before=self.classPreview)
         self._preview_classes()
+        self._refresh_stage_controls()
         self._queue_layout()
 
     def _build_plot_controls(self, parent):
@@ -987,6 +1060,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         self._queue_layout()
 
     def _results_tab_changed(self, _event=None) -> None:
+        if self.resultsNotebook.index("current") >= 0:
+            self.stageVar.set("Results")
         if self.resultsNotebook.select() == str(self._plot_frame) and not self._plot_entered:
             self._plot_entered = True
             self._set_setup_visible(False)
@@ -995,7 +1070,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
     def _reflow_analysis_layout(self) -> None:
         self._layout_pending = False
         width = max(1, self._layout_root.winfo_width() - 24)
-        for label in (self.statusLabel, self.resultProvenanceLabel):
+        for label in (self.statusLabel, self.resultProvenanceLabel, self.stageGuideLabel, self.inputsSelectionLabel, self.outputIntentHelp):
             if int(label.cget("wraplength") or 0) != width:
                 label.configure(wraplength=width)
         self._status_canvas.itemconfigure(self._status_window, width=width)
@@ -1009,7 +1084,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         else:
             self._status_scroll.grid_remove()
         reserve = 240 + self.resultViewSelector.winfo_reqheight() + self.resultProvenanceLabel.winfo_reqheight() + line_height + 32 + self.plotToolbar.winfo_reqheight()
-        self._layout_root.rowconfigure(5, minsize=reserve)
+        self._layout_root.rowconfigure(6, minsize=reserve)
         if self._setup_visible:
             fixed = self._summary_frame.winfo_reqheight() + self._primary_actions.winfo_reqheight() + self._status_frame.winfo_reqheight() + self._secondary_actions.winfo_reqheight() + 40
             setup_overhead = max(0, self.setupBody.winfo_reqheight() - self._setup_canvas.winfo_reqheight())
@@ -1155,6 +1230,108 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             if calibration_mm_per_px(image) is None:
                 return f"{image.display_name}: current calibration unavailable"
         return None
+
+    def _stage_changed(self, *_args) -> None:
+        self._refresh_stage_controls()
+
+    def _refresh_stage_controls(self) -> None:
+        stage = self.stageVar.get()
+        if stage not in ("Inputs", "Analysis", "Results"):
+            stage = "Inputs"
+            self.stageVar.set(stage)
+        self.inputsStage.pack_forget()
+        self.analysisStage.pack_forget()
+        if stage == "Inputs":
+            self.inputsStage.pack(fill="x", pady=(0, 6), before=self.readinessLabel)
+        elif stage == "Analysis":
+            self.analysisStage.pack(fill="x", pady=(0, 6), before=self.originalSettingsToggle)
+        else:
+            self.resultsNotebook.select(self._overview_frame)
+
+        problem = self._current_input_problem()
+        if stage == "Inputs":
+            self.stageGuideLabel.configure(text="Inputs: confirm included accepted snapshots, calibration, and readiness before analysis.")
+            self.stagePrimaryButton.configure(text="Continue to analysis", command=lambda: self.stageVar.set("Analysis"),
+                state="disabled" if problem else "normal")
+            self.stageBackButton.configure(text="Back to preparation", command=self._on_close)
+            if problem and self.statusVar.get() in ("Ready", "Current inputs unavailable; saved history remains accessible"):
+                self.statusVar.set(problem)
+        elif stage == "Analysis":
+            self.stageGuideLabel.configure(text="Analysis: choose method and output intent, then run once when ready.")
+            self.stagePrimaryButton.configure(text="Run analysis", command=self._run_analysis,
+                state="disabled" if self._busy else "normal")
+            self.stageBackButton.configure(text="Back to inputs", command=lambda: self.stageVar.set("Inputs"))
+        else:
+            self.stageGuideLabel.configure(text="Results: inspect the selected run, then export results or adjust analysis.")
+            self.stagePrimaryButton.configure(text="Export results", command=self._export_run,
+                state="disabled" if self._busy or self._exporting else "normal")
+            self.stageBackButton.configure(text="Adjust analysis", command=lambda: self.stageVar.set("Analysis"))
+        self._refresh_input_stage_table()
+
+    def _refresh_input_stage_table(self) -> None:
+        if not hasattr(self, "inputsTable"):
+            return
+        signature = tuple((image.image_id, image.display_name, image.analysis_included,
+                           image.accepted_snapshot.snapshot_id if image.accepted_snapshot is not None else None,
+                           image.draft_revision, calibration_mm_per_px(image)) for image in self.project.images)
+        if signature == self._input_table_signature:
+            return
+        self._input_table_signature = signature
+        self._input_row_image_ids = {}
+        self.inputsTable.delete(*self.inputsTable.get_children())
+        selected = None
+        for image in self.project.images:
+            mm = calibration_mm_per_px(image)
+            included = "Yes" if image.analysis_included else "No"
+            accepted = "Yes" if image.accepted_snapshot is not None else "No"
+            newer = image.accepted_snapshot is not None and image.draft_revision > image.accepted_snapshot.draft_revision
+            calibration = f"{mm:.8g} mm/px" if mm is not None else "missing"
+            problems = []
+            if image.analysis_included and image.accepted_snapshot is None:
+                problems.append("accept mask")
+            if image.analysis_included and mm is None:
+                problems.append("set calibration")
+            if newer:
+                problems.append("newer unaccepted draft")
+            status = ", ".join(problems) if problems else "ready"
+            row_id = self.inputsTable.insert("", "end", values=(image.display_name, included, accepted, calibration, status))
+            self._input_row_image_ids[row_id] = image.image_id
+            if selected is None and image.analysis_included:
+                selected = row_id
+        if selected is None and self.inputsTable.get_children():
+            selected = self.inputsTable.get_children()[0]
+        if selected is not None:
+            self.inputsTable.selection_set(selected)
+            self.inputsTable.focus(selected)
+            self._select_input_stage_row()
+
+    def _select_input_stage_row(self, _event=None) -> None:
+        selected = self.inputsTable.selection()
+        if not selected:
+            self.inputsSelectionLabel.configure(text="Select an image to inspect readiness details.")
+            return
+        image_id = self._input_row_image_ids.get(selected[0])
+        image = next((item for item in self.project.images if item.image_id == image_id), None)
+        if image is None:
+            self.inputsSelectionLabel.configure(text="Select an image to inspect readiness details.")
+            return
+        newer = image.accepted_snapshot is not None and image.draft_revision > image.accepted_snapshot.draft_revision
+        accepted_id = image.accepted_snapshot.snapshot_id[:12] if image.accepted_snapshot is not None else "none"
+        message = (
+            f"{image.display_name}: included={'yes' if image.analysis_included else 'no'}, "
+            f"accepted snapshot={accepted_id}, draft revision={image.draft_revision}. "
+            + ("A newer unaccepted draft exists; analysis still uses the accepted snapshot until you accept replacement. " if newer else "")
+            + "Use Back to preparation to inspect/accept masks or update calibration; no input is changed automatically."
+        )
+        self.inputsSelectionLabel.configure(text=message)
+
+    def _output_intent_changed(self, *_args) -> None:
+        if self._syncing_output_intent:
+            return
+        include_3d = self.outputIntentVar.get() == "Include 3D size distribution"
+        if self.modeVar.get() in ("Modern analysis", "Compare methods"):
+            self.modernReconstructVar.set(include_3d)
+        self._settings_visibility()
 
     def _parse_manual_ranges(self) -> tuple[tuple[str, float, float], ...]:
         raw = self.manualRangesVar.get().strip()
@@ -1336,6 +1513,8 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 and self._displayed_request.input_signature != current_inputs):
             self.statusVar.set("Inputs changed - rerun required; previous result retained")
         self._refresh_result_provenance()
+        self._refresh_input_stage_table()
+        self._refresh_stage_controls()
         self._schedule_after(200, self._watch_inputs)
 
     def _method_settings_signature(self, method: str) -> tuple:
@@ -1448,6 +1627,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         try:
             if selected_label in self._saved_labels:
                 self._load_saved_run(self._saved_labels[selected_label])
+                self.stageVar.set("Results")
             elif selected_label == "Current request":
                 if self._current_view is None:
                     self._clear_supplement()
@@ -1461,10 +1641,12 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                     return
                 self._present_result(*self._current_view)
                 self.statusVar.set("Showing current request " + self._current_view[2].request_id[:8])
+                self.stageVar.set("Results")
             else:
                 envelope = self._successful_results[selected_label]
                 self._present_result(envelope.method, envelope.result, envelope.request, (envelope,), previous=True)
                 self.statusVar.set("Showing previous result " + envelope.request.request_id[:8])
+                self.stageVar.set("Results")
         except Exception as exc:
             self._restore_view(view)
             self._show_failure("Rendering", exc)
@@ -1480,6 +1662,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
     def _sync_operation_controls(self):
         self.cancelButton.configure(state="normal" if self._busy or self._history_loading or self._exporting else "disabled")
         self.resultViewSelector.configure(state="disabled" if self._busy or self._exporting else "readonly")
+        self._refresh_stage_controls()
 
     def _clear_supplement(self):
         self._table_run_id = None
@@ -1500,6 +1683,7 @@ class SampleAnalysisWorkspace(tk.Toplevel):
         if busy:
             self._control_states = []
             pending = [self.setupControls, self.methodPresetSelector, self.displayUnitSelector,
+                       self._stage_frame,
                        self.binGroupSelector, self.applyBinsButton, self.resultViewSelector]
             while pending:
                 widget = pending.pop()
@@ -1512,9 +1696,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 widget.configure(state=state)
             self._control_states = []
         for button in (self.runButton, self.suggestButton, self.prepareButton, self.previewButton, self.shapeUpdateButton,
-                   self.saveSetupButton, self.useRunSettingsButton, self.exportRunButton):
+                   self.saveSetupButton, self.useRunSettingsButton, self.exportRunButton, self.stagePrimaryButton, self.stageBackButton):
             button.configure(state="disabled" if busy else "normal")
         self._sync_operation_controls()
+        self._refresh_stage_controls()
 
     def _cancel_job(self) -> None:
         if self._history_loading and self._history_previous is not None:
@@ -1578,6 +1763,10 @@ class SampleAnalysisWorkspace(tk.Toplevel):
             if mode in ("Modern analysis", "Compare methods") and action != "suggest":
                 self._modern_validation()
                 try:
+                    if action == "run":
+                        scales = {calibration_mm_per_px(image) for image in self.project.images if image.analysis_included and calibration_mm_per_px(image) is not None}
+                        if len(scales) > 1 and not self.modernSegmentsVar.get().strip():
+                            raise SampleAnalysisError("Review image ranges before running Modern analysis")
                     modern_cfg = self._parse_modern_config()
                 except Exception as exc:
                     modern_error = exc
@@ -1703,7 +1892,9 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                         for item in suggestion.suggested_ranges))
                     self._setting_proposal = False
                     self.selectionModeVar.set("manual")
-                self.statusVar.set("Prepared distributions available" if suggestion is None else "Suggested ranges ready for review (Manual)")
+                self.stageVar.set("Analysis")
+                self.statusVar.set("Prepared distributions ready; review image ranges before Run analysis"
+                    if suggestion is None else "Suggested ranges ready for review (Manual)")
             elif request["mode"] == "Compare methods":
                 comparison = CompareRunResult(result["legacy"], result["legacy_error"], result["modern"], result["modern_error"])
                 new_view = ("compare", comparison, captured, envelopes)
@@ -1735,7 +1926,14 @@ class SampleAnalysisWorkspace(tk.Toplevel):
                 if projection is not None:
                     data = result["run_data"]
                     self._populate_saved_supplement(data, data["tables"])
-                    self.resultsNotebook.select(self._overview_frame)
+                    modern_reconstruction = result["modern"] is not None and result["modern"].reconstruction_result is not None
+                    include_3d = self.outputIntentVar.get() == "Include 3D size distribution"
+                    open_inverse = include_3d and (request["mode"] == "Original FOAMS 1.0.5" or modern_reconstruction)
+                    self.plotTypeVar.set(NV_PLOT if open_inverse else NA_PLOT)
+                    self.plotScaleVar.set("Linear Y" if open_inverse else "Log Y")
+                    self.resultsNotebook.select(self._plot_frame)
+                    self.stageVar.set("Results")
+                    self._refresh_graph()
                 if request["mode"] == "Compare methods" and request["action"] not in ("prepare", "suggest"):
                     self._latest_compare = comparison
                 if result["legacy"] is not None:
